@@ -19,6 +19,10 @@
   text-rendering: auto;
 }
 
+.fa-play:before {
+  content: '\f04b';
+}
+
 .fa-xmark:before {
   content: '\f00d';
 }

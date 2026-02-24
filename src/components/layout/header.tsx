@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Film, Calendar, User, Ticket } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
+import Image from 'next/image';
+import clsx from 'clsx';
 
 export default function Header() {
   const { data: session } = useSession();
@@ -58,8 +60,17 @@ export default function Header() {
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent"
+              className={clsx(
+                'text-2xl font-bold flex-js-c gap-4',
+                shouldHaveDarkBg ? 'text-gray-700' : 'text-white'
+              )}
             >
+              <Image
+                src="/images/logo.svg"
+                alt="GoCinema"
+                width={40}
+                height={40}
+              />
               GoCinema
             </motion.div>
           </Link>

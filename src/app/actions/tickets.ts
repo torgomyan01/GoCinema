@@ -21,6 +21,57 @@ export interface CreateMultipleTicketsData {
   }>;
 }
 
+export async function getAllTicketsForAdmin() {
+  try {
+    const tickets = await prisma.ticket.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+        screening: {
+          include: {
+            movie: true,
+            hall: true,
+          },
+        },
+        seat: {
+          select: {
+            id: true,
+            row: true,
+            number: true,
+            seatType: true,
+          },
+        },
+        orderItems: {
+          include: {
+            product: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return {
+      success: true,
+      tickets,
+    };
+  } catch (error: any) {
+    console.error('[Get All Tickets For Admin] Error:', error);
+    return {
+      success: false,
+      error: 'Տոմսերը բեռնելիս սխալ է տեղի ունեցել',
+      tickets: [],
+    };
+  }
+}
+
 export async function getUserTickets(userId: number) {
   try {
     // Validate userId

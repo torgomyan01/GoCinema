@@ -148,6 +148,7 @@ export default function SchedulePageClient() {
   }, [filteredScreenings]);
 
   // Generate all days with screenings (all days that have screenings)
+  // From already finished days ցույց ենք տալիս միայն վերջին 2 օրը
   const allDays = useMemo(() => {
     // Get all unique dates from screenings using the same key format
     const uniqueDates = new Set<string>();
@@ -165,7 +166,15 @@ export default function SchedulePageClient() {
       })
       .sort((a, b) => a.getTime() - b.getTime());
 
-    return datesArray;
+    // Split into past and current/future days
+    const pastDays = datesArray.filter((d) => isPast(d));
+    const currentAndFutureDays = datesArray.filter((d) => !isPast(d));
+
+    // Show only last 2 past days
+    const visiblePastDays =
+      pastDays.length > 2 ? pastDays.slice(pastDays.length - 2) : pastDays;
+
+    return [...visiblePastDays, ...currentAndFutureDays];
   }, [filteredScreenings]);
 
   const formatDate = (date: Date | string) => {
@@ -223,13 +232,13 @@ export default function SchedulePageClient() {
     );
   };
 
-  const isPast = (date: Date) => {
+  function isPast(date: Date) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const checkDate = new Date(date);
     checkDate.setHours(0, 0, 0, 0);
     return checkDate < today;
-  };
+  }
 
   const getDateKey = (date: Date) => {
     // Normalize date to local timezone to avoid timezone issues
@@ -299,7 +308,7 @@ export default function SchedulePageClient() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {allDays.map((day, dayIndex) => {
               const dateKey = getDateKey(day);
               const dayScreenings = screeningsByDate[dateKey] || [];
@@ -313,43 +322,57 @@ export default function SchedulePageClient() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.4, delay: dayIndex * 0.05 }}
-                  className={`bg-white rounded-xl shadow-lg border-2 overflow-hidden ${
+                  className={`group bg-white rounded-2xl shadow-lg border overflow-hidden transition-all duration-300 ${
                     isTodayDate
-                      ? 'border-purple-500 shadow-purple-200'
+                      ? 'border-purple-500/80 shadow-purple-200'
                       : isPastDate
-                        ? 'border-gray-200 opacity-60'
-                        : 'border-gray-200 hover:border-purple-300'
+                        ? 'border-gray-200 opacity-80'
+                        : 'border-gray-200 hover:border-purple-300 hover:-translate-y-1'
                   }`}
                 >
                   {/* Day Header */}
                   <div
-                    className={`p-6 ${
+                    className={`p-5 md:p-6 ${
                       isTodayDate
                         ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                        : 'bg-gray-50 border-b border-gray-200'
+                        : 'bg-gradient-to-r from-slate-50 to-slate-100 border-b border-gray-200'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-lg font-medium mb-1">
-                          {formatDate(day)}
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/40">
+                          <span className="text-xl font-semibold">
+                            {day.getDate()}
+                          </span>
                         </div>
-                        {isTodayDate && (
-                          <div className="text-sm opacity-90">Այսօր</div>
-                        )}
+                        <div>
+                          <div className="text-sm font-semibold uppercase tracking-wide opacity-90">
+                            {isTodayDate ? 'Այսօր' : formatDate(day)}
+                          </div>
+                          {!isPastDate && !isTodayDate && (
+                            <div className="text-xs opacity-80 mt-1">
+                              Առկա ցուցադրություններ
+                            </div>
+                          )}
+                          {isPastDate && (
+                            <div className="inline-flex items-center gap-1 mt-1 text-xs px-2 py-0.5 rounded-full bg-black/10">
+                              <span>Ավարտված օր</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {dayScreenings.length > 0 && (
                         <div
                           className={`text-sm font-semibold ${
                             isTodayDate
                               ? 'text-white opacity-90'
-                              : 'text-gray-600'
+                              : 'text-purple-700'
                           }`}
                         >
-                          {dayScreenings.length}{' '}
-                          {dayScreenings.length === 1
-                            ? 'ցուցադրություն'
-                            : 'ցուցադրություն'}
+                          <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/10 md:bg-white/20 text-xs md:text-sm">
+                            <Film className="w-3 h-3" />
+                            <span>{dayScreenings.length} ցուցադրություն</span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -382,7 +405,7 @@ export default function SchedulePageClient() {
                             >
                               {/* Movie Image */}
                               {screening.movie?.image && (
-                                <div className="relative w-full h-32 mb-3 rounded overflow-hidden">
+                                <div className="relative w-full h-[200px] mb-3 rounded overflow-hidden">
                                   <Image
                                     src={screening.movie.image}
                                     alt={screening.movie.title}

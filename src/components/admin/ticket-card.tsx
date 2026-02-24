@@ -33,6 +33,7 @@ export default function TicketCard({
 }: TicketCardProps) {
   const statusBadge = getStatusBadge(ticket.status);
   const [checked, setChecked] = useState(isChecked);
+  const isUsed = ticket.status === 'used';
 
   // Sync local state with prop changes
   useEffect(() => {
@@ -40,6 +41,7 @@ export default function TicketCard({
   }, [isChecked]);
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isUsed) return;
     const newChecked = e.target.checked;
     setChecked(newChecked);
     if (onCheckedChange) {
@@ -56,12 +58,13 @@ export default function TicketCard({
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={checked}
+                checked={checked || isUsed}
                 onChange={handleCheckboxChange}
-                className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 cursor-pointer"
+                disabled={isUsed}
+                className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-70"
               />
               <span className="ml-2 text-sm text-gray-600">
-                {checked ? 'Մուտք է գործել' : 'Չի մուտք գործել'}
+                {isUsed ? 'Մուտք է գործել' : checked ? 'Մուտք է գործել' : 'Չի մուտք գործել'}
               </span>
             </label>
           </div>

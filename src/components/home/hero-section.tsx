@@ -125,18 +125,6 @@ export default function HeroSection() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.2 }}
           >
-            <motion.div
-              whileHover={{ scale: 1.1, rotate: [0, -5, 5, -5, 0] }}
-              transition={{ duration: 0.5 }}
-            >
-              <Image
-                src="/images/logo.png"
-                alt="GoCinema logo"
-                width={180}
-                height={180}
-                className="drop-shadow-2xl"
-              />
-            </motion.div>
             <motion.h1
               className="text-6xl md:text-8xl lg:text-9xl font-extrabold text-white mb-4"
               initial={{ opacity: 0, y: -20 }}

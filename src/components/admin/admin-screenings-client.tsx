@@ -710,6 +710,12 @@ export default function AdminScreeningsClient({
                       const isCurrentMonthDay = isCurrentMonth(date);
                       const isSelectedDay = isSelected(date);
                       const isTodayDay = isToday(date);
+                      // Allow creating screenings for today and any future day (including next months)
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const dayMidnight = new Date(date);
+                      dayMidnight.setHours(0, 0, 0, 0);
+                      const isTodayOrFuture = dayMidnight >= today;
 
                       return (
                         <div
@@ -720,7 +726,7 @@ export default function AdminScreeningsClient({
                             ${
                               !isCurrentMonthDay
                                 ? 'bg-gray-50 opacity-40'
-                                : 'bg-white hover:border-blue-300 cursor-pointer'
+                                : 'bg-white'
                             }
                             ${
                               isSelectedDay
@@ -728,6 +734,11 @@ export default function AdminScreeningsClient({
                                 : ''
                             }
                             ${isTodayDay ? 'ring-2 ring-blue-400' : ''}
+                            ${
+                              isTodayOrFuture
+                                ? 'cursor-pointer hover:border-blue-300'
+                                : 'cursor-not-allowed'
+                            }
                           `}
                         >
                           {/* Day Header */}
@@ -759,7 +770,7 @@ export default function AdminScreeningsClient({
                           {/* Day Click Handler */}
                           <div
                             onClick={() => {
-                              if (isCurrentMonthDay) {
+                              if (isTodayOrFuture) {
                                 handleDayClick(date);
                               }
                             }}

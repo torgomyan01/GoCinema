@@ -14,6 +14,28 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+// Deterministic Armenian date formatter to avoid hydration mismatches
+const formatArmenianDate = (date: Date) => {
+  const months = [
+    'հունվար',
+    'փետրվար',
+    'մարտ',
+    'ապրիլ',
+    'մայիս',
+    'հունիս',
+    'հուլիս',
+    'օգոստոս',
+    'սեպտեմբեր',
+    'հոկտեմբեր',
+    'նոյեմբեր',
+    'դեկտեմբեր',
+  ];
+  const day = date.getDate();
+  const monthName = months[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day} ${monthName} ${year} թ.`;
+};
+
 const sections = [
   {
     id: 1,
@@ -140,14 +162,9 @@ export default function PrivacyPageClient() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-xl text-gray-600 max-w-2xl mx-auto"
+            className="text-xl text-gray-600 max-w-2xl mx.auto"
           >
-            Վերջին թարմացում.{' '}
-            {new Date().toLocaleDateString('hy-AM', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
+            Վերջին թարմացում. {formatArmenianDate(new Date())}
           </motion.p>
         </div>
 

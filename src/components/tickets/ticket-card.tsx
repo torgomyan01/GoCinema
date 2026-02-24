@@ -10,6 +10,7 @@ import {
   QrCode,
   Download,
   ShoppingCart,
+  Share2,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -65,6 +66,7 @@ interface TicketCardProps {
 
 export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const qrCodeRef = useRef<HTMLDivElement>(null);
 
   // Generate QR code data - only order ID for scanning
@@ -73,6 +75,23 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
       return `ORDER-${ticket.order.id}`;
     }
     return `TICKET-${ticket.id}`;
+  };
+
+  const getShareUrl = () => {
+    if (typeof window === 'undefined') return '';
+    const code = encodeURIComponent(getQRCodeData());
+    return `${window.location.origin}/ticket/share?code=${code}`;
+  };
+
+  const handleCopyShareLink = async () => {
+    const url = getShareUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      // optional: could add toast later
+    } catch {
+      // ignore clipboard errors for now
+    }
   };
 
   // Download QR code as PNG
@@ -166,10 +185,13 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.1 }}
     >
-      <div className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl border border-gray-100 overflow-hidden transition-shadow duration-300">
+        {/* Accent bar like cinema ticket strip */}
+        <div className="h-1 bg-gradient-to-r from-purple-600 via-pink-500 to-amber-400" />
+
         <div className="flex flex-col md:flex-row">
           {/* Movie Image */}
-          <div className="relative w-full md:w-48 h-48 md:h-auto overflow-hidden bg-gray-200">
+          <div className="relative w-full md:w-52 h-48 md:h-auto overflow-hidden bg-gray-200">
             <Image
               src={
                 ticket.screening.movie.image ||
@@ -180,28 +202,34 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
               className="object-cover"
             />
             {ticket.status === 'paid' && ticket.qrCode && (
-              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-lg p-2">
-                <QrCode className="w-6 h-6 text-purple-600" />
+              <div className="absolute top-2 right-2 bg-black/60 text-white rounded-lg px-2 py-1 flex items-center gap-1 text-xs">
+                <QrCode className="w-4 h-4" />
+                <span>QR</span>
               </div>
             )}
           </div>
 
           {/* Content */}
-          <div className="flex-1 p-6">
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div className="flex-1 p-6 md:p-7">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
               <div className="flex-1">
-                {/* Status Badge */}
-                <div className="flex items-center gap-3 mb-3">
+                {/* Status Badge row */}
+                <div className="flex items-center flex-wrap gap-3 mb-3">
                   <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(ticket.status)}`}
+                    className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold tracking-wide ${getStatusColor(
+                      ticket.status
+                    )}`}
                   >
                     {getStatusLabel(ticket.status)}
                   </span>
                   {isUpcoming && ticket.status === 'paid' && (
-                    <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
-                      Մոտալուտ
+                    <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                      Մոտալուտ ցուցադրում
                     </span>
                   )}
+                  <span className="ml-auto text-[11px] text-gray-400 uppercase tracking-[0.25em]">
+                    Cinema Ticket
+                  </span>
                 </div>
 
                 {/* Movie Title */}
@@ -209,32 +237,35 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                   href={SITE_URL.MOVIE_DETAIL(
                     ticket.screening.movie.slug || ticket.screening.movie.id
                   )}
-                  className="text-2xl font-bold text-gray-900 hover:text-purple-600 transition-colors mb-3 block"
+                  className="text-2xl md:text-3xl font-bold text-gray-900 hover:text-purple-600 transition-colors mb-2 block"
                 >
                   {ticket.screening.movie.title}
                 </Link>
+                <p className="text-xs uppercase tracking-[0.2em] text-gray-400 mb-4">
+                  {ticket.screening.hall.name}
+                </p>
 
                 {/* Details */}
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Calendar className="w-5 h-5" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5 text-sm">
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Calendar className="w-4 h-4 text-purple-500" />
                     <span>{formatDate(ticket.screening.startTime)}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Clock className="w-5 h-5" />
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Clock className="w-4 h-4 text-purple-500" />
                     <span>
                       {formatTime(ticket.screening.startTime)} -{' '}
                       {formatTime(ticket.screening.endTime)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <MapPin className="w-5 h-5" />
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <MapPin className="w-4 h-4 text-purple-500" />
                     <span>{ticket.screening.hall.name}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Ticket className="w-5 h-5" />
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Ticket className="w-4 h-4 text-purple-500" />
                     <span>
-                      Նստատեղ: {ticket.seat.row}
+                      Նստատեղ {ticket.seat.row}
                       {ticket.seat.number}
                     </span>
                   </div>
@@ -245,11 +276,11 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                   ticket.order.orderItems.filter(
                     (item) => item.ticketId === ticket.id
                   ).length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="flex items-center gap-2 text-gray-700 mb-2">
-                        <ShoppingCart className="w-5 h-5" />
-                        <span className="font-semibold">
-                          Այս տոմսի ապրանքներ:
+                    <div className="mt-3 pt-4 border-t border-dashed border-gray-200">
+                      <div className="flex items-center gap-2 text-gray-800 mb-3">
+                        <ShoppingCart className="w-5 h-5 text-purple-500" />
+                        <span className="font-semibold text-sm">
+                          Այս տոմսի ապրանքներ
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -270,7 +301,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                                   />
                                 </div>
                               )}
-                              <span className="text-sm font-medium text-gray-800">
+                              <span className="text-sm font-medium text-gray-900">
                                 {item.product.name}
                               </span>
                               <span className="text-xs text-gray-500">
@@ -287,30 +318,42 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
               </div>
 
               {/* Price & Actions */}
-              <div className="flex flex-col items-end gap-4">
+              <div className="flex flex-col items-end justify-between gap-4 md:pl-6 md:border-l md:border-dashed md:border-gray-200 pt-4 md:pt-0">
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">
+                  <div className="text-[11px] uppercase tracking-[0.25em] text-gray-400 mb-1">
+                    Ընդհանուր արժեք
+                  </div>
+                  <div className="text-3xl md:text-4xl font-extrabold text-gray-900">
                     {ticket.price.toFixed(0)} ֏
                   </div>
-                  <div className="text-sm text-gray-500">Մեկ տոմս</div>
+                  <div className="text-xs text-gray-500 mt-1 text-right">
+                    մեկ տոմս
+                  </div>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 w-full md:w-auto">
                   {ticket.status === 'paid' && (
                     <>
                       <button
                         onClick={() => setShowQRModal(true)}
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors flex items-center gap-2"
+                        className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 active:bg-purple-800 transition-colors flex items-center justify-center gap-2 shadow-sm"
                       >
                         <QrCode className="w-4 h-4" />
                         Դիտել QR
+                      </button>
+                      <button
+                        onClick={() => setShowShareModal(true)}
+                        className="px-4 py-2.5 bg-white text-purple-600 border border-purple-200 rounded-lg font-medium hover:bg-purple-50 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        Տարածել տոմսը
                       </button>
                     </>
                   )}
                   {ticket.status === 'reserved' && ticket.order && (
                     <Link
                       href={SITE_URL.PAYMENT(ticket.order.id)}
-                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all text-center"
+                      className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all text-center shadow-sm"
                     >
                       Վճարել
                     </Link>
@@ -318,7 +361,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                   {ticket.status === 'paid' && isUpcoming && (
                     <Link
                       href={SITE_URL.SCREENING_DETAIL(ticket.screening.id)}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors text-center"
+                      className="px-4 py-2.5 bg-gray-100 text-gray-800 rounded-lg font-medium hover:bg-gray-200 transition-colors text-center"
                     >
                       Դիտել մանրամասներ
                     </Link>
@@ -330,7 +373,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
         </div>
       </div>
 
-      {/* QR Code Modal */}
+      {/* QR & Share Modals */}
       <AnimatePresence>
         {showQRModal && (
           <div
@@ -426,6 +469,64 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                 >
                   Փակել
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showShareModal && (
+          <div
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowShareModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-gray-900">
+                  Տոմսի հղում
+                </h3>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-600 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 mb-4">
+                Կիսվիր այս հղումով ընկերոջդ հետ․ բացելիս նա կտեսնի QR կոդը և
+                կարող է այն ցույց տալ մուտքի ժամանակ:
+              </p>
+
+              <div className="mb-4">
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Հղում
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={getShareUrl()}
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyShareLink}
+                    className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors whitespace-nowrap"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
+                Ուշադրություն․ հղումն ունեցող ցանկացած մարդ կկարողանա տեսնել այս
+                տոմսի QR կոդը:
               </div>
             </motion.div>
           </div>

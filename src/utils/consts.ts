@@ -1,0 +1,22 @@
+export const SITE_URL = {
+  HOME: '/',
+  MOVIES: '/movies',
+  MOVIE_DETAIL: (slugOrId: string | number) => `/movies/${slugOrId}`,
+  SCHEDULE: '/schedule',
+  TICKETS: '/tickets',
+  BOOKING: (screeningId: string | number) => `/booking/${screeningId}`,
+  CHECKOUT: (orderId: string | number) => `/checkout/${orderId}`,
+  PAYMENT: (orderId: string | number) => `/payment/${orderId}`,
+  SCREENING_DETAIL: (screeningId: string | number) =>
+    `/screening/${screeningId}`,
+  ACCOUNT: '/account',
+  REGISTER: '/register',
+  LOGIN: '/account',
+  ADMIN: '/admin',
+  ABOUT: '/about',
+  CONTACTS: '/contacts',
+  FAQ: '/faq',
+  RULES: '/rules',
+  PRIVACY: '/privacy',
+  TERMS: '/terms',
+};

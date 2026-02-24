@@ -1,0 +1,19 @@
+# WebSocket server files
+src/lib/simple-websocket-server.js
+ws-online-server.js
+ws-server.js
+
+# Test files
+test-websocket-connection.html
+test-realtime-status.html
+
+# Node modules
+node_modules/
+
+# Build files
+.next/
+out/
+dist/
+
+# Environment files
+.env*

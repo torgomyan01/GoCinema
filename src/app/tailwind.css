@@ -1,0 +1,107 @@
+@import 'tailwindcss';
+
+@plugin './hero.ts';
+
+@source '../../node_modules/@heroui/theme/dist';
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-green: #1e4a2f;
+  --color-cream: #f2e9dc;
+}
+
+@utility flex-jsb-c {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+@utility flex-jsb-s {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+}
+@utility flex-jsb-e {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+}
+
+@utility flex-js-c {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+}
+@utility flex-js-s {
+  display: flex;
+  justify-content: flex-start;
+  align-items: start;
+}
+@utility flex-js-e {
+  display: flex;
+  justify-content: flex-start;
+  align-items: end;
+}
+
+@utility flex-jc-c {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+@utility flex-jc-e {
+  display: flex;
+  justify-content: center;
+  align-items: end;
+}
+@utility flex-jc-s {
+  display: flex;
+  justify-content: center;
+  align-items: start;
+}
+
+@utility flex-je-c {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+@utility flex-je-s {
+  display: flex;
+  justify-content: flex-end;
+  align-items: start;
+}
+@utility flex-je-e {
+  display: flex;
+  justify-content: flex-end;
+  align-items: end;
+}
+
+@utility flex-jse-c {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+}
+@utility flex-jse-s {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: start;
+}
+@utility flex-jse-e {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: end;
+}
+
+@utility flex-jsa-c {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+@utility flex-jsa-s {
+  display: flex;
+  justify-content: space-around;
+  align-items: start;
+}
+@utility flex-jsa-e {
+  display: flex;
+  justify-content: space-around;
+  align-items: end;
+}

@@ -1,0 +1,319 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User Management
+// ============================================
+
+model User {
+  id            Int       @id @default(autoincrement())
+  email         String?   @unique @db.VarChar(255)
+  name          String?   @db.VarChar(255)
+  phone         String    @unique @db.VarChar(50)
+  password      String    @db.VarChar(255)
+  role          String    @default("user") @db.VarChar(50) // user, admin
+  emailVerified Boolean   @default(false)
+  phoneVerified Boolean   @default(false)
+  avatar        String?   @db.VarChar(500)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tickets       Ticket[]
+  payments      Payment[]
+  reviews       Review[]
+  orders        Order[]
+  contacts      Contact[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@map("users")
+}
+
+// ============================================
+// Movies
+// ============================================
+
+model Movie {
+  id          Int       @id @default(autoincrement())
+  title       String    @db.VarChar(255)
+  slug        String?   @unique @db.VarChar(255)
+  image       String?   @db.VarChar(500)
+  duration    Int       // minutes
+  rating      Float     @default(0)
+  genre       String    @db.VarChar(100)
+  releaseDate DateTime
+  description String?   @db.Text
+  trailerUrl  String?   @db.VarChar(500)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  screenings  Screening[]
+  reviews     Review[]
+  premieres   Premiere[]
+
+  @@index([slug])
+  @@index([genre])
+  @@index([isActive])
+  @@index([releaseDate])
+  @@map("movies")
+}
+
+// ============================================
+// Halls & Seats
+// ============================================
+
+model Hall {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  capacity  Int      @default(80)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seats      Seat[]
+  screenings Screening[]
+
+  @@map("halls")
+}
+
+model Seat {
+  id       Int    @id @default(autoincrement())
+  hallId   Int
+  row      String @db.VarChar(10)
+  number   Int
+  seatType String @default("standard") @db.VarChar(50) // standard, vip, disabled
+
+  hall    Hall     @relation(fields: [hallId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@unique([hallId, row, number])
+  @@index([hallId])
+  @@map("seats")
+}
+
+// ============================================
+// Screenings
+// ============================================
+
+model Screening {
+  id        Int       @id @default(autoincrement())
+  movieId   Int
+  hallId    Int
+  startTime DateTime
+  endTime   DateTime
+  basePrice Float     @default(2000)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  movie   Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  hall    Hall    @relation(fields: [hallId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@index([movieId])
+  @@index([hallId])
+  @@index([startTime])
+  @@map("screenings")
+}
+
+// ============================================
+// Tickets & Payments
+// ============================================
+
+model Ticket {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  screeningId Int
+  seatId      Int
+  price       Float
+  status      String    @default("reserved") @db.VarChar(50) // reserved, paid, used, cancelled
+  qrCode      String?   @db.VarChar(500)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  screening  Screening  @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  seat       Seat       @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  payment    Payment?
+  order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId    Int?
+  orderItems OrderItem[]
+
+  @@index([userId])
+  @@index([screeningId])
+  @@index([status])
+  @@index([orderId])
+  @@map("tickets")
+}
+
+model Payment {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  ticketId      Int       @unique
+  amount        Float
+  method        String    @db.VarChar(50) // card, bank_transfer, cash
+  status        String    @default("pending") @db.VarChar(50) // pending, completed, failed, refunded
+  transactionId String?   @db.VarChar(255)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([ticketId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ============================================
+// Products (Snacks, Drinks, etc.)
+// ============================================
+
+model Product {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  description String?   @db.Text
+  price       Float
+  image       String?   @db.VarChar(500)
+  category    String    @db.VarChar(50) // snack, drink, combo
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  orderItems OrderItem[]
+
+  @@index([category])
+  @@index([isActive])
+  @@map("products")
+}
+
+// ============================================
+// Orders & Order Items
+// ============================================
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  totalAmount Float
+  status      String      @default("pending") @db.VarChar(50) // pending, completed, cancelled
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  tickets    Ticket[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  ticketId  Int?    // Optional: if null, product belongs to order; if set, product belongs to specific ticket
+  productId Int
+  quantity  Int     @default(1)
+  price     Float   // Price at time of order
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticket  Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([ticketId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// ============================================
+// Reviews
+// ============================================
+
+model Review {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  movieId   Int
+  rating    Int       // 1-10
+  comment   String?   @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@index([movieId])
+  @@index([userId])
+  @@map("reviews")
+}
+
+// ============================================
+// FAQ
+// ============================================
+
+model FAQ {
+  id        Int       @id @default(autoincrement())
+  question  String    @db.Text
+  answer    String    @db.Text
+  order     Int       @default(0) // For ordering FAQs
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([order])
+  @@map("faqs")
+}
+
+// ============================================
+// Contacts
+// ============================================
+
+model Contact {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  email     String?   @db.VarChar(255)
+  phone     String?   @db.VarChar(50)
+  subject   String    @db.VarChar(255)
+  message   String    @db.Text
+  status    String    @default("new") @db.VarChar(50) // new, read, replied, archived
+  userId    Int?      // Optional: if user is logged in
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("contacts")
+}
+
+// ============================================
+// Premieres
+// ============================================
+
+model Premiere {
+  id          Int       @id @default(autoincrement())
+  movieId     Int
+  premiereDate DateTime
+  description String?   @db.Text
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+  @@index([premiereDate])
+  @@index([isActive])
+  @@map("premieres")
+}

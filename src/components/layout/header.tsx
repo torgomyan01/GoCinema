@@ -142,7 +142,7 @@ export default function Header() {
                     animate={{ x: 0 }}
                     exit={{ x: '100%' }}
                     transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                    className="fixed top-0 right-0 w-80 max-w-[85vw] h-full min-h-[100dvh] bg-white shadow-2xl z-[101] md:hidden overflow-y-auto"
+                    className="fixed top-0 right-0 w-100 max-w-[85vw] h-full min-h-[100dvh] bg-white shadow-2xl z-[101] md:hidden overflow-y-auto"
                   >
                     {/* Menu Header */}
                     <div className="sticky top-0 bg-white border-b border-gray-200 z-10 shrink-0">

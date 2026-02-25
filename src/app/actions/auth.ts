@@ -33,7 +33,7 @@ export async function registerUser(formData: {
     const phoneRegex = /^0[0-9]{8}$/;
     if (!phoneRegex.test(cleanPhone)) {
       return {
-        error: 'Մուտքագրեք վավեր հեռախոսահամար (օրինակ: 077 777 777)',
+        error: 'Մուտքագրեք վավեր հեռախոսահամար (օրինակ: 0XX XXX XXX)',
         success: false,
       };
     }

@@ -556,7 +556,7 @@ export default function AdminUsersClient({
                       onChange={(e) =>
                         setFormData({ ...formData, phone: e.target.value })
                       }
-                      placeholder="077 777 777"
+                      placeholder="0XX XXX XXX"
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
                     <div className="flex items-center gap-2 mt-2">

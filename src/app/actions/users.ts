@@ -123,7 +123,7 @@ export async function updateUser(data: UpdateUserData) {
       if (!phoneRegex.test(cleanPhone)) {
         return {
           success: false,
-          error: 'Մուտքագրեք վավեր հեռախոսահամար (օրինակ: 077 777 777)',
+          error: 'Մուտքագրեք վավեր հեռախոսահամար (օրինակ: 0XX XXX XXX)',
           user: null,
         };
       }

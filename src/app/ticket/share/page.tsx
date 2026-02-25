@@ -1,13 +1,14 @@
 import ShareTicketPageClient from '@/components/tickets/share-ticket-page-client';
 
 interface ShareTicketPageProps {
-  searchParams?: {
+  searchParams?: Promise<{
     code?: string | string[];
-  };
+  }>;
 }
 
-export default function ShareTicketPage({ searchParams }: ShareTicketPageProps) {
-  const rawCode = searchParams?.code;
+export default async function ShareTicketPage({ searchParams }: ShareTicketPageProps) {
+  const params = await searchParams;
+  const rawCode = params?.code;
   const code =
     typeof rawCode === 'string'
       ? rawCode

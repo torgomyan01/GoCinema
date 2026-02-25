@@ -100,7 +100,7 @@ export default function RegisterPageClient() {
     // Validate Armenian phone format: 0XX XXX XXX (9 digits total, starting with 0)
     const phoneRegex = /^0[0-9]{8}$/;
     if (!phoneRegex.test(cleanPhone)) {
-      setError('Մուտքագրեք վավեր հեռախոսահամար (օրինակ: 077 777 777)');
+      setError('Մուտքագրեք վավեր հեռախոսահամար (օրինակ: 0XX XXX XXX)');
       return;
     }
 
@@ -237,7 +237,7 @@ export default function RegisterPageClient() {
                     onChange={handlePhoneChange}
                     required
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="077 777 777"
+                    placeholder="0XX XXX XXX"
                     maxLength={11}
                   />
                 </div>

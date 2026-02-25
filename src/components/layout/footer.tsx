@@ -9,6 +9,7 @@ import {
   Phone,
   MapPin,
 } from 'lucide-react';
+import Image from 'next/image';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -25,12 +26,13 @@ export default function Footer() {
     support: [
       { href: '/faq', label: 'Հաճախակի հարցեր' },
       { href: '/rules', label: 'Կանոններ' },
+      { href: '/refund', label: 'Վերադարձի քաղաքականություն' },
       { href: '/privacy', label: 'Գաղտնիություն' },
     ],
   };
 
   return (
-    <footer className="bg-gradient-to-b from-slate-900 to-black text-white">
+    <footer className="bg-gradient-to-b from-slate-900 to-black text-white pb-4">
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
           {/* Brand */}
@@ -149,6 +151,22 @@ export default function Footer() {
             </div>
           </div>
         </div>
+      </div>
+      <div className="container mx-auto px-4 py-4 flex-je-c gap-4">
+        <Image
+          src="/images/idram-logo.svg"
+          alt="Idram"
+          width={200}
+          height={100}
+          className="w-[120px] h-auto!"
+        />
+        <Image
+          src="/images/idbank-logo.svg"
+          alt="Idram"
+          width={200}
+          height={100}
+          className="w-[120px] h-auto!"
+        />
       </div>
     </footer>
   );

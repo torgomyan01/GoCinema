@@ -7,8 +7,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: 'Օգտագործման պայմաններ - GoCinema',
-  description: 'GoCinema կինոթատրոնի օգտագործման պայմաններ և կանոններ',
+  title: 'Օգտագործման պայմաններ և ծառայությունների մատուցման կանոններ - GoCinema',
+  description:
+    'GoCinema կինոթատրոնի ծառայությունների մատուցման, տոմսերի վաճառքի, վճարման, չեղարկման պայմաններ (Terms & Conditions)',
 };
 
 export default async function TermsPage() {

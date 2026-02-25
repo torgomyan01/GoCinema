@@ -102,6 +102,53 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   const [qrCodes, setQrCodes] = useState<Map<number, string>>(new Map());
   const qrCodeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  const [cardTouched, setCardTouched] = useState({
+    cardNumber: false,
+    expiry: false,
+    cvv: false,
+    cardHolder: false,
+  });
+
+  const cardErrors = {
+    cardNumber:
+      cardNumber.replace(/\s/g, '').length < 16
+        ? 'Քարտի համարը պետք է լինի 16 թիվ'
+        : '',
+    expiry: (() => {
+      const clean = expiry.replace(/\D/g, '');
+      if (clean.length < 4) return 'Մուտքագրեք վավեր ժամկետ';
+      const month = parseInt(clean.slice(0, 2), 10);
+      const year = parseInt('20' + clean.slice(2, 4), 10);
+      const now = new Date();
+      const exp = new Date(year, month - 1);
+      if (month < 1 || month > 12) return 'Ամիսը սխալ է';
+      if (exp < new Date(now.getFullYear(), now.getMonth()))
+        return 'Քարտի ժամկետն անցել է';
+      return '';
+    })(),
+    cvv: cvv.length < 3 ? 'CVV-ն պետք է լինի 3-4 թիվ' : '',
+    cardHolder:
+      cardHolder.trim().length < 3 ? 'Մուտքագրեք քարտատիրոջ անունը' : '',
+  };
+
+  const isCardValid = Object.values(cardErrors).every((e) => e === '');
+
+  const formatCardNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 16);
+    return digits.replace(/(.{4})/g, '$1 ').trim();
+  };
+
+  const formatExpiry = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 4);
+    if (digits.length >= 3) return digits.slice(0, 2) + ' / ' + digits.slice(2);
+    if (digits.length === 2) return digits + ' / ';
+    return digits;
+  };
+
   useEffect(() => {
     const loadOrder = async () => {
       setIsLoading(true);
@@ -212,6 +259,16 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
   const handlePayment = async () => {
     if (!paymentMethod || !order || !session?.user) return;
+
+    if (paymentMethod === 'card') {
+      setCardTouched({
+        cardNumber: true,
+        expiry: true,
+        cvv: true,
+        cardHolder: true,
+      });
+      if (!isCardValid) return;
+    }
 
     setIsProcessing(true);
     setError(null);
@@ -598,118 +655,259 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
             </div>
 
             {/* Payment Methods */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                Վճարման եղանակ
-              </h2>
-
-              {error && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                  <span className="text-red-800">{error}</span>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              {/* Header */}
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">
+                  Վճարման եղանակ
+                </h2>
+                <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 border border-green-200 rounded-full px-3 py-1">
+                  <Lock className="w-3.5 h-3.5" />
+                  SSL անվտանգ
                 </div>
-              )}
-
-              <div className="space-y-4">
-                <button
-                  onClick={() => setPaymentMethod('card')}
-                  className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                    paymentMethod === 'card'
-                      ? 'border-purple-600 bg-purple-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <CreditCard
-                      className={`w-6 h-6 ${paymentMethod === 'card' ? 'text-purple-600' : 'text-gray-400'}`}
-                    />
-                    <div>
-                      <div className="font-semibold text-gray-900">
-                        Բանկային քարտ
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Visa, Mastercard, ArCa
-                      </div>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setPaymentMethod('bank_transfer')}
-                  className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                    paymentMethod === 'bank_transfer'
-                      ? 'border-purple-600 bg-purple-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <CreditCard
-                      className={`w-6 h-6 ${paymentMethod === 'bank_transfer' ? 'text-purple-600' : 'text-gray-400'}`}
-                    />
-                    <div>
-                      <div className="font-semibold text-gray-900">
-                        Բանկային փոխանցում
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Անմիջապես բանկային հաշվից
-                      </div>
-                    </div>
-                  </div>
-                </button>
               </div>
 
-              {paymentMethod === 'card' && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="mt-6 pt-6 border-t"
+              <div className="p-6 space-y-4">
+                {error && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                    <span className="text-red-700 text-sm">{error}</span>
+                  </div>
+                )}
+
+                {/* Payment method option */}
+                <button
+                  onClick={() => setPaymentMethod('card')}
+                  className={`w-full p-4 rounded-xl border-2 transition-all text-left group ${
+                    paymentMethod === 'card'
+                      ? 'border-purple-500 bg-purple-50/60'
+                      : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                  }`}
                 >
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Քարտի համար
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="1234 5678 9012 3456"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  <div className="flex items-center gap-4">
+                    {/* Radio */}
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        paymentMethod === 'card'
+                          ? 'border-purple-600'
+                          : 'border-gray-300'
+                      }`}
+                    >
+                      {paymentMethod === 'card' && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+                      )}
+                    </div>
+
+                    {/* Icon */}
+                    <div
+                      className={`p-2 rounded-lg transition-colors ${
+                        paymentMethod === 'card'
+                          ? 'bg-purple-100'
+                          : 'bg-gray-100'
+                      }`}
+                    >
+                      <CreditCard
+                        className={`w-5 h-5 ${paymentMethod === 'card' ? 'text-purple-600' : 'text-gray-400'}`}
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Օրինաչափության ժամկետ
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="MM/YY"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
+
+                    {/* Label */}
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 text-sm">
+                        Բանկային քարտ
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Visa, Mastercard, ArCa
+                      </p>
+                    </div>
+
+                    {/* Card logos */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Visa */}
+                      <div className="h-6 px-2 bg-[#1A1F71] rounded flex items-center justify-center">
+                        <span className="text-white text-[10px] font-bold italic tracking-tight">
+                          VISA
+                        </span>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          CVV
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="123"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
+                      {/* Mastercard */}
+                      <div className="h-6 w-9 relative flex items-center justify-center">
+                        <div className="absolute left-0 w-6 h-6 rounded-full bg-[#EB001B] opacity-90" />
+                        <div className="absolute right-0 w-6 h-6 rounded-full bg-[#F79E1B] opacity-90" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-3 h-6 bg-[#FF5F00] opacity-80" />
+                        </div>
+                      </div>
+                      {/* ArCa */}
+                      <div className="h-6 px-2 bg-gradient-to-r from-orange-500 to-red-500 rounded flex items-center justify-center">
+                        <span className="text-white text-[10px] font-bold tracking-tight">
+                          ArCa
+                        </span>
                       </div>
                     </div>
+                  </div>
+                </button>
+
+                {/* Card form */}
+                {paymentMethod === 'card' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="rounded-xl border border-gray-200 bg-gray-50/50 p-5 space-y-4"
+                  >
+                    {/* Card number */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                        Քարտի համար
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0000  0000  0000  0000"
+                          maxLength={19}
+                          value={cardNumber}
+                          onChange={(e) =>
+                            setCardNumber(formatCardNumber(e.target.value))
+                          }
+                          onBlur={() =>
+                            setCardTouched((p) => ({ ...p, cardNumber: true }))
+                          }
+                          className={`w-full pl-4 pr-12 py-3 bg-white border rounded-xl text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:tracking-normal placeholder:font-sans placeholder:text-gray-400 ${
+                            cardTouched.cardNumber && cardErrors.cardNumber
+                              ? 'border-red-400 focus:ring-red-400'
+                              : cardTouched.cardNumber && !cardErrors.cardNumber
+                                ? 'border-green-400 focus:ring-green-400'
+                                : 'border-gray-200 focus:ring-purple-500'
+                          }`}
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                          {cardTouched.cardNumber && !cardErrors.cardNumber ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <CreditCard className="w-4 h-4 text-gray-300" />
+                          )}
+                        </div>
+                      </div>
+                      {cardTouched.cardNumber && cardErrors.cardNumber && (
+                        <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          {cardErrors.cardNumber}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Expiry */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                          Վավ. ժամկետ
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="MM / YY"
+                          maxLength={7}
+                          value={expiry}
+                          onChange={(e) =>
+                            setExpiry(formatExpiry(e.target.value))
+                          }
+                          onBlur={() =>
+                            setCardTouched((p) => ({ ...p, expiry: true }))
+                          }
+                          className={`w-full px-4 py-3 bg-white border rounded-xl text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:tracking-normal placeholder:font-sans placeholder:text-gray-400 ${
+                            cardTouched.expiry && cardErrors.expiry
+                              ? 'border-red-400 focus:ring-red-400'
+                              : cardTouched.expiry && !cardErrors.expiry
+                                ? 'border-green-400 focus:ring-green-400'
+                                : 'border-gray-200 focus:ring-purple-500'
+                          }`}
+                        />
+                        {cardTouched.expiry && cardErrors.expiry && (
+                          <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            {cardErrors.expiry}
+                          </p>
+                        )}
+                      </div>
+                      {/* CVV */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                          CVV / CVC
+                        </label>
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          placeholder="•••"
+                          maxLength={4}
+                          value={cvv}
+                          onChange={(e) =>
+                            setCvv(
+                              e.target.value.replace(/\D/g, '').slice(0, 4)
+                            )
+                          }
+                          onBlur={() =>
+                            setCardTouched((p) => ({ ...p, cvv: true }))
+                          }
+                          className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:text-gray-400 ${
+                            cardTouched.cvv && cardErrors.cvv
+                              ? 'border-red-400 focus:ring-red-400'
+                              : cardTouched.cvv && !cardErrors.cvv
+                                ? 'border-green-400 focus:ring-green-400'
+                                : 'border-gray-200 focus:ring-purple-500'
+                          }`}
+                        />
+                        {cardTouched.cvv && cardErrors.cvv && (
+                          <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            {cardErrors.cvv}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Cardholder */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                         Քարտատիրոջ անուն
                       </label>
                       <input
                         type="text"
-                        placeholder="JOHN DOE"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="ԱՆՈՒՆ ԱԶԳԱՆՈՒՆ"
+                        value={cardHolder}
+                        onChange={(e) =>
+                          setCardHolder(e.target.value.toUpperCase())
+                        }
+                        onBlur={() =>
+                          setCardTouched((p) => ({ ...p, cardHolder: true }))
+                        }
+                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm uppercase tracking-widest focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:normal-case placeholder:tracking-normal placeholder:text-gray-400 ${
+                          cardTouched.cardHolder && cardErrors.cardHolder
+                            ? 'border-red-400 focus:ring-red-400'
+                            : cardTouched.cardHolder && !cardErrors.cardHolder
+                              ? 'border-green-400 focus:ring-green-400'
+                              : 'border-gray-200 focus:ring-purple-500'
+                        }`}
                       />
+                      {cardTouched.cardHolder && cardErrors.cardHolder && (
+                        <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          {cardErrors.cardHolder}
+                        </p>
+                      )}
                     </div>
-                  </div>
-                </motion.div>
-              )}
+
+                    {/* Security note */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <Lock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <p className="text-xs text-gray-400">
+                        Ձեր քարտի տվյալները գաղտնագրված են SSL/TLS-ով և չեն
+                        պահվում մեր սերվերներում
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -752,12 +950,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                   </>
                 )}
 
-                {/* Processing Fee */}
-                <div className="flex justify-between text-gray-600">
-                  <span>Մշակման վճար</span>
-                  <span>0 ֏</span>
-                </div>
-
                 {/* Total */}
                 <div className="border-t pt-4">
                   <div className="flex justify-between items-center">
@@ -773,9 +965,15 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
               <button
                 onClick={handlePayment}
-                disabled={!paymentMethod || isProcessing}
+                disabled={
+                  !paymentMethod ||
+                  isProcessing ||
+                  (paymentMethod === 'card' && !isCardValid)
+                }
                 className={`w-full px-6 py-3 rounded-lg font-semibold transition-all ${
-                  paymentMethod && !isProcessing
+                  paymentMethod &&
+                  !isProcessing &&
+                  (paymentMethod !== 'card' || isCardValid)
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}

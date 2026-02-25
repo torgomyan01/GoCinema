@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: 'Գաղտնիության քաղաքականություն - GoCinema',
-  description: 'GoCinema կինոթատրոնի գաղտնիության քաղաքականություն և օգտատիրական տվյալների պաշտպանություն',
+  title: 'Անձնական տվյալների մշակման քաղաքականություն - GoCinema',
+  description: 'GoCinema կինոթատրոնի անձնական տվյալների մշակման և գաղտնիության քաղաքականություն',
 };
 
 export default async function PrivacyPage() {

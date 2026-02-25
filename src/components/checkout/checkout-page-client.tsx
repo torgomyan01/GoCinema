@@ -247,20 +247,44 @@ export default function CheckoutPageClient({
                         </span>
                       </div>
                       {ticketProducts.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <p className="text-sm font-medium text-gray-700 mb-2">
-                            Այս տոմսի ապրանքներ:
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                            Կինոբար
                           </p>
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             {ticketProducts.map((item) => (
                               <div
                                 key={item.id}
-                                className="flex items-center justify-between text-sm"
+                                className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 p-2.5"
                               >
-                                <span className="text-gray-600">
-                                  {item.product.name} x{item.quantity}
-                                </span>
-                                <span className="font-semibold text-gray-900">
+                                {/* Product image */}
+                                {item.product.image ? (
+                                  <div className="relative w-10 h-10 shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                                    <Image
+                                      src={item.product.image}
+                                      alt={item.product.name}
+                                      fill
+                                      className="object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="w-10 h-10 shrink-0 rounded-lg bg-purple-50 flex items-center justify-center">
+                                    <span className="text-lg">🍿</span>
+                                  </div>
+                                )}
+
+                                {/* Name + qty */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 leading-tight truncate">
+                                    {item.product.name}
+                                  </p>
+                                  <p className="text-xs text-gray-400">
+                                    {item.price.toFixed(0)} ֏ × {item.quantity}
+                                  </p>
+                                </div>
+
+                                {/* Total */}
+                                <span className="text-sm font-bold text-gray-900 shrink-0">
                                   {(item.price * item.quantity).toFixed(0)} ֏
                                 </span>
                               </div>
@@ -382,6 +406,34 @@ export default function CheckoutPageClient({
                   ? 'Մշակվում է...'
                   : `Վճարել ${totalPrice.toFixed(0)} ֏`}
               </button>
+
+              <p className="mt-3 text-xs text-gray-500 text-center leading-relaxed">
+                Վճարելով՝ դուք համաձայնում եք մեր{' '}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  className="text-purple-600 hover:underline font-medium"
+                >
+                  Օգտագործման պայմաններին
+                </Link>
+                ,{' '}
+                <Link
+                  href="/refund"
+                  target="_blank"
+                  className="text-red-600 hover:underline font-medium"
+                >
+                  Վերադարձի քաղաքականությանը
+                </Link>{' '}
+                և{' '}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  className="text-purple-600 hover:underline font-medium"
+                >
+                  Անձնական տվյալների մշակման քաղաքականությանը
+                </Link>
+                :
+              </p>
             </div>
           </div>
         </div>

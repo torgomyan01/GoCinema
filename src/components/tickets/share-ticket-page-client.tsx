@@ -1,7 +1,6 @@
 'use client';
 
 import { QRCodeSVG } from 'qrcode.react';
-import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
 
@@ -10,8 +9,7 @@ export default function ShareTicketPageClient({
 }: {
   initialCode?: string;
 }) {
-  const searchParams = useSearchParams();
-  const code = initialCode || searchParams.get('code') || '';
+  const code = initialCode || '';
 
   const hasCode = !!code;
 

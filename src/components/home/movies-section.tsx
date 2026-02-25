@@ -93,7 +93,7 @@ export default function MoviesSection() {
             Ընթացիկ ֆիլմեր
           </h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Ընտրեք ձեր սիրած ֆիլմը և ամրագրեք տոմսեր
+            Ընտրեք ձեր սիրված ֆիլմը և ամրագրեք տոմսեր
           </p>
         </motion.div>
 

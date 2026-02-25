@@ -41,15 +41,17 @@ interface AdminMoviesClientProps {
 interface Movie {
   id: number;
   title: string;
-  slug?: string;
+  slug?: string | null;
   image?: string | null;
   duration: number;
   rating: number;
   genre: string;
   releaseDate: Date | string;
-  description?: string;
+  description?: string | null;
   trailerUrl?: string | null;
   isActive?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {

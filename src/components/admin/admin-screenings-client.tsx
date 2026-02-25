@@ -63,6 +63,12 @@ interface Screening {
     title: string;
     image?: string | null;
     duration: number;
+    genre?: string | null;
+    rating?: number | null;
+    description?: string | null;
+    trailerUrl?: string | null;
+    releaseDate?: Date | string | null;
+    isActive?: boolean | null;
   };
   hall?: {
     id: number;

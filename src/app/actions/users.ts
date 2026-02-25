@@ -98,7 +98,23 @@ export async function getUserById(id: number) {
 
 export async function updateUser(data: UpdateUserData) {
   try {
-    const { id, ...updateData } = data;
+    const { id, name, email, phone, role, phoneVerified, emailVerified } = data;
+
+    // Build a Prisma-compatible update object (no null for optional string fields)
+    const updateData: {
+      name?: string | null;
+      email?: string;
+      phone?: string;
+      role?: 'user' | 'admin';
+      phoneVerified?: boolean;
+      emailVerified?: boolean;
+    } = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined && email !== null) updateData.email = email;
+    if (phone !== undefined && phone !== null) updateData.phone = phone;
+    if (role !== undefined) updateData.role = role;
+    if (phoneVerified !== undefined) updateData.phoneVerified = phoneVerified;
+    if (emailVerified !== undefined) updateData.emailVerified = emailVerified;
 
     // Phone validation if provided
     if (updateData.phone) {

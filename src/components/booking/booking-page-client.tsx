@@ -342,7 +342,7 @@ export default function BookingPageClient({
       if (result.success && 'order' in result && result.order) {
         router.push(SITE_URL.CHECKOUT(result.order.id));
       } else {
-        setError(result.error || 'Պատվեր ստեղծելիս սխալ է տեղի ունեցել');
+        setError((result as { error?: string }).error || 'Պատվեր ստեղծելիս սխալ է տեղի ունեցել');
       }
     } catch (err) {
       console.error('Error creating order:', err);

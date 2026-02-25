@@ -50,7 +50,7 @@ export const authOptions: NextAuthOptions = {
             email: user.email || user.phone,
             name: user.name || user.phone,
             phone: user.phone,
-            role: user.role,
+            role: (user.role as 'user' | 'admin') || 'user',
           };
         } catch (error) {
           return null;

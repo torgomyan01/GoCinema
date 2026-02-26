@@ -1,14 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  Facebook,
-  Instagram,
-  Twitter,
-  Mail,
-  Phone,
-  MapPin,
-} from 'lucide-react';
+import { Instagram, Mail, Phone, MapPin, Youtube } from 'lucide-react';
 import Image from 'next/image';
 
 export default function Footer() {
@@ -45,16 +38,10 @@ export default function Footer() {
             </p>
             <div className="flex gap-4">
               <a
-                href="#"
-                className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-purple-600 transition-colors"
-                aria-label="Facebook"
-              >
-                <Facebook className="w-5 h-5" />
-              </a>
-              <a
-                href="#"
+                href="https://www.instagram.com/gocinema__/"
                 className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-purple-600 transition-colors"
                 aria-label="Instagram"
+                target="_blank"
               >
                 <Instagram className="w-5 h-5" />
               </a>
@@ -63,7 +50,7 @@ export default function Footer() {
                 className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-purple-600 transition-colors"
                 aria-label="Twitter"
               >
-                <Twitter className="w-5 h-5" />
+                <Youtube className="w-5 h-5" />
               </a>
             </div>
           </div>

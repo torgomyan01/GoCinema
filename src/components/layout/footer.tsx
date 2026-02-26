@@ -138,7 +138,7 @@ export default function Footer() {
             <p className="text-gray-400 text-sm">
               © {currentYear} GoCinema. Բոլոր իրավունքները պաշտպանված են:
             </p>
-            <div className="flex gap-6 text-sm">
+            <div className="flex gap-6 text-sm flex-wrap">
               {footerLinks.support.map((link) => (
                 <Link
                   key={link.href}

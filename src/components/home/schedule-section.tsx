@@ -218,7 +218,7 @@ export default function ScheduleSection() {
             <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg">
               <Calendar className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-4xl md:text-5xl font-bold text-gray-900">
+            <h2 className="text-3xl md:text-5xl font-bold text-gray-900">
               Ժամանակացույց
             </h2>
           </div>

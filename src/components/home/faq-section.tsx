@@ -70,7 +70,7 @@ export default function FAQSection({ faqs }: FAQSectionProps) {
               >
                 <button
                   onClick={() => toggleFAQ(faq.id)}
-                  className="w-full p-6 flex items-center justify-between text-left focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset"
+                  className="w-full p-6 flex items-center justify-between text-left focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset rounded-[10px]"
                 >
                   <h3 className="text-lg font-semibold text-gray-900 pr-4 flex-1">
                     {faq.question}

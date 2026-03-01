@@ -120,7 +120,7 @@ export async function requestPasswordReset(phone: string): Promise<{
   }
 }
 
-// ─── Step 1b: Poll whether user started the bot ──────────────────────────────
+// ─── Poll whether user started the bot (by phone) ────────────────────────────
 export async function checkTelegramLinked(phone: string): Promise<{
   linked: boolean;
 }> {
@@ -128,6 +128,21 @@ export async function checkTelegramLinked(phone: string): Promise<{
     const cleanPhone = phone.replace(/\s/g, '');
     const user = await prisma.user.findUnique({
       where: { phone: cleanPhone },
+      select: { telegramChatId: true },
+    });
+    return { linked: !!user?.telegramChatId };
+  } catch {
+    return { linked: false };
+  }
+}
+
+// ─── Poll whether user started the bot (by userId) ───────────────────────────
+export async function checkTelegramLinkedById(userId: number): Promise<{
+  linked: boolean;
+}> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
       select: { telegramChatId: true },
     });
     return { linked: !!user?.telegramChatId };

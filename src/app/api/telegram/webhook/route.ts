@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
     if (phoneRegex.test(cleanedPhone)) {
       const user = await prisma.user.findUnique({
         where: { phone: cleanedPhone },
+        select: { id: true, name: true, telegramChatId: true },
       });
 
       if (!user) {
@@ -71,16 +72,36 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Save the chat_id to the user record
+      const wasAlreadyLinked = !!user.telegramChatId;
+
+      // Save the chat_id and mark phone as verified
       await prisma.user.update({
         where: { id: user.id },
-        data: { telegramChatId: String(chatId) },
+        data: {
+          telegramChatId: String(chatId),
+          phoneVerified: true,
+        },
       });
 
-      await sendTelegramMessage(
-        chatId,
-        `✅ Ձեր Telegram հաշիվը հաջողությամբ կապվեց <b>${user.name ?? cleanedPhone}</b> հաշվի հետ:\n\nՀիմա կարող եք ավարտել գաղտնաբառի վերականգնումը կայքում:`,
-      );
+      if (wasAlreadyLinked) {
+        // Returning user — likely doing password reset
+        await sendTelegramMessage(
+          chatId,
+          `✅ Ձեր Telegram հաշիվը կապված է <b>${user.name ?? cleanedPhone}</b> հաշվի հետ:\n\nՀիմա կարող եք ավարտել գաղտնաբառի վերականգնումը կայքում:`,
+        );
+      } else {
+        // First time linking — registration flow
+        await sendTelegramMessage(
+          chatId,
+          `🎉 Բարի գալուստ <b>GoCinema</b>-ում, <b>${user.name ?? cleanedPhone}</b>:\n\n` +
+          `✅ Ձեր հաշիվը հաջողությամբ վերիֆիկացված է:\n\n` +
+          `🎬 Այստեղ կստանաք.\n` +
+          `• Գաղտնաբառի վերականգնման կոդեր\n` +
+          `• Պրեմիերաների ծանուցումներ\n` +
+          `• Հատուկ առաջարկներ\n\n` +
+          `Հիմա կարող եք վերադառնալ կայք և ավարտել գրանցումը:`,
+        );
+      }
 
       return NextResponse.json({ ok: true });
     }

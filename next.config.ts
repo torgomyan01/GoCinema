@@ -63,7 +63,13 @@ const nextConfig = {
   },
 
   async rewrites() {
-    return [];
+    return [
+      // Backward compatibility: old URLs like /upload/filename → new file-serving API
+      {
+        source: '/upload/:filename',
+        destination: '/api/files/:filename',
+      },
+    ];
   },
 };
 

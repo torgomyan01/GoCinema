@@ -11,6 +11,23 @@ interface FileUploadProps {
   required?: boolean;
 }
 
+/**
+ * Resolves an image URL for display. Old records may store bare filenames
+ * (e.g. "/upload/foo.jpg" or "1234-abc.jpg") — we normalise them all to the
+ * /api/files/<filename> route so they go through the filesystem handler.
+ */
+function resolvePreviewUrl(url: string): string {
+  if (!url) return url;
+  // Already a proper API files URL or an external http(s) URL — use as-is
+  if (url.startsWith('/api/files/') || url.startsWith('http')) return url;
+  // Legacy public/upload path stored as "/upload/filename"
+  if (url.startsWith('/upload/')) {
+    return `/api/files/${url.replace('/upload/', '')}`;
+  }
+  // Bare filename
+  return `/api/files/${url}`;
+}
+
 export default function FileUpload({
   value,
   onChange,
@@ -19,7 +36,7 @@ export default function FileUpload({
 }: FileUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
-  const [preview, setPreview] = useState<string | null>(value || null);
+  const [preview, setPreview] = useState<string | null>(value ? resolvePreviewUrl(value) : null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,7 +78,7 @@ export default function FileUpload({
       }
 
       // Update preview and call onChange
-      setPreview(data.url);
+      setPreview(resolvePreviewUrl(data.url));
       onChange(data.url);
     } catch (err: any) {
       setError(err.message || 'Ֆայլի ներբեռնումը ձախողվեց');

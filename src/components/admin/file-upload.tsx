@@ -87,7 +87,17 @@ export default function FileUpload({
     }
   };
 
-  const handleRemove = () => {
+  const handleRemove = async () => {
+    // Delete the file from the server if it's a local upload
+    if (preview && preview.startsWith('/api/files/')) {
+      const filename = preview.replace('/api/files/', '');
+      try {
+        await fetch(`/api/files/${filename}`, { method: 'DELETE' });
+      } catch {
+        // Non-blocking — clear UI regardless
+      }
+    }
+
     setPreview(null);
     onChange('');
     if (fileInputRef.current) {

@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { deleteUploadedFile } from '@/lib/delete-upload';
 
 export interface CreateMovieData {
   title: string;
@@ -270,9 +271,17 @@ export async function updateMovie(data: UpdateMovieData) {
 
 export async function deleteMovie(id: number) {
   try {
+    const movie = await prisma.movie.findUnique({
+      where: { id },
+      select: { image: true },
+    });
+
     await prisma.movie.delete({
       where: { id },
     });
+
+    // Delete the image file from disk after successful DB delete
+    await deleteUploadedFile(movie?.image);
 
     revalidatePath('/admin/movies');
     revalidatePath('/movies');

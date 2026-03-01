@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
+import { readFile, unlink } from 'fs/promises';
 import { join, extname } from 'path';
 import { existsSync } from 'fs';
 
@@ -11,6 +11,10 @@ const MIME_TYPES: Record<string, string> = {
   '.gif': 'image/gif',
 };
 
+function guardFilename(filename: string): boolean {
+  return !filename || filename.includes('..') || filename.includes('/') || filename.includes('\\');
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
@@ -18,8 +22,7 @@ export async function GET(
   try {
     const { filename } = await params;
 
-    // Prevent path traversal attacks
-    if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    if (guardFilename(filename)) {
       return NextResponse.json({ error: 'Անվավեր ֆայլի անուն' }, { status: 400 });
     }
 
@@ -42,7 +45,33 @@ export async function GET(
       },
     });
   } catch (error: any) {
-    console.error('[Files API] Error:', error);
+    console.error('[Files API GET] Error:', error);
     return NextResponse.json({ error: 'Ֆայլի կարդումը ձախողվեց' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ filename: string }> }
+) {
+  try {
+    const { filename } = await params;
+
+    if (guardFilename(filename)) {
+      return NextResponse.json({ error: 'Անվավեր ֆայլի անուն' }, { status: 400 });
+    }
+
+    const filePath = join(process.cwd(), 'uploads', filename);
+
+    if (!existsSync(filePath)) {
+      return NextResponse.json({ error: 'Ֆայլը չի գտնվել' }, { status: 404 });
+    }
+
+    await unlink(filePath);
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('[Files API DELETE] Error:', error);
+    return NextResponse.json({ error: 'Ֆայլի ջնջումը ձախողվեց' }, { status: 500 });
   }
 }

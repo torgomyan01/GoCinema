@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { deleteUploadedFile } from '@/lib/delete-upload';
 
 export interface CreateProductData {
   name: string;
@@ -186,16 +187,17 @@ export async function deleteProduct(id: number) {
 
     // Check if product has been ordered
     if (product.orderItems.length > 0) {
-      // Soft delete - just mark as inactive
+      // Soft delete - just mark as inactive (keep image, product still referenced)
       await prisma.product.update({
         where: { id },
         data: { isActive: false },
       });
     } else {
-      // Hard delete if no orders
+      // Hard delete if no orders — also remove the image file from disk
       await prisma.product.delete({
         where: { id },
       });
+      await deleteUploadedFile(product.image);
     }
 
     revalidatePath('/admin/products');

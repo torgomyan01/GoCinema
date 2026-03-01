@@ -421,7 +421,7 @@ export default function LoginPageClient() {
                   href="/forgot-password"
                   className="text-sm text-purple-600 hover:text-purple-700 transition-colors"
                 >
-                  Մոռացել եք password-ը?
+                  Մոռացել եք գաղտնաբառը?
                 </Link>
               </div>
 

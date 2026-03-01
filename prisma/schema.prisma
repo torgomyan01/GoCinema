@@ -12,28 +12,46 @@ datasource db {
 // ============================================
 
 model User {
-  id            Int       @id @default(autoincrement())
-  email         String?   @unique @db.VarChar(255)
-  name          String?   @db.VarChar(255)
-  phone         String    @unique @db.VarChar(50)
-  password      String    @db.VarChar(255)
-  role          String    @default("user") @db.VarChar(50) // user, admin
-  emailVerified Boolean   @default(false)
-  phoneVerified Boolean   @default(false)
-  avatar        String?   @db.VarChar(500)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               Int       @id @default(autoincrement())
+  email            String?   @unique @db.VarChar(255)
+  name             String?   @db.VarChar(255)
+  phone            String    @unique @db.VarChar(50)
+  password         String    @db.VarChar(255)
+  role             String    @default("user") @db.VarChar(50) // user, admin
+  emailVerified    Boolean   @default(false)
+  phoneVerified    Boolean   @default(false)
+  avatar           String?   @db.VarChar(500)
+  telegramChatId   String?   @db.VarChar(100) // Telegram chat ID for OTP delivery
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  tickets       Ticket[]
-  payments      Payment[]
-  reviews       Review[]
-  orders        Order[]
-  contacts      Contact[]
+  tickets           Ticket[]
+  payments          Payment[]
+  reviews           Review[]
+  orders            Order[]
+  contacts          Contact[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([email])
   @@index([phone])
   @@index([role])
+  @@index([telegramChatId])
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @db.VarChar(10) // 6-digit OTP
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_tokens")
 }
 
 // ============================================

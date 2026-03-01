@@ -1,6 +1,7 @@
 'use server';
 
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/prisma';
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -8,6 +9,10 @@ const MAX_ATTEMPTS_PER_HOUR = 5;
 
 function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function generateSessionToken(): string {
+  return randomBytes(16).toString('hex'); // 32-char hex, fits VarChar(64)
 }
 
 async function sendTelegramOtp(chatId: string, otp: string): Promise<boolean> {
@@ -168,9 +173,8 @@ export async function verifyResetOtp(
       data: { used: true },
     });
 
-    // Issue a short-lived signed reset token (we encode userId + expiry as a simple signed string)
-    // We reuse the OTP id + userId as the "reset session" — store a fresh one-time token
-    const resetSessionToken = generateOtp() + generateOtp(); // 12 chars, one-time
+    // Issue a short-lived reset session token (32-char hex, one-time use)
+    const resetSessionToken = generateSessionToken();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
 
     await prisma.passwordResetToken.create({

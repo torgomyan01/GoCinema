@@ -42,7 +42,7 @@ model User {
 model PasswordResetToken {
   id        Int      @id @default(autoincrement())
   userId    Int
-  token     String   @db.VarChar(10) // 6-digit OTP
+  token     String   @db.VarChar(64) // 6-digit OTP or 32-char session token
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())

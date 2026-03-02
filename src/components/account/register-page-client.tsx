@@ -38,7 +38,8 @@ export default function RegisterPageClient() {
   const [newUserId, setNewUserId] = useState<number | null>(null);
   const [isPolling, setIsPolling] = useState(false);
 
-  const telegramBotUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'gocinema_bot';
+  const telegramBotUsername =
+    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'gocinema_bot';
 
   // ── Polling: check if user linked Telegram ─────────────────────────────────
   useEffect(() => {
@@ -60,7 +61,9 @@ export default function RegisterPageClient() {
     };
 
     poll();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [step, isPolling, newUserId]);
 
   // ── Phone formatter ────────────────────────────────────────────────────────
@@ -127,7 +130,6 @@ export default function RegisterPageClient() {
       <div className="container mx-auto px-4">
         <div className="max-w-md mx-auto">
           <AnimatePresence mode="wait">
-
             {/* ── STEP 1: Registration form ── */}
             {step === 'form' && (
               <motion.div
@@ -146,7 +148,9 @@ export default function RegisterPageClient() {
                     Վերադառնալ
                   </Link>
                   <div className="text-center">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">Գրանցում</h1>
+                    <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                      Գրանցում
+                    </h1>
                     <p className="text-gray-600">Ստեղծեք նոր GoCinema հաշիվ</p>
                   </div>
                 </div>
@@ -190,7 +194,9 @@ export default function RegisterPageClient() {
                       <input
                         type="tel"
                         value={phone}
-                        onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
+                        onChange={(e) =>
+                          setPhone(formatPhoneNumber(e.target.value))
+                        }
                         required
                         maxLength={11}
                         className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -202,7 +208,7 @@ export default function RegisterPageClient() {
                   {/* Password */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Password <span className="text-red-500">*</span>
+                      Գաղտնաբառ <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -220,18 +226,25 @@ export default function RegisterPageClient() {
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                       >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showPassword ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
                       </button>
                     </div>
                     {password && password.length < 6 && (
-                      <p className="mt-1 text-sm text-red-600">Password-ը պետք է լինի առնվազն 6 նիշ</p>
+                      <p className="mt-1 text-sm text-red-600">
+                        Գաղտնաբառը պետք է լինի առնվազն 6 նիշ
+                      </p>
                     )}
                   </div>
 
                   {/* Confirm Password */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Հաստատել Password-ը <span className="text-red-500">*</span>
+                      Հաստատել Գաղտնաբառը{' '}
+                      <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -246,14 +259,22 @@ export default function RegisterPageClient() {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        onClick={() =>
+                          setShowConfirmPassword(!showConfirmPassword)
+                        }
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                       >
-                        {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showConfirmPassword ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
                       </button>
                     </div>
                     {confirmPassword && password !== confirmPassword && (
-                      <p className="mt-1 text-sm text-red-600">Password-ները չեն համընկնում</p>
+                      <p className="mt-1 text-sm text-red-600">
+                        Գաղտնաբառները չեն համընկնում
+                      </p>
                     )}
                   </div>
 
@@ -266,16 +287,29 @@ export default function RegisterPageClient() {
                       onChange={(e) => setAgreeToTerms(e.target.checked)}
                       className="mt-1 w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
                     />
-                    <label htmlFor="agreeToTerms" className="flex-1 text-sm text-gray-700 cursor-pointer">
+                    <label
+                      htmlFor="agreeToTerms"
+                      className="flex-1 text-sm text-gray-700 cursor-pointer"
+                    >
                       <div className="flex items-start gap-2">
                         <FileText className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
                         <span>
                           Ես համաձայնվում եմ{' '}
-                          <Link href="/terms" target="_blank" className="text-purple-600 hover:text-purple-700 font-medium underline" onClick={(e) => e.stopPropagation()}>
+                          <Link
+                            href="/terms"
+                            target="_blank"
+                            className="text-purple-600 hover:text-purple-700 font-medium underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             օգտագործման պայմաններին
                           </Link>{' '}
                           և{' '}
-                          <Link href="/privacy" target="_blank" className="text-purple-600 hover:text-purple-700 font-medium underline" onClick={(e) => e.stopPropagation()}>
+                          <Link
+                            href="/privacy"
+                            target="_blank"
+                            className="text-purple-600 hover:text-purple-700 font-medium underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             գաղտնիության քաղաքականությանը
                           </Link>
                         </span>
@@ -286,9 +320,21 @@ export default function RegisterPageClient() {
                   {/* Submit */}
                   <button
                     type="submit"
-                    disabled={isLoading || !phone || !name || !password || password !== confirmPassword || !agreeToTerms}
+                    disabled={
+                      isLoading ||
+                      !phone ||
+                      !name ||
+                      !password ||
+                      password !== confirmPassword ||
+                      !agreeToTerms
+                    }
                     className={`w-full px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                      isLoading || !phone || !name || !password || password !== confirmPassword || !agreeToTerms
+                      isLoading ||
+                      !phone ||
+                      !name ||
+                      !password ||
+                      password !== confirmPassword ||
+                      !agreeToTerms
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
                     }`}
@@ -354,22 +400,29 @@ export default function RegisterPageClient() {
                 {/* Steps */}
                 <ol className="text-left space-y-4 mb-8">
                   <li className="flex gap-3 items-start">
-                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">1</span>
+                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">
+                      1
+                    </span>
                     <span className="text-sm text-gray-600 pt-1">
                       Բացեք GoCinema Telegram բոտը
                     </span>
                   </li>
                   <li className="flex gap-3 items-start">
-                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">2</span>
+                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">
+                      2
+                    </span>
                     <span className="text-sm text-gray-600 pt-1">
-                      Սեղմեք <strong>START</strong>, ապա ուղարկեք ձեր հեռախոսահամարը՝{' '}
+                      Սեղմեք <strong>START</strong>, ապա ուղարկեք ձեր
+                      հեռախոսահամարը՝{' '}
                       <code className="bg-gray-100 px-1.5 py-0.5 rounded text-purple-700 font-mono">
                         {phone}
                       </code>
                     </span>
                   </li>
                   <li className="flex gap-3 items-start">
-                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">3</span>
+                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">
+                      3
+                    </span>
                     <span className="text-sm text-gray-600 pt-1">
                       Վերադարձեք կայք — հաստատումն ավտոմատ կկատարվի
                     </span>
@@ -431,7 +484,6 @@ export default function RegisterPageClient() {
                 </Link>
               </motion.div>
             )}
-
           </AnimatePresence>
         </div>
       </div>

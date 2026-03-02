@@ -32,6 +32,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     bgColor: 'bg-purple-50',
   },
   {
+    title: 'Հաճախորդի մուտք',
+    icon: QrCode,
+    href: '/admin/scanner',
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+  },
+  {
     title: 'Ֆիլմեր',
     icon: Film,
     href: '/admin/movies',
@@ -73,13 +80,7 @@ export const adminMenuItems: AdminMenuItem[] = [
     color: 'text-green-600',
     bgColor: 'bg-green-50',
   },
-  {
-    title: 'Հաճախորդի մուտք',
-    icon: QrCode,
-    href: '/admin/scanner',
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-50',
-  },
+
   {
     title: 'Օգտատերեր',
     icon: Users,

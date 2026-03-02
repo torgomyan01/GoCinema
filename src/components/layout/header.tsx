@@ -107,19 +107,35 @@ export default function Header() {
             </Link>
           </div>
 
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className={`md:hidden p-2 rounded-lg transition-colors ${
-              shouldHaveDarkBg ? 'text-gray-700' : 'text-white'
-            }`}
-          >
-            {isMobileMenuOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
-          </button>
+          {/* Mobile: Account button + Menu toggle */}
+          <div className="flex items-center gap-2 md:hidden">
+            <Link
+              href={SITE_URL.ACCOUNT}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                shouldHaveDarkBg
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                  : 'bg-white/15 backdrop-blur-md text-white border border-white/20'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              {session?.user ? (
+                <span className="max-w-[80px] truncate">{userName}</span>
+              ) : 'Մուտք'}
+            </Link>
+
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className={`p-2 rounded-lg transition-colors ${
+                shouldHaveDarkBg ? 'text-gray-700' : 'text-white'
+              }`}
+            >
+              {isMobileMenuOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Menu - Portal to body so fixed = viewport (not clipped by header backdrop-blur) */}

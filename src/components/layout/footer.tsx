@@ -139,21 +139,44 @@ export default function Footer() {
           </div>
         </div>
       </div>
-      <div className="container mx-auto px-4 py-4 flex-je-c gap-4">
-        <Image
-          src="/images/idram-logo.svg"
-          alt="Idram"
-          width={200}
-          height={100}
-          className="w-[120px] h-auto!"
-        />
-        <Image
-          src="/images/idbank-logo.svg"
-          alt="Idram"
-          width={200}
-          height={100}
-          className="w-[120px] h-auto!"
-        />
+      <div className="border-t border-gray-800">
+        <div className="container mx-auto px-4 py-5 flex flex-wrap justify-center items-center gap-3 sm:gap-4">
+          <Image
+            src="/images/idram-logo.svg"
+            alt="Idram"
+            width={200}
+            height={100}
+            className="w-[70px] sm:w-[100px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
+          />
+          <Image
+            src="/images/idbank-logo.svg"
+            alt="IDBank"
+            width={200}
+            height={100}
+            className="w-[70px] sm:w-[100px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
+          />
+          <Image
+            src="/images/visa-logo.svg"
+            alt="Visa"
+            width={120}
+            height={76}
+            className="w-[48px] sm:w-[70px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
+          />
+          <Image
+            src="/images/mastercard-logo.svg"
+            alt="Mastercard"
+            width={152}
+            height={108}
+            className="w-[42px] sm:w-[60px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
+          />
+          <Image
+            src="/images/arca-logo.svg"
+            alt="Arca"
+            width={200}
+            height={80}
+            className="w-[56px] sm:w-[80px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
+          />
+        </div>
       </div>
     </footer>
   );

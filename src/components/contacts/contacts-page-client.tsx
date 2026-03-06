@@ -176,7 +176,7 @@ export default function ContactsPageClient() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">Հասցե</h3>
-                    <p className="text-gray-600">Ք․ Մարտունի, Հայաստան</p>
+                    <p className="text-gray-600">Ք․ Մարտունի, Երեվանյան 74/7</p>
                   </div>
                 </div>
               </div>

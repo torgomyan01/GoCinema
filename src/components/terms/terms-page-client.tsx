@@ -398,7 +398,7 @@ export default function TermsPageClient() {
                 </a>
                 <div className="flex items-center gap-2 text-white/80">
                   <MapPin className="w-5 h-5" />
-                  ք. Մարտունի, Հայաստան
+                  ք. Մարտունի, Երեվանյան 74/7
                 </div>
               </div>
               <div className="pt-5 border-t border-white/20 flex flex-wrap gap-3 justify-center">

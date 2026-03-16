@@ -1,7 +1,15 @@
 'use client';
 
 import { motion, type Transition } from 'framer-motion';
-import { Play, Calendar, Users, Film, Ticket, Star, ArrowRight } from 'lucide-react';
+import {
+  Play,
+  Calendar,
+  Users,
+  Film,
+  Ticket,
+  Star,
+  ArrowRight,
+} from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { SITE_URL } from '@/utils/consts';
@@ -41,7 +49,7 @@ const STATS = [
 
 export default function HeroSection() {
   return (
-    <section className="relative min-h-[1600px] lg:min-h-[95vh] flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-[1300px] md:min-h-[1050px] xl:min-h-[95vh] flex items-center justify-center overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <motion.div
@@ -71,7 +79,6 @@ export default function HeroSection() {
 
       {/* Content */}
       <div className="relative z-20 container mx-auto px-4 text-center">
-
         {/* Title block */}
         <motion.div
           className="flex flex-col items-center gap-5 mb-8"
@@ -84,7 +91,11 @@ export default function HeroSection() {
                 key={i}
                 initial={{ opacity: 0, scale: 0 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.3 + i * 0.07, duration: 0.35, ease: 'backOut' }}
+                transition={{
+                  delay: 0.3 + i * 0.07,
+                  duration: 0.35,
+                  ease: 'backOut',
+                }}
               >
                 <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
               </motion.div>
@@ -154,15 +165,23 @@ export default function HeroSection() {
               className="group relative bg-white/8 backdrop-blur-md rounded-2xl p-7 border border-white/15 hover:border-white/30 transition-all duration-300 overflow-hidden"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.75 + i * 0.1, ease: 'easeOut' }}
+              transition={{
+                duration: 0.5,
+                delay: 0.75 + i * 0.1,
+                ease: 'easeOut',
+              }}
               whileHover={{ y: -6 }}
             >
               {/* Hover glow */}
-              <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-10 transition-opacity duration-300 rounded-2xl`} />
+              <div
+                className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-10 transition-opacity duration-300 rounded-2xl`}
+              />
 
               <div className="relative z-10 flex flex-col items-center text-center">
                 {/* Icon */}
-                <div className={`mb-5 p-3.5 bg-gradient-to-br ${stat.color} rounded-xl shadow-lg ${stat.glow} transition-shadow duration-300`}>
+                <div
+                  className={`mb-5 p-3.5 bg-gradient-to-br ${stat.color} rounded-xl shadow-lg ${stat.glow} transition-shadow duration-300`}
+                >
                   <stat.icon className="w-8 h-8 text-white" />
                 </div>
 
@@ -196,12 +215,19 @@ export default function HeroSection() {
         >
           <div className="w-1 h-2.5 bg-white/60 rounded-full" />
         </motion.div>
-        <span className="text-white/40 text-xs tracking-widest uppercase">Scroll</span>
+        <span className="text-white/40 text-xs tracking-widest uppercase">
+          Scroll
+        </span>
       </motion.div>
 
       <style jsx>{`
         .hero-title-gradient {
-          background: linear-gradient(135deg, #c084fc 0%, #f472b6 50%, #a855f7 100%);
+          background: linear-gradient(
+            135deg,
+            #c084fc 0%,
+            #f472b6 50%,
+            #a855f7 100%
+          );
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;

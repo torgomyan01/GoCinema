@@ -748,14 +748,13 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                 </button>
 
                 {/* Card form */}
-                {paymentMethod === 'card' && (
+                {/* {paymentMethod === 'card' && (
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2 }}
                     className="rounded-xl border border-gray-200 bg-gray-50/50 p-5 space-y-4"
                   >
-                    {/* Card number */}
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                         Քարտի համար
@@ -798,7 +797,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      {/* Expiry */}
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                           Վավ. ժամկետ
@@ -830,7 +828,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                           </p>
                         )}
                       </div>
-                      {/* CVV */}
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                           CVV / CVC
@@ -866,7 +863,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                       </div>
                     </div>
 
-                    {/* Cardholder */}
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                         Քարտատիրոջ անուն
@@ -897,7 +893,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                       )}
                     </div>
 
-                    {/* Security note */}
                     <div className="flex items-center gap-2 pt-1">
                       <Lock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                       <p className="text-xs text-gray-400">
@@ -906,7 +901,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                       </p>
                     </div>
                   </motion.div>
-                )}
+                )} */}
               </div>
             </div>
           </div>

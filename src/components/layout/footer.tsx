@@ -142,7 +142,7 @@ export default function Footer() {
       </div>
       <div className="border-t border-gray-800">
         <div className="container mx-auto px-4 py-5 flex flex-wrap justify-center items-center gap-3 sm:gap-4">
-          <Image
+          {/* <Image
             src="/images/idram-logo.svg"
             alt="Idram"
             width={200}
@@ -155,7 +155,7 @@ export default function Footer() {
             width={200}
             height={100}
             className="w-[70px] sm:w-[100px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
-          />
+          /> */}
           <Image
             src="/images/visa-logo.svg"
             alt="Visa"

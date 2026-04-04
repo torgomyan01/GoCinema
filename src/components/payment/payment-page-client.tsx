@@ -17,13 +17,16 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useRef } from 'react';
 import { SITE_URL } from '@/utils/consts';
-import { getTicketById } from '@/app/actions/tickets';
-import { createPayment, createPaymentForOrder } from '@/app/actions/payments';
+import {
+  createTelcellInvoiceForOrder,
+  createVPostOrderForOrder,
+  syncVPostOrderStatus,
+} from '@/app/actions/payments';
 import { getOrderById } from '@/app/actions/orders';
 
 interface PaymentPageClientProps {
@@ -88,66 +91,30 @@ interface Order {
   }>;
 }
 
+interface TelcellCheckoutData {
+  url: string;
+  fields: Record<string, string>;
+}
+
+interface VpostCheckoutData {
+  redirectURL: string;
+}
+
 export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<
     'card' | 'bank_transfer' | null
-  >(null);
+  >('bank_transfer');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [hasSyncedVpostReturn, setHasSyncedVpostReturn] = useState(false);
   const [qrCodes, setQrCodes] = useState<Map<number, string>>(new Map());
   const qrCodeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvv, setCvv] = useState('');
-  const [cardHolder, setCardHolder] = useState('');
-  const [cardTouched, setCardTouched] = useState({
-    cardNumber: false,
-    expiry: false,
-    cvv: false,
-    cardHolder: false,
-  });
-
-  const cardErrors = {
-    cardNumber:
-      cardNumber.replace(/\s/g, '').length < 16
-        ? 'Քարտի համարը պետք է լինի 16 թիվ'
-        : '',
-    expiry: (() => {
-      const clean = expiry.replace(/\D/g, '');
-      if (clean.length < 4) return 'Մուտքագրեք վավեր ժամկետ';
-      const month = parseInt(clean.slice(0, 2), 10);
-      const year = parseInt('20' + clean.slice(2, 4), 10);
-      const now = new Date();
-      const exp = new Date(year, month - 1);
-      if (month < 1 || month > 12) return 'Ամիսը սխալ է';
-      if (exp < new Date(now.getFullYear(), now.getMonth()))
-        return 'Քարտի ժամկետն անցել է';
-      return '';
-    })(),
-    cvv: cvv.length < 3 ? 'CVV-ն պետք է լինի 3-4 թիվ' : '',
-    cardHolder:
-      cardHolder.trim().length < 3 ? 'Մուտքագրեք քարտատիրոջ անունը' : '',
-  };
-
-  const isCardValid = Object.values(cardErrors).every((e) => e === '');
-
-  const formatCardNumber = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 16);
-    return digits.replace(/(.{4})/g, '$1 ').trim();
-  };
-
-  const formatExpiry = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 4);
-    if (digits.length >= 3) return digits.slice(0, 2) + ' / ' + digits.slice(2);
-    if (digits.length === 2) return digits + ' / ';
-    return digits;
-  };
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -195,6 +162,64 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
       router.push('/account');
     }
   }, [session, router, isLoading]);
+
+  useEffect(() => {
+    const syncReturnStatus = async () => {
+      if (!order || !session?.user || hasSyncedVpostReturn) return;
+      if (searchParams.get('gateway') !== 'vpost') return;
+      if (searchParams.get('return') !== '1') return;
+
+      setHasSyncedVpostReturn(true);
+      setIsProcessing(true);
+      setError(null);
+
+      try {
+        const userId =
+          typeof (session.user as any).id === 'string'
+            ? parseInt((session.user as any).id, 10)
+            : (session.user as any).id;
+
+        // Gateway status can arrive with a small delay after redirect.
+        // Retry a few times to reliably finalize paid tickets.
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const syncResult = await syncVPostOrderStatus({
+            userId,
+            orderId: order.id,
+          });
+
+          if (!syncResult.success) {
+            setError(
+              syncResult.error || 'Վճարման կարգավիճակը ստուգելիս սխալ եղավ'
+            );
+            return;
+          }
+
+          if (syncResult.state === 'paid') {
+            router.replace(`${SITE_URL.TICKETS}?fromPayment=1`);
+            return;
+          }
+
+          if (syncResult.state === 'failed') {
+            setError(syncResult.message || 'Վճարումը մերժվել է');
+            return;
+          }
+
+          if (attempt < 5) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+
+        setError('Վճարումը դեռ չի հաստատվել։ Մի փոքր հետո կրկին փորձեք։');
+      } catch (err) {
+        console.error('Error syncing vPost status:', err);
+        setError('Վճարման կարգավիճակը ստուգելիս սխալ եղավ');
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    syncReturnStatus();
+  }, [order, session, searchParams, hasSyncedVpostReturn, router]);
 
   const formatTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
@@ -260,16 +285,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   const handlePayment = async () => {
     if (!paymentMethod || !order || !session?.user) return;
 
-    if (paymentMethod === 'card') {
-      setCardTouched({
-        cardNumber: true,
-        expiry: true,
-        cvv: true,
-        cardHolder: true,
-      });
-      if (!isCardValid) return;
-    }
-
     setIsProcessing(true);
     setError(null);
 
@@ -279,31 +294,47 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
           ? parseInt((session.user as any).id, 10)
           : (session.user as any).id;
 
-      const result = await createPaymentForOrder({
-        userId,
-        orderId: order.id,
-        method: paymentMethod,
-      });
-
-      if (result.success && result.payments) {
-        setIsSuccess(true);
-
-        // Set QR codes for all tickets
-        const qrCodesMap = new Map<number, string>();
-        result.qrCodes.forEach((qrCode, index) => {
-          if (result.tickets[index]) {
-            qrCodesMap.set(result.tickets[index].id, qrCode);
-          }
+      if (paymentMethod === 'card') {
+        const vpostResult = await createVPostOrderForOrder({
+          userId,
+          orderId: order.id,
         });
-        setQrCodes(qrCodesMap);
 
-        // Reload order to get updated status
-        const orderResult = await getOrderById(order.id);
-        if (orderResult.success && orderResult.order) {
-          setOrder(orderResult.order as Order);
+        if (vpostResult.success && vpostResult.redirectURL) {
+          const checkout = vpostResult as VpostCheckoutData;
+          window.location.href = checkout.redirectURL;
+        } else {
+          setError(
+            vpostResult.error || 'Քարտային վճարում սկսելիս սխալ է տեղի ունեցել'
+          );
         }
       } else {
-        setError(result.error || 'Վճարում կատարելիս սխալ է տեղի ունեցել');
+        const result = await createTelcellInvoiceForOrder({
+          userId,
+          orderId: order.id,
+          method: paymentMethod,
+        });
+
+        if (result.success && result.checkout) {
+          const checkout = result.checkout as TelcellCheckoutData;
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = checkout.url;
+          form.style.display = 'none';
+
+          Object.entries(checkout.fields).forEach(([name, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+          });
+
+          document.body.appendChild(form);
+          form.submit();
+        } else {
+          setError(result.error || 'Վճարում կատարելիս սխալ է տեղի ունեցել');
+        }
       }
     } catch (err) {
       console.error('Error processing payment:', err);
@@ -675,8 +706,9 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                   </div>
                 )}
 
-                {/* Payment method option */}
+                {/* Card payment option */}
                 <button
+                  type="button"
                   onClick={() => setPaymentMethod('card')}
                   className={`w-full p-4 rounded-xl border-2 transition-all text-left group ${
                     paymentMethod === 'card'
@@ -717,7 +749,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                         Բանկային քարտ
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Visa, Mastercard, ArCa
+                        ITF vPOS • Visa, Mastercard, ArCa
                       </p>
                     </div>
 
@@ -744,6 +776,61 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                         </span>
                       </div>
                     </div>
+                  </div>
+                </button>
+
+                {/* TelCell option */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('bank_transfer')}
+                  className={`w-full p-4 rounded-xl border-2 transition-all text-left group ${
+                    paymentMethod === 'bank_transfer'
+                      ? 'border-purple-500 bg-purple-50/60'
+                      : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        paymentMethod === 'bank_transfer'
+                          ? 'border-purple-600'
+                          : 'border-gray-300'
+                      }`}
+                    >
+                      {paymentMethod === 'bank_transfer' && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+                      )}
+                    </div>
+
+                    <div
+                      className={`p-2 rounded-lg transition-colors ${
+                        paymentMethod === 'bank_transfer'
+                          ? 'bg-purple-100'
+                          : 'bg-gray-100'
+                      }`}
+                    >
+                      <Image
+                        src="/images/telltec-wallet.svg"
+                        alt="TelCell Wallet"
+                        width={34}
+                        height={14}
+                        className="h-5 w-auto"
+                      />
+                    </div>
+
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 text-sm">
+                        TelCell Wallet
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Արագ ու անվտանգ վճարում TelCell-ով
+                      </p>
+                    </div>
+
+                    <span className="text-[10px] font-semibold tracking-wide uppercase text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-2.5 py-1">
+                      Արագ
+                    </span>
+
                   </div>
                 </button>
 
@@ -960,15 +1047,9 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
               <button
                 onClick={handlePayment}
-                disabled={
-                  !paymentMethod ||
-                  isProcessing ||
-                  (paymentMethod === 'card' && !isCardValid)
-                }
+                disabled={!paymentMethod || isProcessing}
                 className={`w-full px-6 py-3 rounded-lg font-semibold transition-all ${
-                  paymentMethod &&
-                  !isProcessing &&
-                  (paymentMethod !== 'card' || isCardValid)
+                  paymentMethod && !isProcessing
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}

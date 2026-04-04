@@ -177,6 +177,13 @@ export default function Footer() {
             height={80}
             className="w-[56px] sm:w-[80px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
           />
+          <Image
+            src="/images/telltec-wallet.svg"
+            alt="Arca"
+            width={200}
+            height={80}
+            className="w-[56px] sm:w-[80px] h-auto! opacity-80 hover:opacity-100 transition-opacity"
+          />
         </div>
       </div>
     </footer>

@@ -1136,7 +1136,6 @@ export default function AdminScreeningsClient({
                       type="number"
                       required
                       min="0"
-                      step="100"
                       value={formData.basePrice}
                       onChange={(e) =>
                         setFormData({ ...formData, basePrice: e.target.value })

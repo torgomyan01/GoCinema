@@ -113,6 +113,10 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [hasSyncedVpostReturn, setHasSyncedVpostReturn] = useState(false);
+  const [isAwaitingTelcell, setIsAwaitingTelcell] = useState(false);
+  const [telcellStatusNote, setTelcellStatusNote] = useState<string | null>(
+    null
+  );
   const [qrCodes, setQrCodes] = useState<Map<number, string>>(new Map());
   const qrCodeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
@@ -167,7 +171,9 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     const syncReturnStatus = async () => {
       if (!order || !session?.user || hasSyncedVpostReturn) return;
       if (searchParams.get('gateway') !== 'vpost') return;
-      if (searchParams.get('return') !== '1') return;
+      // Հին backURL: ?gateway=vpost&return=1 — vPost երբեմն կցում է return=1?orderId=…
+      const ret = searchParams.get('return');
+      if (ret !== '1' && !ret?.startsWith('1?')) return;
 
       setHasSyncedVpostReturn(true);
       setIsProcessing(true);
@@ -195,7 +201,18 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
           }
 
           if (syncResult.state === 'paid') {
-            router.replace(`${SITE_URL.TICKETS}?fromPayment=1`);
+            const refreshed = await getOrderById(order.id);
+            if (refreshed.success && refreshed.order) {
+              const nextOrder = refreshed.order as Order;
+              setOrder(nextOrder);
+              const qrMap = new Map<number, string>();
+              nextOrder.tickets.forEach((t) => {
+                if (t.qrCode) qrMap.set(t.id, t.qrCode);
+              });
+              setQrCodes(qrMap);
+              setIsSuccess(true);
+            }
+            router.replace(SITE_URL.PAYMENT(order.id));
             return;
           }
 
@@ -221,6 +238,88 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     syncReturnStatus();
   }, [order, session, searchParams, hasSyncedVpostReturn, router]);
 
+  useEffect(() => {
+    if (!order) return;
+    if (searchParams.get('gateway') !== 'telcell') return;
+    if (searchParams.get('redirect') !== '1') return;
+
+    const status = (searchParams.get('status') || '').toLowerCase();
+    if (status === 'paid' || status === 'pending') {
+      setError(null);
+      setIsAwaitingTelcell(true);
+      setTelcellStatusNote(
+        status === 'paid'
+          ? 'Վճարումը կատարված է։ Ստուգում ենք վերջնական կարգավիճակը...'
+          : 'Վճարման պատասխանը դեռ վերջնական չէ։ Ստուգում ենք կարգավիճակը...'
+      );
+    } else if (status === 'rejected') {
+      setIsAwaitingTelcell(false);
+      setTelcellStatusNote(null);
+      setError('Վճարումը մերժվել է կամ չեղարկվել է');
+    }
+  }, [order, searchParams]);
+
+  useEffect(() => {
+    if (!isAwaitingTelcell || !order) return;
+
+    let cancelled = false;
+    let attempt = 0;
+    const maxAttempts = 30; // մոտ 90 վրկ
+
+    const poll = async () => {
+      if (cancelled) return;
+
+      try {
+        const latest = await getOrderById(order.id);
+        if (latest.success && latest.order) {
+          const nextOrder = latest.order as Order;
+          setOrder(nextOrder);
+
+          const allPaid = nextOrder.tickets.every(
+            (ticket) => ticket.status === 'paid' || ticket.status === 'used'
+          );
+
+          if (allPaid) {
+            const qrMap = new Map<number, string>();
+            nextOrder.tickets.forEach((t) => {
+              if (t.qrCode) qrMap.set(t.id, t.qrCode);
+            });
+            setQrCodes(qrMap);
+            setIsSuccess(true);
+            setIsAwaitingTelcell(false);
+            setTelcellStatusNote(null);
+            router.replace(SITE_URL.PAYMENT(nextOrder.id));
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Error polling Telcell status:', err);
+      }
+
+      attempt += 1;
+      if (attempt >= maxAttempts) {
+        if (!cancelled) {
+          setIsAwaitingTelcell(false);
+          setTelcellStatusNote(
+            'Վճարման վերջնական պատասխան չի ստացվել։ Խնդրում ենք սեղմել "Վճարման կարգավիճակը թարմացնել"։'
+          );
+        }
+        return;
+      }
+
+      setTimeout(poll, 3000);
+    };
+
+    setTelcellStatusNote(
+      'Telcell-ի վճարման էջը բացվել է նոր պատուհանում։ Վճարումից հետո կարգավիճակը կթարմացվի ավտոմատ։'
+    );
+    void poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAwaitingTelcell, order, router]);
+
   const formatTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleTimeString('hy-AM', {
@@ -239,10 +338,11 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     });
   };
 
-  // Generate QR code data - only order ID for scanning
-  const getQRCodeData = (ticketId: number) => {
-    if (!order) return '';
-    return `ORDER-${order.id}`;
+  /** Ադմին սկաները ընդունում է TICKET-{id} / ORDER-{id} (`getOrderOrTicketByQR`)։ */
+  const getQRCodeData = (ticket: Ticket) => {
+    const raw = ticket.qrCode?.trim();
+    if (raw && /^(ORDER|TICKET)-\d+$/.test(raw)) return raw;
+    return `TICKET-${ticket.id}`;
   };
 
   // Download QR code as PNG
@@ -320,6 +420,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
           const form = document.createElement('form');
           form.method = 'POST';
           form.action = checkout.url;
+          form.target = '_blank';
           form.style.display = 'none';
 
           Object.entries(checkout.fields).forEach(([name, value]) => {
@@ -332,6 +433,8 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
           document.body.appendChild(form);
           form.submit();
+          document.body.removeChild(form);
+          setIsAwaitingTelcell(true);
         } else {
           setError(result.error || 'Վճարում կատարելիս սխալ է տեղի ունեցել');
         }
@@ -490,7 +593,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                     >
                       <div className="p-4 bg-white rounded-lg shadow-md">
                         <QRCodeSVG
-                          value={getQRCodeData(ticket.id)}
+                          value={getQRCodeData(ticket)}
                           size={200}
                           level="H"
                           includeMargin={true}
@@ -749,7 +852,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                         Բանկային քարտ
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        ITF vPOS • Visa, Mastercard, ArCa
+                        Visa, Mastercard, ArCa
                       </p>
                     </div>
 
@@ -826,11 +929,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                         Արագ ու անվտանգ վճարում TelCell-ով
                       </p>
                     </div>
-
-                    <span className="text-[10px] font-semibold tracking-wide uppercase text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-2.5 py-1">
-                      Արագ
-                    </span>
-
                   </div>
                 </button>
 
@@ -1058,6 +1156,53 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                   ? 'Վճարում...'
                   : `Վճարել ${order.totalAmount.toFixed(0)} ֏`}
               </button>
+
+              {(isAwaitingTelcell || telcellStatusNote) && (
+                <div className="mt-4 p-3 rounded-lg border border-amber-200 bg-amber-50">
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    {telcellStatusNote}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const latest = await getOrderById(order.id);
+                        if (latest.success && latest.order) {
+                          const nextOrder = latest.order as Order;
+                          setOrder(nextOrder);
+                          const allPaid = nextOrder.tickets.every(
+                            (ticket) =>
+                              ticket.status === 'paid' ||
+                              ticket.status === 'used'
+                          );
+                          if (allPaid) {
+                            const qrMap = new Map<number, string>();
+                            nextOrder.tickets.forEach((t) => {
+                              if (t.qrCode) qrMap.set(t.id, t.qrCode);
+                            });
+                            setQrCodes(qrMap);
+                            setIsSuccess(true);
+                            setIsAwaitingTelcell(false);
+                            setTelcellStatusNote(null);
+                            router.replace(SITE_URL.PAYMENT(nextOrder.id));
+                          } else {
+                            setTelcellStatusNote(
+                              'Վճարումը դեռ հաստատված չէ։ Եթե արդեն վճարել եք, սպասեք 5-10 վրկ և կրկին թարմացրեք։'
+                            );
+                          }
+                        }
+                      } catch {
+                        setTelcellStatusNote(
+                          'Կարգավիճակը թարմացնել չհաջողվեց, փորձեք նորից։'
+                        );
+                      }
+                    }}
+                    className="mt-2 text-xs font-semibold text-purple-700 hover:text-purple-800 hover:underline"
+                  >
+                    Վճարման կարգավիճակը թարմացնել
+                  </button>
+                </div>
+              )}
 
               <p className="text-xs text-gray-500 text-center mt-4">
                 Վճարելով, դուք համաձայնվում եք մեր օգտագործման պայմաններին

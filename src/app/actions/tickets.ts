@@ -334,23 +334,18 @@ export async function updateTicketStatus(
   }
 }
 
+/** Payload must match `getOrderOrTicketByQR` (ORDER-n / TICKET-n). */
 export async function generateQRCode(ticketId: number): Promise<string> {
   try {
-    // Generate QR code data (can be enhanced with encryption)
-    const qrData = JSON.stringify({
-      ticketId,
-      timestamp: Date.now(),
-    });
+    const qrCode = `TICKET-${ticketId}`;
 
-    // For now, return base64 encoded data
-    // In production, you might want to use a QR code library like 'qrcode'
-    const qrCode = Buffer.from(qrData).toString('base64');
-
-    // Update ticket with QR code
     await prisma.ticket.update({
       where: { id: ticketId },
       data: { qrCode },
     });
+
+    revalidatePath('/tickets');
+    revalidatePath('/payment');
 
     return qrCode;
   } catch (error: any) {

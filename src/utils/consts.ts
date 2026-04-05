@@ -7,6 +7,9 @@ export const SITE_URL = {
   BOOKING: (screeningId: string | number) => `/booking/${screeningId}`,
   CHECKOUT: (orderId: string | number) => `/checkout/${orderId}`,
   PAYMENT: (orderId: string | number) => `/payment/${orderId}`,
+  /** vPost backURL — առանց query, որ պրովայդերը ?orderId=… ավելացնի առանց կրկնակի ? */
+  PAYMENT_VPOST_RETURN: (orderId: string | number) =>
+    `/payment/${orderId}/vpost-return`,
   SCREENING_DETAIL: (screeningId: string | number) =>
     `/screening/${screeningId}`,
   ACCOUNT: '/account',

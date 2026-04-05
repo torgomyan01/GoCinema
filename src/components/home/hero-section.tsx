@@ -49,7 +49,7 @@ const STATS = [
 
 export default function HeroSection() {
   return (
-    <section className="relative min-h-[1300px] md:min-h-[1050px] xl:min-h-[95vh] flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-[1300px] md:min-h-[1150px] flex items-center justify-center overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <motion.div

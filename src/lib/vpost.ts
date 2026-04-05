@@ -20,16 +20,121 @@ type VPostCustomerData = {
 
 type VPostTransactionListItem = {
   createdAt?: string;
+  humandate?: string;
   order?: {
     id?: number;
     status?: number;
+    partnerOrderId?: number;
   };
-  response?: {
-    ResponseCode?: string;
-    PaymentState?: string;
-    OrderStatus?: string;
-  };
+  /** ITF docs — PascalCase */
+  response?: Record<string, unknown>;
 };
+
+function isVpostServerLogEnabled() {
+  const v = (process.env.PAYMENT_LOG || '').toLowerCase();
+  if (v === 'true' || v === '1') return true;
+  if ((process.env.PAYMENT_DEBUG || '').toLowerCase() === 'true') return true;
+  return process.env.NODE_ENV === 'development';
+}
+
+function vpostServerLog(event: string, payload: Record<string, unknown>) {
+  if (!isVpostServerLogEnabled()) return;
+  try {
+    console.info(`[vPost] ${event}`, JSON.stringify(payload));
+  } catch {
+    console.info(`[vPost] ${event}`, payload);
+  }
+}
+
+/** API-ն երբեմն տալիս է camelCase կամ այլ nesting */
+function coerceTxItem(raw: unknown): VPostTransactionListItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const orderRaw = r.order;
+  const order =
+    orderRaw && typeof orderRaw === 'object'
+      ? (orderRaw as VPostTransactionListItem['order'])
+      : undefined;
+  let response = r.response as Record<string, unknown> | undefined;
+  if (!response && typeof r.ResponseCode !== 'undefined') {
+    response = r as Record<string, unknown>;
+  }
+  return {
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
+    humandate: typeof r.humandate === 'string' ? r.humandate : undefined,
+    order,
+    response,
+  };
+}
+
+function extractTransactionsList(data: unknown): VPostTransactionListItem[] {
+  if (!data || typeof data !== 'object') return [];
+  const d = data as Record<string, unknown>;
+  const rawList = d.list ?? (d.data as Record<string, unknown> | undefined)?.list;
+  if (!Array.isArray(rawList)) return [];
+  return rawList
+    .map(coerceTxItem)
+    .filter((x): x is VPostTransactionListItem => x != null);
+}
+
+function parseTxDate(tx: VPostTransactionListItem): number {
+  const s = tx.createdAt || tx.humandate;
+  if (!s) return 0;
+  const t = Date.parse(s.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1'));
+  return Number.isFinite(t) ? t : 0;
+}
+
+function readResponseField(
+  response: Record<string, unknown> | undefined,
+  keys: string[]
+): unknown {
+  if (!response) return undefined;
+  for (const k of keys) {
+    const v = response[k];
+    if (v != null && v !== '') return v;
+  }
+  return undefined;
+}
+
+/** Ամենանորից հին — ցուցակի կարգը API-ում երաշխավորված չէ */
+export function sortTransactionsNewestFirst(
+  list: VPostTransactionListItem[]
+): VPostTransactionListItem[] {
+  return [...list].sort((a, b) => parseTxDate(b) - parseTxDate(a));
+}
+
+export function summarizeTransactionForLog(tx: VPostTransactionListItem) {
+  const resp = tx.response;
+  const responseCode = readResponseField(resp, ['ResponseCode', 'responseCode']);
+  const paymentState = readResponseField(resp, ['PaymentState', 'paymentState']);
+  const orderStatus = readResponseField(resp, ['OrderStatus', 'orderStatus']);
+  const cardRaw = String(
+    readResponseField(resp, ['CardNumber', 'cardNumber']) ?? ''
+  );
+  const cardMasked =
+    cardRaw.length > 6
+      ? `${cardRaw.slice(0, 4)}***${cardRaw.slice(-4)}`
+      : cardRaw
+        ? '***'
+        : '';
+  return {
+    createdAt: tx.createdAt,
+    orderId: tx.order?.id,
+    orderInternalStatus: tx.order?.status,
+    ResponseCode: responseCode != null ? String(responseCode) : undefined,
+    PaymentState: paymentState != null ? String(paymentState) : undefined,
+    OrderStatus: orderStatus != null ? String(orderStatus) : undefined,
+    partnerOrderId: tx.order?.partnerOrderId,
+    CardNumber: cardMasked || undefined,
+  };
+}
+
+/** `/transactions/list` պատասխանի `data` — նորմալացված ցուցակ */
+export function getNormalizedTransactionsFromVPostEnvelope(
+  envelope: VPostEnvelope<unknown>
+): VPostTransactionListItem[] {
+  return sortTransactionsNewestFirst(extractTransactionsList(envelope.data));
+}
 
 function md5(value: string): string {
   return createHash('md5').update(value).digest('hex');
@@ -125,6 +230,14 @@ async function vpostRequest<T>(
 
   for (let attempt = 0; attempt < headerVariants.length; attempt += 1) {
     const headers = headerVariants[attempt];
+    if (isVpostServerLogEnabled()) {
+      vpostServerLog('request', {
+        endpoint,
+        attempt: attempt + 1,
+        url,
+        payload: sanitizePayloadForLog({ ...payload }),
+      });
+    }
     if (isVPostDebugEnabled()) {
       console.info('[vPost] Request', {
         endpoint,
@@ -155,6 +268,14 @@ async function vpostRequest<T>(
       };
     }
 
+    if (isVpostServerLogEnabled() && json.message?.startsWith('Non-JSON')) {
+      vpostServerLog('raw_body', {
+        endpoint,
+        httpStatus: response.status,
+        snippet: responseText.slice(0, 800),
+      });
+    }
+
     if (isVPostDebugEnabled()) {
       console.info('[vPost] Response', {
         endpoint,
@@ -164,6 +285,33 @@ async function vpostRequest<T>(
         status: json.status,
         message: json.message,
       });
+    }
+
+    if (isVpostServerLogEnabled()) {
+      const data = json.data as Record<string, unknown> | undefined;
+      const logPayload: Record<string, unknown> = {
+        endpoint,
+        attempt: attempt + 1,
+        httpStatus: response.status,
+        envelopeStatus: json.status,
+        message: json.message,
+      };
+      if (endpoint === '/transactions/list' && data) {
+        const list = extractTransactionsList(data);
+        logPayload.listLength = list.length;
+        logPayload.items = list.map(summarizeTransactionForLog);
+      } else if (endpoint === '/order/new' && data) {
+        logPayload.hasRedirect = Boolean(
+          (data as VPostOrderData).redirectURL
+        );
+        logPayload.partnerOrderId = (data as VPostOrderData).partnerOrderId;
+        logPayload.itfOrderId = (data as VPostOrderData).itfOrderId;
+      } else if (endpoint === '/customer/new' && data) {
+        logPayload.clientID = (data as VPostCustomerData).clientID;
+      } else if (data && typeof data === 'object') {
+        logPayload.dataKeys = Object.keys(data);
+      }
+      vpostServerLog('response', logPayload);
     }
 
     lastResponse = json;
@@ -261,7 +409,7 @@ export async function getVPostTransactionsByOrder(orderID: number) {
   return vpostRequest<{ list?: VPostTransactionListItem[] }>(
     '/transactions/list',
     {
-      orderID,
+      orderID: Number(orderID),
     }
   );
 }
@@ -271,13 +419,20 @@ export function isVPostPaymentApproved(
 ): boolean {
   if (!tx) return false;
 
-  const responseCode = tx.response?.ResponseCode;
-  const paymentState = tx.response?.PaymentState;
-  const orderStatus = tx.response?.OrderStatus;
+  const resp = tx.response;
+  const responseCode = readResponseField(resp, ['ResponseCode', 'responseCode']);
+  const paymentState = String(
+    readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
+  );
+  const orderStatus = String(
+    readResponseField(resp, ['OrderStatus', 'orderStatus']) ?? ''
+  );
   const internalStatus = tx.order?.status;
 
+  const rcOk = String(responseCode ?? '').trim() === '00';
+
   return (
-    responseCode === '00' ||
+    rcOk ||
     paymentState === 'payment_approved' ||
     paymentState === 'payment_deposited' ||
     orderStatus === '1' ||
@@ -289,9 +444,14 @@ export function isVPostPaymentApproved(
 
 export function isVPostPaymentDeclined(tx?: VPostTransactionListItem): boolean {
   if (!tx) return false;
-  const paymentState = tx.response?.PaymentState;
+  const resp = tx.response;
+  const paymentState = String(
+    readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
+  );
+  const orderStatus = String(
+    readResponseField(resp, ['OrderStatus', 'orderStatus']) ?? ''
+  );
   const internalStatus = tx.order?.status;
-  const orderStatus = tx.response?.OrderStatus;
 
   return (
     paymentState === 'payment_declined' ||

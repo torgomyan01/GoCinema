@@ -61,17 +61,19 @@ export default function Header() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className={clsx(
-                'text-2xl font-bold flex-js-c gap-4',
+                'text-2xl font-bold flex-js-c gap-2',
                 shouldHaveDarkBg ? 'text-gray-700' : 'text-white'
               )}
             >
               <Image
-                src="/images/logo.svg"
+                src="/images/GoCinema.svg"
                 alt="GoCinema"
                 width={40}
                 height={40}
               />
-              GoCinema
+              <div className="text-2xl font-bold mt-1 text-[#E61E21]">
+                CINEMA
+              </div>
             </motion.div>
           </Link>
 
@@ -120,7 +122,9 @@ export default function Header() {
               <User className="w-4 h-4" />
               {session?.user ? (
                 <span className="max-w-[80px] truncate">{userName}</span>
-              ) : 'Մուտք'}
+              ) : (
+                'Մուտք'
+              )}
             </Link>
 
             <button

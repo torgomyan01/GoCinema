@@ -6,6 +6,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  --font-sans: var(--font-roboto), 'Roboto', var(--font-noto-armenian), 'Noto Sans Armenian', ui-sans-serif,
+    system-ui, sans-serif;
   --color-green: #1e4a2f;
   --color-cream: #f2e9dc;
 }

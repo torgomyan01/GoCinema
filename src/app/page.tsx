@@ -3,6 +3,8 @@ import HeroSection from '@/components/home/hero-section';
 import MoviesSection from '@/components/home/movies-section';
 import ScheduleSection from '@/components/home/schedule-section';
 import FeaturesSection from '@/components/home/features-section';
+import CinemaExperienceSection from '@/components/home/cinema-experience-section';
+import BookingJourneySection from '@/components/home/booking-journey-section';
 import FAQSection from '@/components/home/faq-section';
 import { Metadata } from 'next';
 import { unstable_noStore } from 'next/cache';
@@ -44,8 +46,10 @@ export default async function Page() {
     <MainTemplate>
       <HeroSection />
       <MoviesSection />
+      <CinemaExperienceSection />
       <ScheduleSection />
       <FeaturesSection />
+      <BookingJourneySection />
       <FAQSection faqs={faqs} />
     </MainTemplate>
   );

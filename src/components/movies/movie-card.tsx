@@ -47,7 +47,7 @@ export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
       <Link href={movieUrl}>
         <div className="group bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 h-full flex flex-col">
           {/* Image */}
-          <div className="relative h-96 overflow-hidden bg-gray-200">
+          <div className="relative h-64 sm:h-72 md:h-80 lg:h-96 overflow-hidden bg-gray-200">
             {movie.image ? (
               <Image
                 src={movie.image}
@@ -90,8 +90,8 @@ export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
           </div>
 
           {/* Content */}
-          <div className="p-6 flex-1 flex flex-col">
-            <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-purple-600 transition-colors line-clamp-2 min-h-[3.5rem]">
+          <div className="p-4 sm:p-6 flex-1 flex flex-col">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3 group-hover:text-purple-600 transition-colors line-clamp-2 min-h-[3rem] sm:min-h-[3.5rem]">
               {movie.title}
             </h3>
 
@@ -107,7 +107,7 @@ export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
             </div>
 
             <div className="mt-auto">
-              <button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-md hover:shadow-lg">
+              <button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-2.5 sm:py-3 rounded-lg text-sm sm:text-base font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-md hover:shadow-lg">
                 Ամրագրել տոմս
               </button>
             </div>

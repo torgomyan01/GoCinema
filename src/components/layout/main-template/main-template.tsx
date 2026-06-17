@@ -10,7 +10,7 @@ async function MainTemplate({ children, phoneNumber }: MainTemplateProps) {
   return (
     <>
       <Header />
-      <main className="min-h-screen">
+      <main className="min-h-screen overflow-x-hidden">
         {children}
       </main>
       <Footer />

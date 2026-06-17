@@ -2,237 +2,235 @@
 
 import { motion, type Transition } from 'framer-motion';
 import {
-  Play,
-  Calendar,
-  Users,
-  Film,
-  Ticket,
-  Star,
   ArrowRight,
+  Calendar,
+  Clapperboard,
+  Clock,
+  MapPin,
+  Play,
+  Star,
+  Ticket,
 } from 'lucide-react';
-import Link from 'next/link';
 import Image from 'next/image';
+import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
 
-const fadeUp = (delay = 0) => ({
+const fadeUp = (delay = 0): {
+  initial: { opacity: number; y: number };
+  animate: { opacity: number; y: number };
+  transition: Transition;
+} => ({
   initial: { opacity: 0, y: 24 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.6, delay, ease: 'easeOut' } as Transition,
+  transition: { duration: 0.7, delay, ease: 'easeOut' },
 });
 
-const STATS = [
-  {
-    icon: Users,
-    value: '80',
-    label: 'Հարմարավետ նստատեղ',
-    sub: 'Գլխավոր դահլիճում',
-    color: 'from-purple-500 to-pink-500',
-    glow: 'group-hover:shadow-purple-500/40',
-  },
-  {
-    icon: Film,
-    value: '100+',
-    label: 'Ընթացիկ ֆիլմ',
-    sub: 'Ամեն օր նոր ցուցադրություններ',
-    color: 'from-blue-500 to-cyan-500',
-    glow: 'group-hover:shadow-blue-500/40',
-  },
-  {
-    icon: Ticket,
-    value: '24/7',
-    label: 'Առցանց ամրագրում',
-    sub: 'Ամեն ժամ, ամեն օր',
-    color: 'from-violet-500 to-purple-600',
-    glow: 'group-hover:shadow-violet-500/40',
-  },
+const TRUST_ITEMS = [
+  { value: '42', label: 'Հարմարավետ տեղ' },
+  { value: '4K', label: 'Պատկեր' },
+  { value: 'QR', label: 'Անցումային տոմս' },
 ];
 
 export default function HeroSection() {
   return (
-    <section className="relative min-h-[1300px] md:min-h-[1150px] flex items-center justify-center overflow-hidden">
-      {/* Background */}
+    <section className="relative min-h-[100svh] overflow-hidden bg-[#050505] text-white">
       <div className="absolute inset-0 z-0">
-        <motion.div
-          initial={{ scale: 1.06, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 1.2, ease: 'easeOut' }}
-          className="absolute inset-0"
-        >
-          <Image
-            src="/images/hero-background.png"
-            alt="Cinema background"
-            fill
-            priority
-            className="object-cover"
-            quality={85}
-          />
-        </motion.div>
-
-        {/* Overlays — pure CSS, zero JS cost */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-black/80 z-10" />
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-950/40 via-transparent to-pink-950/30 z-10" />
-
-        {/* Static decorative orbs — CSS only */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none z-10" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-pink-600/15 rounded-full blur-3xl pointer-events-none z-10" />
+        <Image
+          src="/images/hero-background.png"
+          alt="GoCinema"
+          fill
+          priority
+          quality={90}
+          className="object-cover opacity-35"
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_22%,rgba(220,38,38,0.34),transparent_28%),linear-gradient(180deg,#050505_0%,rgba(5,5,5,0.88)_55%,rgba(5,5,5,0.75)_100%)] lg:bg-[radial-gradient(circle_at_72%_22%,rgba(220,38,38,0.34),transparent_28%),linear-gradient(90deg,#050505_0%,rgba(5,5,5,0.92)_43%,rgba(5,5,5,0.65)_100%)]" />
+        <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px)] [background-size:48px_48px] sm:[background-size:72px_72px]" />
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#050505] to-transparent sm:h-40" />
       </div>
 
-      {/* Content */}
-      <div className="relative z-20 container mx-auto px-4 text-center">
-        {/* Title block */}
-        <motion.div
-          className="flex flex-col items-center gap-5 mb-8"
-          {...fadeUp(0.1)}
-        >
-          {/* Stars */}
-          <div className="flex items-center gap-1.5">
-            {[...Array(5)].map((_, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, scale: 0 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{
-                  delay: 0.3 + i * 0.07,
-                  duration: 0.35,
-                  ease: 'backOut',
-                }}
-              >
-                <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-              </motion.div>
-            ))}
-          </div>
+      <div className="relative z-20 container mx-auto grid min-h-[100svh] items-center gap-8 px-4 pb-10 pt-24 sm:gap-10 sm:pb-14 sm:pt-28 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 lg:pb-16 lg:pt-32">
+        <div>
+          
 
           <motion.h1
-            className="text-6xl md:text-8xl lg:text-9xl font-extrabold leading-none"
-            initial={{ opacity: 0, y: -16 }}
+            className="mb-4 max-w-4xl text-[2.35rem] font-black leading-[0.92] tracking-[-0.04em] sm:mb-6 sm:text-5xl sm:leading-[0.9] sm:tracking-[-0.05em] md:text-6xl lg:text-8xl xl:text-9xl"
+            initial={{ opacity: 0, y: -18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.25, ease: 'easeOut' }}
+            transition={{ duration: 0.8, delay: 0.18, ease: 'easeOut' }}
           >
-            <span className="hero-title-gradient">GoCinema</span>
+            Կինոն այստեղ <span className="text-red-500">կենդանանում է</span>
           </motion.h1>
 
-          {/* Thin accent line */}
+          <motion.p
+            className="mb-7 max-w-2xl text-base leading-relaxed text-neutral-300 sm:mb-9 sm:text-lg md:text-2xl"
+            {...fadeUp(0.35)}
+          >
+            Ընտրեք ֆիլմը, ամրագրեք տեղը և ստացեք QR տոմսը ձեր հեռախոսում։
+            GoCinema-ը ստեղծված է արագ, գեղեցիկ և հարմարավետ կինոփորձի համար։
+          </motion.p>
+
           <motion.div
-            className="h-px w-32 bg-gradient-to-r from-transparent via-purple-400 to-transparent"
-            initial={{ scaleX: 0, opacity: 0 }}
-            animate={{ scaleX: 1, opacity: 1 }}
-            transition={{ duration: 0.7, delay: 0.55 }}
-          />
-        </motion.div>
-
-        {/* Subtitle */}
-        <motion.p
-          className="text-xl md:text-2xl lg:text-3xl text-gray-200 mb-12 max-w-2xl mx-auto font-light leading-relaxed tracking-wide"
-          {...fadeUp(0.45)}
-        >
-          Ձեր կինոփորձը սկսվում է այստեղ
-        </motion.p>
-
-        {/* CTA Buttons */}
-        <motion.div
-          className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16"
-          {...fadeUp(0.6)}
-        >
-          <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
+            className="mb-8 flex flex-col gap-3 sm:mb-10 sm:flex-row sm:gap-4"
+            {...fadeUp(0.5)}
+          >
             <Link
               href={SITE_URL.MOVIES}
-              className="group relative px-9 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-bold text-lg flex items-center gap-3 shadow-lg shadow-purple-700/30 hover:shadow-purple-500/50 transition-shadow duration-300 overflow-hidden"
+              className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-red-600 px-6 py-3.5 text-base font-black text-white shadow-2xl shadow-red-950/50 transition hover:bg-red-500 sm:w-auto sm:gap-3 sm:px-8 sm:py-4 sm:text-lg"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-              <Play className="w-5 h-5 relative z-10" />
-              <span className="relative z-10">Դիտել ֆիլմեր</span>
-              <ArrowRight className="w-4 h-4 relative z-10 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
+              <Play className="h-5 w-5 fill-current" />
+              Դիտել ֆիլմերը
+              <ArrowRight className="h-5 w-5 transition group-hover:translate-x-1" />
             </Link>
-          </motion.div>
-
-          <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
             <Link
               href={SITE_URL.SCHEDULE}
-              className="group px-9 py-4 bg-white/10 text-white rounded-2xl font-bold text-lg flex items-center gap-3 border border-white/25 hover:bg-white/18 hover:border-white/40 transition-all duration-200"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/8 px-6 py-3.5 text-base font-black text-white backdrop-blur transition hover:bg-white/14 sm:w-auto sm:gap-3 sm:px-8 sm:py-4 sm:text-lg"
             >
-              <Calendar className="w-5 h-5" />
-              <span>Ժամանակացույց</span>
-              <ArrowRight className="w-4 h-4 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
+              <Calendar className="h-5 w-5" />
+              Այսօրվա սեանսները
             </Link>
           </motion.div>
-        </motion.div>
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {STATS.map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              className="group relative bg-white/8 backdrop-blur-md rounded-2xl p-7 border border-white/15 hover:border-white/30 transition-all duration-300 overflow-hidden"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.5,
-                delay: 0.75 + i * 0.1,
-                ease: 'easeOut',
-              }}
-              whileHover={{ y: -6 }}
-            >
-              {/* Hover glow */}
-              <div
-                className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-10 transition-opacity duration-300 rounded-2xl`}
-              />
-
-              <div className="relative z-10 flex flex-col items-center text-center">
-                {/* Icon */}
-                <div
-                  className={`mb-5 p-3.5 bg-gradient-to-br ${stat.color} rounded-xl shadow-lg ${stat.glow} transition-shadow duration-300`}
-                >
-                  <stat.icon className="w-8 h-8 text-white" />
+          <motion.div
+            className="grid max-w-xl grid-cols-3 divide-x divide-white/10 rounded-2xl border border-white/10 bg-white/[0.04] p-1 backdrop-blur sm:rounded-3xl"
+            {...fadeUp(0.65)}
+          >
+            {TRUST_ITEMS.map((item) => (
+              <div key={item.label} className="px-2 py-3 sm:px-4 sm:py-4">
+                <div className="text-lg font-black text-white sm:text-2xl">
+                  {item.value}
                 </div>
-
-                {/* Value */}
-                <div className="text-5xl font-extrabold text-white mb-2 tracking-tight">
-                  {stat.value}
+                <div className="mt-0.5 text-[10px] leading-tight text-neutral-400 sm:mt-1 sm:text-xs">
+                  {item.label}
                 </div>
-
-                {/* Label */}
-                <div className="text-gray-100 font-semibold text-base mb-1">
-                  {stat.label}
-                </div>
-                <div className="text-gray-400 text-sm">{stat.sub}</div>
               </div>
-            </motion.div>
-          ))}
+            ))}
+          </motion.div>
+
+          {/* Mobile ticket preview */}
+          <motion.div
+            className="mt-6 lg:hidden"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.75, ease: 'easeOut' }}
+          >
+            <div className="overflow-hidden rounded-2xl border border-white/15 bg-neutral-950/85 p-4 shadow-2xl shadow-red-950/30 backdrop-blur-xl sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-400 sm:text-sm">
+                    Tonight
+                  </p>
+                  <h3 className="mt-1 truncate text-xl font-black sm:text-2xl">GoCinema Hall</h3>
+                </div>
+                <div className="shrink-0 rounded-xl bg-red-600 p-2.5 sm:p-3">
+                  <Clapperboard className="h-5 w-5 sm:h-6 sm:w-6" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm text-neutral-300 sm:gap-3">
+                <div className="flex items-center gap-2 rounded-xl bg-black/30 p-2.5 sm:rounded-2xl sm:p-3">
+                  <Clock className="h-4 w-4 shrink-0 text-red-400" />
+                  <span className="truncate">Այսօր · 20:30</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl bg-black/30 p-2.5 sm:rounded-2xl sm:p-3">
+                  <MapPin className="h-4 w-4 shrink-0 text-red-400" />
+                  <span className="truncate">Main Hall</span>
+                </div>
+              </div>
+              <Link
+                href={SITE_URL.SCHEDULE}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-neutral-950 transition hover:bg-red-50 sm:mt-4 sm:rounded-2xl sm:px-5 sm:text-base"
+              >
+                <Ticket className="h-5 w-5" />
+                Ամրագրել տեղ
+              </Link>
+            </div>
+          </motion.div>
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, x: 40, rotate: 2 }}
+          animate={{ opacity: 1, x: 0, rotate: 0 }}
+          transition={{ duration: 0.85, delay: 0.35, ease: 'easeOut' }}
+          className="relative hidden lg:block"
+        >
+          <div className="absolute -left-10 top-10 h-80 w-56 rotate-[-10deg] rounded-[2rem] border border-white/10 bg-gradient-to-b from-neutral-800 to-neutral-950 p-4 opacity-80 shadow-2xl">
+            <div className="h-full rounded-[1.4rem] bg-[radial-gradient(circle_at_50%_20%,rgba(239,68,68,0.55),transparent_35%),linear-gradient(160deg,#1f1f1f,#050505)]" />
+          </div>
+          <div className="absolute -right-6 top-24 h-80 w-56 rotate-[9deg] rounded-[2rem] border border-white/10 bg-gradient-to-b from-neutral-800 to-neutral-950 p-4 opacity-80 shadow-2xl">
+            <div className="h-full rounded-[1.4rem] bg-[radial-gradient(circle_at_50%_20%,rgba(234,179,8,0.45),transparent_35%),linear-gradient(160deg,#1f1f1f,#050505)]" />
+          </div>
+
+          <div className="relative mx-auto max-w-md overflow-hidden rounded-[2.3rem] border border-white/15 bg-neutral-950/85 p-6 shadow-2xl shadow-red-950/40 backdrop-blur-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.25em] text-red-400">
+                  Tonight
+                </p>
+                <h3 className="mt-1 text-3xl font-black">GoCinema Hall</h3>
+              </div>
+              <div className="rounded-2xl bg-red-600 p-3">
+                <Clapperboard className="h-6 w-6" />
+              </div>
+            </div>
+
+            <div className="mb-5 overflow-hidden rounded-3xl bg-neutral-900">
+              <Image
+                src="/images/hero-background.png"
+                alt="Cinema hall"
+                width={520}
+                height={320}
+                className="h-56 w-full object-cover opacity-80"
+              />
+            </div>
+
+            <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-yellow-400">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Star key={index} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <span className="rounded-full bg-green-500/15 px-3 py-1 text-sm font-bold text-green-300">
+                  Տեղեր կան
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm text-neutral-300">
+                <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">
+                  <Clock className="h-4 w-4 text-red-400" />
+                  Այսօր · 20:30
+                </div>
+                <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">
+                  <MapPin className="h-4 w-4 text-red-400" />
+                  Main Hall
+                </div>
+              </div>
+
+              <Link
+                href={SITE_URL.SCHEDULE}
+                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 font-black text-neutral-950 transition hover:bg-red-50"
+              >
+                <Ticket className="h-5 w-5" />
+                Ամրագրել տեղ
+              </Link>
+            </div>
+          </div>
+        </motion.div>
       </div>
 
-      {/* Scroll indicator */}
-      <motion.div
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.3 }}
-      >
-        <motion.div
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          className="w-5 h-9 border border-white/40 rounded-full flex justify-center pt-1.5"
-        >
-          <div className="w-1 h-2.5 bg-white/60 rounded-full" />
-        </motion.div>
-        <span className="text-white/40 text-xs tracking-widest uppercase">
-          Scroll
-        </span>
-      </motion.div>
-
-      <style jsx>{`
-        .hero-title-gradient {
-          background: linear-gradient(
-            135deg,
-            #c084fc 0%,
-            #f472b6 50%,
-            #a855f7 100%
-          );
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-      `}</style>
+      <div className="relative z-20 border-y border-white/10 bg-red-950/20 backdrop-blur">
+        <div className="container mx-auto overflow-x-auto px-4 py-3 sm:py-4">
+          <div className="flex min-w-max items-center justify-center gap-x-6 gap-y-2 text-[10px] font-bold uppercase tracking-[0.12em] text-neutral-400 sm:flex-wrap sm:gap-x-10 sm:text-sm sm:tracking-[0.16em]">
+            {['Premiere', 'Dolby', 'Online Ticket', 'Cinema Bar', 'QR Pass'].map(
+              (text) => (
+                <span key={text} className="flex shrink-0 items-center gap-2 sm:gap-3">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  {text}
+                </span>
+              )
+            )}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

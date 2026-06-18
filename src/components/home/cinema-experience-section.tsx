@@ -24,7 +24,7 @@ const highlights = [
   {
     icon: Armchair,
     title: 'Հարմարավետ նստատեղեր',
-    text: '80 տեղանոց դահլիճ՝ ճիշտ տեսանելիությամբ և հանգիստ նստատեղերով։',
+    text: '42 տեղանոց դահլիճ՝ ճիշտ տեսանելիությամբ և հանգիստ նստատեղերով։',
   },
   {
     icon: Popcorn,
@@ -47,18 +47,12 @@ export default function CinemaExperienceSection() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 backdrop-blur">
-              <WandSparkles className="h-4 w-4 text-yellow-300" />
-              Կինոթատրոնային փորձ
-            </div>
-
             <h2 className="mb-4 max-w-3xl text-3xl font-black leading-tight tracking-tight sm:mb-5 sm:text-4xl md:text-6xl">
               Ամեն ֆիլմ՝ ինչպես պրեմիերա
             </h2>
             <p className="mb-6 max-w-2xl text-base leading-relaxed text-gray-300 sm:mb-8 sm:text-lg">
               GoCinema-ում ֆիլմը պարզապես դիտում չեն։ Դա մթնոլորտ է՝ ճիշտ
-              ձայնով, մեծ էկրանով, հարմարավետ դահլիճով և արագ առցանց
-              ամրագրմամբ։
+              ձայնով, մեծ էկրանով, հարմարավետ դահլիճով և արագ առցանց ամրագրմամբ։
             </p>
 
             <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
@@ -91,8 +85,12 @@ export default function CinemaExperienceSection() {
             <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-2xl shadow-red-950/30 backdrop-blur-xl sm:rounded-[2rem] sm:p-6">
               <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-400 sm:text-sm">Այսօրվա փորձը</p>
-                  <h3 className="text-xl font-black sm:text-2xl">Premium Hall</h3>
+                  <p className="text-xs text-gray-400 sm:text-sm">
+                    Այսօրվա փորձը
+                  </p>
+                  <h3 className="text-xl font-black sm:text-2xl">
+                    Premium Hall
+                  </h3>
                 </div>
                 <div className="rounded-full bg-green-400/15 px-3 py-1 text-sm font-bold text-green-300">
                   Բաց է

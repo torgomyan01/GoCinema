@@ -10,6 +10,31 @@
     system-ui, sans-serif;
   --color-green: #1e4a2f;
   --color-cream: #f2e9dc;
+
+  /* Global remap: purple/pink palette -> red family with proper shade contrast */
+  --color-purple-50: #fef2f2;
+  --color-purple-100: #fee2e2;
+  --color-purple-200: #fecaca;
+  --color-purple-300: #fca5a5;
+  --color-purple-400: #f87171;
+  --color-purple-500: #ef4444;
+  --color-purple-600: #dc2626;
+  --color-purple-700: #b91c1c;
+  --color-purple-800: #991b1b;
+  --color-purple-900: #7f1d1d;
+  --color-purple-950: #450a0a;
+
+  --color-pink-50: #fff1f2;
+  --color-pink-100: #ffe4e6;
+  --color-pink-200: #fecdd3;
+  --color-pink-300: #fda4af;
+  --color-pink-400: #fb7185;
+  --color-pink-500: #f43f5e;
+  --color-pink-600: #e11d48;
+  --color-pink-700: #be123c;
+  --color-pink-800: #9f1239;
+  --color-pink-900: #881337;
+  --color-pink-950: #4c0519;
 }
 
 @utility flex-jsb-c {

@@ -15,7 +15,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
 
-const fadeUp = (delay = 0): {
+const fadeUp = (
+  delay = 0
+): {
   initial: { opacity: number; y: number };
   animate: { opacity: number; y: number };
   transition: Transition;
@@ -50,10 +52,8 @@ export default function HeroSection() {
 
       <div className="relative z-20 container mx-auto grid min-h-[100svh] items-center gap-8 px-4 pb-10 pt-24 sm:gap-10 sm:pb-14 sm:pt-28 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 lg:pb-16 lg:pt-32">
         <div>
-          
-
           <motion.h1
-            className="mb-4 max-w-4xl text-[2.35rem] font-black leading-[0.92] tracking-[-0.04em] sm:mb-6 sm:text-5xl sm:leading-[0.9] sm:tracking-[-0.05em] md:text-6xl lg:text-8xl xl:text-9xl"
+            className="mb-4 max-w-4xl text-[2.35rem] font-black leading-[0.92] tracking-[-0.04em] sm:mb-6 sm:text-5xl sm:leading-[0.9] sm:tracking-[-0.05em] md:text-6xl lg:text-8xl xl:text-[80px]"
             initial={{ opacity: 0, y: -18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.18, ease: 'easeOut' }}
@@ -117,9 +117,11 @@ export default function HeroSection() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-400 sm:text-sm">
-                    Tonight
+                    Այսօր
                   </p>
-                  <h3 className="mt-1 truncate text-xl font-black sm:text-2xl">GoCinema Hall</h3>
+                  <h3 className="mt-1 truncate text-xl font-black sm:text-2xl">
+                    GoCinema Hall
+                  </h3>
                 </div>
                 <div className="shrink-0 rounded-xl bg-red-600 p-2.5 sm:p-3">
                   <Clapperboard className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -163,7 +165,7 @@ export default function HeroSection() {
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.25em] text-red-400">
-                  Tonight
+                  Այսօր
                 </p>
                 <h3 className="mt-1 text-3xl font-black">GoCinema Hall</h3>
               </div>
@@ -201,7 +203,7 @@ export default function HeroSection() {
                 </div>
                 <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">
                   <MapPin className="h-4 w-4 text-red-400" />
-                  Main Hall
+                  99 Սուերմարկետ 2 հարկ
                 </div>
               </div>
 
@@ -220,14 +222,21 @@ export default function HeroSection() {
       <div className="relative z-20 border-y border-white/10 bg-red-950/20 backdrop-blur">
         <div className="container mx-auto overflow-x-auto px-4 py-3 sm:py-4">
           <div className="flex min-w-max items-center justify-center gap-x-6 gap-y-2 text-[10px] font-bold uppercase tracking-[0.12em] text-neutral-400 sm:flex-wrap sm:gap-x-10 sm:text-sm sm:tracking-[0.16em]">
-            {['Premiere', 'Dolby', 'Online Ticket', 'Cinema Bar', 'QR Pass'].map(
-              (text) => (
-                <span key={text} className="flex shrink-0 items-center gap-2 sm:gap-3">
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                  {text}
-                </span>
-              )
-            )}
+            {[
+              'Premiere',
+              'Dolby',
+              'Online Ticket',
+              'Cinema Bar',
+              'QR Pass',
+            ].map((text) => (
+              <span
+                key={text}
+                className="flex shrink-0 items-center gap-2 sm:gap-3"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                {text}
+              </span>
+            ))}
           </div>
         </div>
       </div>

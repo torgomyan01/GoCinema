@@ -10,6 +10,7 @@ import {
   Settings,
   HelpCircle,
   Mail,
+  Headphones,
   Sparkles,
   QrCode,
   LucideIcon,
@@ -101,6 +102,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/contacts',
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
+  },
+  {
+    title: 'Աջակցություն',
+    icon: Headphones,
+    href: '/admin/support',
+    color: 'text-red-600',
+    bgColor: 'bg-red-50',
   },
   {
     title: 'Վիճակագրություն',

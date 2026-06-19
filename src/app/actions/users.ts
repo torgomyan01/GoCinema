@@ -3,13 +3,14 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import bcrypt from 'bcryptjs';
+import { parseRoles, serializeRoles } from '@/lib/roles';
 
 export interface UpdateUserData {
   id: number;
   name?: string | null;
   email?: string | null;
   phone?: string | null;
-  role?: 'user' | 'admin';
+  role?: string;
   phoneVerified?: boolean;
   emailVerified?: boolean;
 }
@@ -105,14 +106,14 @@ export async function updateUser(data: UpdateUserData) {
       name?: string | null;
       email?: string;
       phone?: string;
-      role?: 'user' | 'admin';
+      role?: string;
       phoneVerified?: boolean;
       emailVerified?: boolean;
     } = {};
     if (name !== undefined) updateData.name = name;
     if (email !== undefined && email !== null) updateData.email = email;
     if (phone !== undefined && phone !== null) updateData.phone = phone;
-    if (role !== undefined) updateData.role = role;
+    if (role !== undefined) updateData.role = serializeRoles(parseRoles(role));
     if (phoneVerified !== undefined) updateData.phoneVerified = phoneVerified;
     if (emailVerified !== undefined) updateData.emailVerified = emailVerified;
 

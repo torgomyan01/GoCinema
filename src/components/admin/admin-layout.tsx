@@ -16,6 +16,7 @@ import { signOut } from 'next-auth/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { SITE_URL } from '@/utils/consts';
 import { adminMenuItems } from '@/config/admin-menu';
+import { isAdminRole } from '@/lib/roles';
 
 interface AdminLayoutProps {
   user: {
@@ -57,7 +58,9 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
     return phone;
   };
 
-  const menuItems = adminMenuItems;
+  const menuItems = isAdminRole(user.role)
+    ? adminMenuItems
+    : adminMenuItems.filter((item) => item.href === '/admin/support');
 
   return (
     <div className="min-h-screen bg-gray-50 flex">

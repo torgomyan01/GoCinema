@@ -17,7 +17,7 @@ model User {
   name             String?   @db.VarChar(255)
   phone            String    @unique @db.VarChar(50)
   password         String    @db.VarChar(255)
-  role             String    @default("user") @db.VarChar(50) // user, admin
+  role             String    @default("user") @db.VarChar(50) // user, admin, moderator, employee (comma-separated roles supported in app code)
   emailVerified    Boolean   @default(false)
   phoneVerified    Boolean   @default(false)
   avatar           String?   @db.VarChar(500)
@@ -31,6 +31,7 @@ model User {
   orders            Order[]
   contacts          Contact[]
   passwordResetTokens PasswordResetToken[]
+  supportRequests   SupportRequest[]
 
   @@index([email])
   @@index([phone])
@@ -313,6 +314,64 @@ model Contact {
   @@index([userId])
   @@index([createdAt])
   @@map("contacts")
+}
+
+// ============================================
+// Support Requests
+// ============================================
+
+model SupportRequest {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  phone       String    @db.VarChar(50)
+  email       String?   @db.VarChar(255)
+  subject     String    @db.VarChar(255)
+  message     String    @db.Text
+  status      String    @default("new") @db.VarChar(50) // new, in_progress, resolved, archived
+  adminNote   String?   @db.Text
+  userId      Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  attachments SupportAttachment[]
+  messages    SupportMessage[]
+
+  @@index([status])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("support_requests")
+}
+
+model SupportMessage {
+  id          Int      @id @default(autoincrement())
+  requestId   Int
+  senderType  String   @db.VarChar(30) // customer, staff
+  senderName  String   @db.VarChar(255)
+  message     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  request     SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([senderType])
+  @@index([createdAt])
+  @@map("support_messages")
+}
+
+model SupportAttachment {
+  id          Int      @id @default(autoincrement())
+  requestId   Int
+  fileName    String   @db.VarChar(255)
+  fileUrl     String   @db.VarChar(500)
+  mimeType    String   @db.VarChar(120)
+  size        Int
+  createdAt   DateTime @default(now())
+
+  request     SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("support_attachments")
 }
 
 // ============================================

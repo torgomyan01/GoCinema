@@ -28,6 +28,19 @@ import {
   changeUserPassword,
   deleteUser,
 } from '@/app/actions/users';
+import {
+  ALL_ROLES,
+  ROLE_LABELS,
+  parseRoles,
+  serializeRoles,
+} from '@/lib/roles';
+
+const roleBadgeStyles: Record<string, string> = {
+  user: 'bg-gray-100 text-gray-800',
+  admin: 'bg-purple-100 text-purple-800',
+  moderator: 'bg-blue-100 text-blue-800',
+  employee: 'bg-emerald-100 text-emerald-800',
+};
 
 interface AdminUsersClientProps {
   user: {
@@ -72,7 +85,7 @@ export default function AdminUsersClient({
     name: '',
     email: '',
     phone: '',
-    role: 'user' as 'user' | 'admin',
+    roles: ['user'] as string[],
     phoneVerified: false,
     emailVerified: false,
   });
@@ -113,7 +126,7 @@ export default function AdminUsersClient({
 
     // Filter by role
     if (roleFilter !== 'all') {
-      filtered = filtered.filter((u) => u.role === roleFilter);
+      filtered = filtered.filter((u) => parseRoles(u.role).includes(roleFilter));
     }
 
     // Filter by search query
@@ -139,7 +152,7 @@ export default function AdminUsersClient({
           name: result.user.name || '',
           email: result.user.email || '',
           phone: result.user.phone || '',
-          role: result.user.role as 'user' | 'admin',
+          roles: parseRoles(result.user.role),
           phoneVerified: result.user.phoneVerified,
           emailVerified: result.user.emailVerified,
         });
@@ -159,7 +172,7 @@ export default function AdminUsersClient({
       name: '',
       email: '',
       phone: '',
-      role: 'user',
+      roles: ['user'],
       phoneVerified: false,
       emailVerified: false,
     });
@@ -182,7 +195,7 @@ export default function AdminUsersClient({
         name: formData.name.trim() || null,
         email: formData.email.trim() || null,
         phone: formData.phone.trim() || null,
-        role: formData.role,
+        role: serializeRoles(formData.roles),
         phoneVerified: formData.phoneVerified,
         emailVerified: formData.emailVerified,
       });
@@ -315,8 +328,11 @@ export default function AdminUsersClient({
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           >
             <option value="all">Բոլորը</option>
-            <option value="user">Օգտատեր</option>
-            <option value="admin">Ադմինիստրատոր</option>
+            {ALL_ROLES.map((role) => (
+              <option key={role} value={role}>
+                {ROLE_LABELS[role]}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -401,16 +417,19 @@ export default function AdminUsersClient({
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${
-                          u.role === 'admin'
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        <Shield className="w-3 h-3" />
-                        {u.role === 'admin' ? 'Ադմինիստրատոր' : 'Օգտատեր'}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {parseRoles(u.role).map((role) => (
+                          <span
+                            key={role}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                              roleBadgeStyles[role] || 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            <Shield className="w-3 h-3" />
+                            {ROLE_LABELS[role] || role}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-600">
@@ -581,24 +600,54 @@ export default function AdminUsersClient({
                     </div>
                   </div>
 
-                  {/* Role */}
+                  {/* Roles */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Դեր
+                      Դերեր (կարող եք ընտրել մի քանիսը)
                     </label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          role: e.target.value as 'user' | 'admin',
-                        })
-                      }
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    >
-                      <option value="user">Օգտատեր</option>
-                      <option value="admin">Ադմինիստրատոր</option>
-                    </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {ALL_ROLES.map((role) => {
+                        const checked = formData.roles.includes(role);
+                        return (
+                          <label
+                            key={role}
+                            className={`flex items-center gap-2 px-3 py-2.5 border rounded-lg cursor-pointer transition-colors ${
+                              checked
+                                ? 'border-purple-500 bg-purple-50'
+                                : 'border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setFormData((prev) => {
+                                  const next = e.target.checked
+                                    ? [...prev.roles, role]
+                                    : prev.roles.filter((r) => r !== role);
+                                  return {
+                                    ...prev,
+                                    roles: next.length ? next : ['user'],
+                                  };
+                                });
+                              }}
+                              className="w-4 h-4 text-purple-600 border-gray-300 rounded"
+                            />
+                            <Shield
+                              className={`w-4 h-4 ${
+                                checked ? 'text-purple-600' : 'text-gray-400'
+                              }`}
+                            />
+                            <span className="text-sm text-gray-800">
+                              {ROLE_LABELS[role]}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Եթե ոչ մի դեր ընտրված չէ, ավտոմատ կնշանակվի «Օգտատեր»։
+                    </p>
                   </div>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { isStaffRole } from '@/lib/roles';
 
 export default async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -32,7 +33,7 @@ export default async function middleware(request: NextRequest) {
         cookieName: cookieName,
       });
 
-      if (token && (token as any)?.role === 'admin') {
+      if (token && isStaffRole((token as any)?.role)) {
         return NextResponse.next();
       }
 

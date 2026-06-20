@@ -10,6 +10,7 @@ export interface CreateMovieData {
   image?: string | null;
   duration: number;
   rating: number;
+  ageRating?: string | null;
   genre: string;
   releaseDate: Date | string;
   description?: string | null;
@@ -180,6 +181,7 @@ export async function createMovie(data: CreateMovieData) {
         image: data.image || null,
         duration: data.duration,
         rating: data.rating,
+        ageRating: data.ageRating || null,
         genre: data.genre,
         releaseDate: new Date(data.releaseDate),
         description: data.description || null,

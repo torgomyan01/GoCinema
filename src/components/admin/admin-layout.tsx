@@ -58,9 +58,14 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
     return phone;
   };
 
+  const STAFF_ALLOWED_HREFS = [
+    '/admin/support',
+    '/admin/box-office',
+    '/admin/fiscal',
+  ];
   const menuItems = isAdminRole(user.role)
     ? adminMenuItems
-    : adminMenuItems.filter((item) => item.href === '/admin/support');
+    : adminMenuItems.filter((item) => STAFF_ALLOWED_HREFS.includes(item.href));
 
   return (
     <div className="min-h-screen bg-gray-50 flex">

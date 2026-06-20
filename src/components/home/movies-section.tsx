@@ -121,7 +121,7 @@ export default function MoviesSection() {
             }}
             navigation
             autoplay={{ delay: 3500, disableOnInteraction: false }}
-            className="movies-swiper !pb-2 -mx-1 px-1"
+            className="movies-swiper !pb-2 -mx-1 px-1! pt-2!"
           >
             {movies.map((movie, index) => (
               <SwiperSlide key={movie.id} className="!h-auto pb-4">

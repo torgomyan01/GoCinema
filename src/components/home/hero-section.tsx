@@ -6,6 +6,7 @@ import {
   Calendar,
   Clapperboard,
   Clock,
+  Film,
   MapPin,
   Play,
   Star,
@@ -14,6 +15,51 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
+import { ageRatingClasses } from '@/lib/age-rating';
+
+export interface HeroUpcomingMovie {
+  id: number;
+  title: string;
+  image: string | null;
+  slug: string | null;
+  ageRating: string | null;
+  nextStart: Date | string;
+}
+
+interface HeroSectionProps {
+  upcomingMovies?: HeroUpcomingMovie[];
+}
+
+const AM_MONTHS_SHORT = [
+  'հնվ',
+  'փտվ',
+  'մրտ',
+  'ապր',
+  'մյս',
+  'հնս',
+  'հլս',
+  'օգս',
+  'սեպ',
+  'հոկ',
+  'նոյ',
+  'դեկ',
+];
+
+function pad2(n: number) {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function formatShowtime(value: Date | string) {
+  const d = new Date(value);
+  const today = new Date();
+  const isToday =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  if (isToday) return `Այսօր · ${time}`;
+  return `${pad2(d.getDate())} ${AM_MONTHS_SHORT[d.getMonth()]} · ${time}`;
+}
 
 const fadeUp = (
   delay = 0
@@ -33,7 +79,9 @@ const TRUST_ITEMS = [
   { value: 'QR', label: 'Անցումային տոմս' },
 ];
 
-export default function HeroSection() {
+export default function HeroSection({
+  upcomingMovies = [],
+}: HeroSectionProps) {
   return (
     <section className="relative min-h-[100svh] overflow-hidden bg-[#050505] text-white">
       <div className="absolute inset-0 z-0">
@@ -117,32 +165,73 @@ export default function HeroSection() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-400 sm:text-sm">
-                    Այսօր
+                    Ցուցադրության ենթակա
                   </p>
                   <h3 className="mt-1 truncate text-xl font-black sm:text-2xl">
-                    GoCinema Hall
+                    Ֆիլմեր
                   </h3>
                 </div>
                 <div className="shrink-0 rounded-xl bg-red-600 p-2.5 sm:p-3">
                   <Clapperboard className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-sm text-neutral-300 sm:gap-3">
-                <div className="flex items-center gap-2 rounded-xl bg-black/30 p-2.5 sm:rounded-2xl sm:p-3">
-                  <Clock className="h-4 w-4 shrink-0 text-red-400" />
-                  <span className="truncate">Այսօր · 20:30</span>
+
+              {upcomingMovies.length > 0 ? (
+                <div className="space-y-2">
+                  {upcomingMovies.map((movie) => (
+                    <Link
+                      key={movie.id}
+                      href={SITE_URL.MOVIE_DETAIL(movie.slug || movie.id)}
+                      className="flex items-center gap-3 rounded-xl bg-black/30 p-2 transition hover:bg-black/50"
+                    >
+                      <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded-md bg-neutral-800">
+                        {movie.image ? (
+                          <Image
+                            src={movie.image}
+                            alt={movie.title}
+                            fill
+                            className="object-cover"
+                            sizes="40px"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <Film className="h-5 w-5 text-neutral-500" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-white">
+                          {movie.title}
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-neutral-400">
+                          <Clock className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                          {formatShowtime(movie.nextStart)}
+                        </p>
+                      </div>
+                      {movie.ageRating && (
+                        <span
+                          className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${ageRatingClasses(
+                            movie.ageRating
+                          )}`}
+                        >
+                          {movie.ageRating}
+                        </span>
+                      )}
+                    </Link>
+                  ))}
                 </div>
-                <div className="flex items-center gap-2 rounded-xl bg-black/30 p-2.5 sm:rounded-2xl sm:p-3">
-                  <MapPin className="h-4 w-4 shrink-0 text-red-400" />
-                  <span className="truncate">Main Hall</span>
-                </div>
-              </div>
+              ) : (
+                <p className="rounded-xl bg-black/30 p-3 text-sm text-neutral-400">
+                  Մոտակա ցուցադրություններ չկան
+                </p>
+              )}
+
               <Link
                 href={SITE_URL.SCHEDULE}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-neutral-950 transition hover:bg-red-50 sm:mt-4 sm:rounded-2xl sm:px-5 sm:text-base"
               >
                 <Ticket className="h-5 w-5" />
-                Ամրագրել տեղ
+                Բոլոր սեանսները
               </Link>
             </div>
           </motion.div>

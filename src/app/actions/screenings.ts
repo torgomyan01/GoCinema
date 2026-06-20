@@ -407,6 +407,61 @@ export async function deleteScreening(id: number) {
   }
 }
 
+/** Առաջիկա ցուցադրության ենթակա ֆիլմերը՝ ամենամոտ սեանսի ժամով (հերոյի համար) */
+export async function getUpcomingScreeningMovies(limit = 5) {
+  try {
+    const now = new Date();
+    const screenings = await prisma.screening.findMany({
+      where: { startTime: { gte: now } },
+      include: {
+        movie: {
+          select: {
+            id: true,
+            title: true,
+            image: true,
+            slug: true,
+            ageRating: true,
+          },
+        },
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    const seen = new Set<number>();
+    const movies: Array<{
+      id: number;
+      title: string;
+      image: string | null;
+      slug: string | null;
+      ageRating: string | null;
+      nextStart: Date;
+    }> = [];
+
+    for (const s of screenings) {
+      if (seen.has(s.movieId)) continue;
+      seen.add(s.movieId);
+      movies.push({
+        id: s.movie.id,
+        title: s.movie.title,
+        image: s.movie.image,
+        slug: s.movie.slug,
+        ageRating: s.movie.ageRating,
+        nextStart: s.startTime,
+      });
+      if (movies.length >= limit) break;
+    }
+
+    return { success: true, movies };
+  } catch (error: any) {
+    console.error('[Get Upcoming Screening Movies] Error:', error);
+    return {
+      success: false,
+      error: 'Ֆիլմերը բեռնելիս սխալ է տեղի ունեցել',
+      movies: [],
+    };
+  }
+}
+
 export async function getMovies() {
   try {
     const movies = await prisma.movie.findMany({

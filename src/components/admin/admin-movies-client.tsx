@@ -27,6 +27,7 @@ import {
   updateMovie,
   deleteMovie,
 } from '@/app/actions/movies';
+import { AGE_RATING_OPTIONS, ageRatingClasses } from '@/lib/age-rating';
 
 interface AdminMoviesClientProps {
   user: {
@@ -45,6 +46,7 @@ interface Movie {
   image?: string | null;
   duration: number;
   rating: number;
+  ageRating?: string | null;
   genre: string;
   releaseDate: Date | string;
   description?: string | null;
@@ -88,6 +90,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
     image: '',
     duration: '',
     rating: '',
+    ageRating: '',
     genre: '',
     releaseDate: '',
     description: '',
@@ -126,6 +129,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       image: '',
       duration: '',
       rating: '',
+      ageRating: '',
       genre: '',
       releaseDate: '',
       description: '',
@@ -142,6 +146,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       image: movie.image || '',
       duration: movie.duration.toString(),
       rating: movie.rating.toString(),
+      ageRating: movie.ageRating || '',
       genre: movie.genre,
       releaseDate: new Date(movie.releaseDate).toISOString().split('T')[0],
       description: movie.description || '',
@@ -178,6 +183,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           image: formData.image || null,
           duration: parseInt(formData.duration),
           rating: parseFloat(formData.rating),
+          ageRating: formData.ageRating || null,
           genre: formData.genre,
           releaseDate: new Date(formData.releaseDate),
           description: formData.description || null,
@@ -199,6 +205,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           image: formData.image || null,
           duration: parseInt(formData.duration),
           rating: parseFloat(formData.rating),
+          ageRating: formData.ageRating || null,
           genre: formData.genre,
           releaseDate: new Date(formData.releaseDate),
           description: formData.description || null,
@@ -230,6 +237,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
         image: '',
         duration: '',
         rating: '',
+        ageRating: '',
         genre: '',
         releaseDate: '',
         description: '',
@@ -359,10 +367,19 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                         <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                         <span>{movie.rating}/10</span>
                       </div>
-                      <div className="text-sm">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">
                           {movie.genre}
                         </span>
+                        {movie.ageRating && (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-bold ${ageRatingClasses(
+                              movie.ageRating
+                            )}`}
+                          >
+                            {movie.ageRating}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -506,6 +523,59 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Տարիքային սահմանափակում
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData({ ...formData, ageRating: '' })
+                        }
+                        className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                          formData.ageRating === ''
+                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                            : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        Նշված չէ
+                      </button>
+                      {AGE_RATING_OPTIONS.map((option) => {
+                        const active = formData.ageRating === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                ageRating: option.value,
+                              })
+                            }
+                            title={option.description}
+                            className={`px-3 py-2 rounded-lg text-sm font-bold border transition-all ${
+                              active
+                                ? `${ageRatingClasses(option.value)} border-transparent ring-2 ring-offset-1 ring-purple-300`
+                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {formData.ageRating && (
+                      <p className="mt-1.5 text-xs text-gray-500">
+                        {
+                          AGE_RATING_OPTIONS.find(
+                            (o) => o.value === formData.ageRating
+                          )?.description
+                        }
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

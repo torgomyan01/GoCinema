@@ -18,6 +18,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SITE_URL } from '@/utils/consts';
+import { ageRatingClasses, ageRatingDescription } from '@/lib/age-rating';
 
 interface MovieDetailPageClientProps {
   movie: {
@@ -29,6 +30,7 @@ interface MovieDetailPageClientProps {
     description?: string | null;
     genre?: string | null;
     rating?: number | null;
+    ageRating?: string | null;
     releaseDate: Date | string;
     trailerUrl?: string | null;
     screenings?: Array<{
@@ -215,6 +217,16 @@ export default function MovieDetailPageClient({
                   <Film className="w-5 h-5" />
                   <span>{movie.genre}</span>
                 </div>
+              )}
+              {movie.ageRating && (
+                <span
+                  className={`px-3 py-1 rounded-full text-sm font-bold ${ageRatingClasses(
+                    movie.ageRating
+                  )}`}
+                  title={ageRatingDescription(movie.ageRating)}
+                >
+                  {movie.ageRating}
+                </span>
               )}
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5" />
@@ -583,6 +595,26 @@ export default function MovieDetailPageClient({
                     <div className="text-sm text-gray-500 mb-1">Ժանր</div>
                     <div className="text-lg font-semibold text-gray-900">
                       {movie.genre}
+                    </div>
+                  </div>
+                )}
+
+                {movie.ageRating && (
+                  <div>
+                    <div className="text-sm text-gray-500 mb-1">
+                      Տարիքային սահմանափակում
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-bold ${ageRatingClasses(
+                          movie.ageRating
+                        )}`}
+                      >
+                        {movie.ageRating}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        {ageRatingDescription(movie.ageRating)}
+                      </span>
                     </div>
                   </div>
                 )}

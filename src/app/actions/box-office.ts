@@ -196,13 +196,49 @@ export async function getBoxOfficeTicketBySeat(
   }
 }
 
+/** Դրամարկղում առկա ապրանքները (snacks, drinks, combos) */
+export async function getBoxOfficeProducts() {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է', products: [] };
+  }
+
+  try {
+    const products = await prisma.product.findMany({
+      where: { isActive: true },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        category: true,
+        image: true,
+      },
+    });
+    return { success: true, products };
+  } catch (error) {
+    console.error('[Box Office Products] Error:', error);
+    return {
+      success: false,
+      error: 'Ապրանքները բեռնելիս սխալ է տեղի ունեցել',
+      products: [],
+    };
+  }
+}
+
+export interface BoxOfficeProductSelection {
+  productId: number;
+  quantity: number;
+}
+
 export interface CreateBoxOfficeTicketData {
   screeningId: number;
   seatId: number;
   price: number;
+  products?: BoxOfficeProductSelection[];
 }
 
-/** Կանխիկ վաճառք դրամարկղից՝ ստեղծում է վճարված տոմս + Payment + QR */
+/** Կանխիկ վաճառք դրամարկղից՝ ստեղծում է վճարված տոմս + ապրանքներ + Payment + QR */
 export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
   const staff = await requireStaff();
   if (!staff) {
@@ -230,6 +266,29 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
       return { success: false, error: 'Այս նստատեղն արդեն զբաղված է' };
     }
 
+    // Ապրանքների վալիդացիա՝ գները միշտ բազայից (չվստահել client-ին)
+    const selections = (data.products ?? []).filter(
+      (p) => p && p.productId > 0 && Number(p.quantity) > 0
+    );
+
+    let productsTotal = 0;
+    let dbProducts: { id: number; price: number }[] = [];
+
+    if (selections.length > 0) {
+      dbProducts = await prisma.product.findMany({
+        where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
+        select: { id: true, price: true },
+      });
+      for (const sel of selections) {
+        const product = dbProducts.find((p) => p.id === sel.productId);
+        if (!product) {
+          return { success: false, error: 'Ընտրված ապրանքը հասանելի չէ' };
+        }
+        productsTotal += product.price * Math.floor(Number(sel.quantity));
+      }
+    }
+
+    const grandTotal = price + productsTotal;
     const walkInUserId = await getOrCreateWalkInUser();
 
     const ticket = await prisma.$transaction(async (tx) => {
@@ -249,11 +308,40 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
         data: { qrCode },
       });
 
+      // Ապրանքների դեպքում՝ ստեղծել Order + OrderItem-ներ, կապել տոմսին
+      if (selections.length > 0) {
+        const order = await tx.order.create({
+          data: {
+            userId: walkInUserId,
+            totalAmount: grandTotal,
+            status: 'completed',
+          },
+        });
+
+        await tx.orderItem.createMany({
+          data: selections.map((sel) => {
+            const product = dbProducts.find((p) => p.id === sel.productId)!;
+            return {
+              orderId: order.id,
+              ticketId: created.id,
+              productId: sel.productId,
+              quantity: Math.floor(Number(sel.quantity)),
+              price: product.price,
+            };
+          }),
+        });
+
+        await tx.ticket.update({
+          where: { id: created.id },
+          data: { orderId: order.id },
+        });
+      }
+
       await tx.payment.create({
         data: {
           userId: walkInUserId,
           ticketId: created.id,
-          amount: price,
+          amount: grandTotal,
           method: 'cash',
           status: 'completed',
           transactionId: `BOXOFFICE-${created.id}`,
@@ -265,6 +353,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
         include: {
           screening: { include: { movie: true, hall: true } },
           seat: true,
+          order: { include: { orderItems: { include: { product: true } } } },
         },
       });
     });
@@ -272,7 +361,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
     revalidatePath('/admin/box-office');
     revalidatePath('/admin/tickets');
 
-    return { success: true, ticket };
+    return { success: true, ticket, total: grandTotal };
   } catch (error) {
     console.error('[Create Box Office Ticket] Error:', error);
     return {

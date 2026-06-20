@@ -3,6 +3,12 @@
 import { useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
+interface PrintProductItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
 interface PrintTicket {
   id: number;
   price: number;
@@ -13,6 +19,8 @@ interface PrintTicket {
     movie: { title: string };
     hall: { name: string };
   };
+  items?: PrintProductItem[];
+  total?: number;
 }
 
 const CINEMA_NAME = 'GoCinema';
@@ -159,6 +167,51 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
             </div>
           </div>
         </div>
+
+        {ticket.items && ticket.items.length > 0 && (
+          <div
+            style={{
+              textAlign: 'left',
+              fontSize: '9pt',
+              marginBottom: '3mm',
+              paddingBottom: '2mm',
+              borderBottom: '1px dashed #000',
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: '1.5mm' }}>Ապրանքներ</div>
+            {ticket.items.map((item, index) => (
+              <div
+                key={index}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '0.5mm',
+                }}
+              >
+                <span>
+                  {item.name} × {item.quantity}
+                </span>
+                <span style={{ fontWeight: 700 }}>
+                  {(item.price * item.quantity).toLocaleString()} ֏
+                </span>
+              </div>
+            ))}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginTop: '1.5mm',
+                fontWeight: 800,
+                fontSize: '11pt',
+              }}
+            >
+              <span>Ընդհանուր</span>
+              <span>
+                {(ticket.total ?? ticket.price).toLocaleString()} ֏
+              </span>
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'center', margin: '2mm 0' }}>
           <QRCodeSVG value={ticket.qrCode} size={130} level="M" />

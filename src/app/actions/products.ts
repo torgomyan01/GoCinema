@@ -202,10 +202,15 @@ export async function deleteProduct(id: number) {
 
     revalidatePath('/admin/products');
     revalidatePath('/checkout');
+    revalidatePath('/admin/box-office');
 
     return {
       success: true,
-      message: 'Արտադրանքը հաջողությամբ ջնջվեց',
+      softDeleted: product.orderItems.length > 0,
+      message:
+        product.orderItems.length > 0
+          ? 'Ապրանքը ապաակտիվացվեց (կան պատվերներ, ամբողջությամբ ջնջել հնարավոր չէ)'
+          : 'Արտադրանքը հաջողությամբ ջնջվեց',
     };
   } catch (error: any) {
     console.error('[Delete Product] Error:', error);

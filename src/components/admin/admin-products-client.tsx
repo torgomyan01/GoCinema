@@ -48,7 +48,15 @@ export default function AdminProductsClient({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -116,30 +124,67 @@ export default function AdminProductsClient({
     });
   };
 
-  const handleDeleteProduct = async (id: number) => {
-    if (!confirm('Դուք համոզված եք, որ ցանկանում եք ջնջել այս արտադրանքը?')) {
-      return;
-    }
+  const handleDeleteProduct = (product: Product) => {
+    setDeleteTarget(product);
+  };
 
-    setIsLoading(true);
+  const confirmDeleteProduct = async () => {
+    if (!deleteTarget) return;
+
+    setIsDeleting(true);
+    setStatusMessage(null);
     try {
-      const result = await deleteProduct(id);
+      const result = await deleteProduct(deleteTarget.id);
       if (result.success) {
-        await loadProducts();
+        if (result.softDeleted) {
+          setProducts((prev) =>
+            prev.map((p) =>
+              p.id === deleteTarget.id ? { ...p, isActive: false } : p
+            )
+          );
+        } else {
+          setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+        }
+        setStatusMessage({
+          type: 'success',
+          text:
+            result.message ||
+            (result.softDeleted
+              ? 'Ապրանքը ապաակտիվացվեց'
+              : 'Արտադրանքը ջնջվեց'),
+        });
+        if (
+          selectedProduct?.id === deleteTarget.id &&
+          (isEditModalOpen || isAddModalOpen)
+        ) {
+          handleCloseModals();
+        }
+        setDeleteTarget(null);
       } else {
-        alert(result.error || 'Արտադրանք ջնջելիս սխալ է տեղի ունեցել');
+        setStatusMessage({
+          type: 'error',
+          text: result.error || 'Արտադրանք ջնջելիս սխալ է տեղի ունեցել',
+        });
       }
     } catch (err) {
       console.error('Error deleting product:', err);
-      alert('Արտադրանք ջնջելիս սխալ է տեղի ունեցել');
+      setStatusMessage({
+        type: 'error',
+        text: 'Արտադրանք ջնջելիս սխալ է տեղի ունեցել',
+      });
     } finally {
-      setIsLoading(false);
+      setIsDeleting(false);
     }
   };
 
+  const visibleProducts = showInactive
+    ? products
+    : products.filter((p) => p.isActive);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setIsSaving(true);
+    setStatusMessage(null);
 
     try {
       if (isAddModalOpen) {
@@ -154,9 +199,16 @@ export default function AdminProductsClient({
 
         if (result.success && result.product) {
           setProducts([...products, result.product as Product]);
+          setStatusMessage({
+            type: 'success',
+            text: 'Արտադրանքը ավելացվեց',
+          });
           handleCloseModals();
         } else {
-          alert(result.error || 'Արտադրանք ավելացնելիս սխալ է տեղի ունեցել');
+          setStatusMessage({
+            type: 'error',
+            text: result.error || 'Արտադրանք ավելացնելիս սխալ է տեղի ունեցել',
+          });
         }
       } else if (isEditModalOpen && selectedProduct) {
         const result = await updateProduct({
@@ -175,16 +227,26 @@ export default function AdminProductsClient({
               p.id === selectedProduct.id ? (result.product as Product) : p
             )
           );
+          setStatusMessage({
+            type: 'success',
+            text: 'Արտադրանքը թարմացվեց',
+          });
           handleCloseModals();
         } else {
-          alert(result.error || 'Արտադրանք թարմացնելիս սխալ է տեղի ունեցել');
+          setStatusMessage({
+            type: 'error',
+            text: result.error || 'Արտադրանք թարմացնելիս սխալ է տեղի ունեցել',
+          });
         }
       }
     } catch (error) {
       console.error('Error saving product:', error);
-      alert('Արտադրանք պահպանելիս սխալ է տեղի ունեցել');
+      setStatusMessage({
+        type: 'error',
+        text: 'Արտադրանք պահպանելիս սխալ է տեղի ունեցել',
+      });
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
@@ -228,7 +290,7 @@ export default function AdminProductsClient({
     <AdminLayout user={user}>
       <div className="p-6">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               Արտադրանքների կառավարում
@@ -237,20 +299,47 @@ export default function AdminProductsClient({
               Կարգավորեք նախուտեստները, խմիչքները և կոմբոներն
             </p>
           </div>
-          <button
-            onClick={handleOpenAddModal}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Ավելացնել արտադրանք
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              Ցույց տալ անակտիվները
+            </label>
+            <button
+              onClick={handleOpenAddModal}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Ավելացնել արտադրանք
+            </button>
+          </div>
         </div>
 
+        {statusMessage && (
+          <div
+            className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+              statusMessage.type === 'success'
+                ? 'border-green-200 bg-green-50 text-green-800'
+                : 'border-red-200 bg-red-50 text-red-700'
+            }`}
+          >
+            {statusMessage.text}
+          </div>
+        )}
+
         {/* Products Grid */}
-        {products.length === 0 ? (
+        {visibleProducts.length === 0 ? (
           <div className="text-center py-12 bg-gray-50 rounded-lg">
             <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">Արտադրանքներ չկան</p>
+            <p className="text-gray-600 mb-4">
+              {products.length === 0
+                ? 'Արտադրանքներ չկան'
+                : 'Ակտիվ արտադրանքներ չկան'}
+            </p>
             <button
               onClick={handleOpenAddModal}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -260,7 +349,7 @@ export default function AdminProductsClient({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map((product) => (
+            {visibleProducts.map((product) => (
               <motion.div
                 key={product.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -312,7 +401,7 @@ export default function AdminProductsClient({
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteProduct(product.id)}
+                        onClick={() => handleDeleteProduct(product)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
                         title="Ջնջել"
                       >
@@ -477,12 +566,23 @@ export default function AdminProductsClient({
                   <div className="flex gap-3 pt-4">
                     <button
                       type="submit"
-                      disabled={isLoading}
+                      disabled={isSaving}
                       className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       <Save className="w-4 h-4" />
-                      {isLoading ? 'Պահպանվում է...' : 'Պահպանել'}
+                      {isSaving ? 'Պահպանվում է...' : 'Պահպանել'}
                     </button>
+                    {isEditModalOpen && selectedProduct && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(selectedProduct)}
+                        disabled={isSaving || isDeleting}
+                        className="px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Ջնջել
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleCloseModals}
@@ -492,6 +592,52 @@ export default function AdminProductsClient({
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Delete confirmation modal */}
+        <AnimatePresence>
+          {deleteTarget && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+              onClick={() => !isDeleting && setDeleteTarget(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+              >
+                <h3 className="text-lg font-bold text-gray-900">
+                  Ջնջել արտադրանքը՞
+                </h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  «{deleteTarget.name}» — եթե ապրանքը արդեն պատվերներում է
+                  օգտագործվել, այն կապաակտիվացվի և չի երևա դրամարկղում։
+                  Եթե պատվերներ չկան, ամբողջությամբ կջնջվի։
+                </p>
+                <div className="mt-5 flex gap-3">
+                  <button
+                    onClick={() => setDeleteTarget(null)}
+                    disabled={isDeleting}
+                    className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Չեղարկել
+                  </button>
+                  <button
+                    onClick={confirmDeleteProduct}
+                    disabled={isDeleting}
+                    className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                  >
+                    {isDeleting ? 'Ջնջվում է...' : 'Ջնջել'}
+                  </button>
+                </div>
               </motion.div>
             </motion.div>
           )}

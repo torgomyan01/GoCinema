@@ -34,6 +34,16 @@ export default async function BoxOfficePrintPage({
   }
 
   const t = result.ticket;
+  const items = (t.order?.orderItems ?? []).map((item) => ({
+    name: item.product?.name ?? 'Ապրանք',
+    quantity: item.quantity,
+    price: item.price,
+  }));
+  const productsTotal = items.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
   const ticket = {
     id: t.id,
     price: t.price,
@@ -47,6 +57,8 @@ export default async function BoxOfficePrintPage({
       movie: { title: t.screening.movie.title },
       hall: { name: t.screening.hall.name },
     },
+    items,
+    total: t.price + productsTotal,
   };
 
   return <TicketPrintClient ticket={ticket} />;

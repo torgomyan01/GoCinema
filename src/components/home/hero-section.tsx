@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { getScreenings } from '@/app/actions/screenings';
+import { getScreenings, type ScreeningListItem } from '@/app/actions/screenings';
 import { SITE_URL } from '@/utils/consts';
 import { ageRatingClasses } from '@/lib/age-rating';
 
@@ -95,22 +95,7 @@ function getAvailableSeats(
   return Math.max(0, capacity - booked);
 }
 
-function mapScreeningToTicket(
-  screening: {
-    id: number;
-    startTime: Date | string;
-    basePrice: number;
-    movie?: {
-      title: string;
-      image: string | null;
-      slug?: string | null;
-      rating?: number;
-      ageRating?: string | null;
-    } | null;
-    hall?: { name: string; capacity: number } | null;
-    tickets?: Array<{ status: string }>;
-  }
-): HeroTicket {
+function mapScreeningToTicket(screening: ScreeningListItem): HeroTicket {
   return {
     id: screening.id,
     startTime: screening.startTime,
@@ -294,12 +279,11 @@ export default function HeroSection() {
         if (!result.success || !result.screenings?.length) return;
 
         const now = new Date();
-        let pool = result.screenings.filter(
-          (s) => new Date(s.endTime) >= now
-        );
+        const screenings = result.screenings;
+        let pool = screenings.filter((s) => new Date(s.endTime) >= now);
 
         if (pool.length === 0) {
-          pool = [...result.screenings].sort(
+          pool = [...screenings].sort(
             (a, b) =>
               new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
           );

@@ -2,6 +2,42 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import type { Prisma } from '@prisma/client';
+
+const screeningListInclude = {
+  movie: {
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      image: true,
+      duration: true,
+      rating: true,
+      ageRating: true,
+    },
+  },
+  hall: {
+    select: {
+      id: true,
+      name: true,
+      capacity: true,
+    },
+  },
+  tickets: {
+    select: {
+      id: true,
+      status: true,
+    },
+  },
+} satisfies Prisma.ScreeningInclude;
+
+export type ScreeningListItem = Prisma.ScreeningGetPayload<{
+  include: typeof screeningListInclude;
+}>;
+
+export type GetScreeningsResult =
+  | { success: true; screenings: ScreeningListItem[] }
+  | { success: false; error: string; screenings: ScreeningListItem[] };
 
 export interface CreateScreeningData {
   movieId: number;
@@ -34,9 +70,12 @@ async function getDefaultHall() {
   return hall.id;
 }
 
-export async function getScreenings(startDate?: Date, endDate?: Date) {
+export async function getScreenings(
+  startDate?: Date,
+  endDate?: Date
+): Promise<GetScreeningsResult> {
   try {
-    const where: any = {};
+    const where: Prisma.ScreeningWhereInput = {};
 
     if (startDate || endDate) {
       where.startTime = {};
@@ -50,32 +89,7 @@ export async function getScreenings(startDate?: Date, endDate?: Date) {
 
     const screenings = await prisma.screening.findMany({
       where,
-      include: {
-        movie: {
-          select: {
-            id: true,
-            title: true,
-            slug: true,
-            image: true,
-            duration: true,
-            rating: true,
-            ageRating: true,
-          },
-        },
-        hall: {
-          select: {
-            id: true,
-            name: true,
-            capacity: true,
-          },
-        },
-        tickets: {
-          select: {
-            id: true,
-            status: true,
-          },
-        },
-      },
+      include: screeningListInclude,
       orderBy: {
         startTime: 'asc',
       },

@@ -90,7 +90,7 @@ function getAvailableSeats(
   tickets: Array<{ status: string }> = []
 ) {
   const booked = tickets.filter(
-    (t) => t.status === 'paid' || t.status === 'reserved'
+    (t) => t.status === 'paid' || t.status === 'used'
   ).length;
   return Math.max(0, capacity - booked);
 }

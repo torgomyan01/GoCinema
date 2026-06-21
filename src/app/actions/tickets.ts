@@ -4,6 +4,28 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { occupiedTicketWhere, reservationCutoff } from '@/lib/reservation';
+
+/**
+ * Ազատում է լրացած (չվճարված 10 րոպեից ավելի) ամրագրումները՝ դրանք
+ * cancelled դարձնելով։ Կանչվում է տեղերի հասանելիությունը ստուգելուց առաջ։
+ */
+export async function releaseExpiredReservations(screeningId?: number) {
+  try {
+    const result = await prisma.ticket.updateMany({
+      where: {
+        status: 'reserved',
+        createdAt: { lt: reservationCutoff() },
+        ...(screeningId ? { screeningId } : {}),
+      },
+      data: { status: 'cancelled' },
+    });
+    return result.count;
+  } catch (error) {
+    console.error('[Release Expired Reservations] Error:', error);
+    return 0;
+  }
+}
 
 export interface CreateTicketData {
   userId: number;
@@ -186,21 +208,21 @@ export async function createTicket(data: CreateTicketData) {
       };
     }
 
-    // Check if seat is already taken for this screening
+    // Ազատենք լրացած ամրագրումները, ապա ստուգենք զբաղվածությունը
+    await releaseExpiredReservations(data.screeningId);
+
     const existingTicket = await prisma.ticket.findFirst({
       where: {
         screeningId: data.screeningId,
         seatId: data.seatId,
-        status: {
-          in: ['reserved', 'paid', 'used'],
-        },
+        ...occupiedTicketWhere(),
       },
     });
 
     if (existingTicket) {
       return {
         success: false,
-        error: 'Այս նստատեղը արդեն ամրագրված է',
+        error: 'Այս նստատեղը արդեն զբաղված է',
       };
     }
 
@@ -250,7 +272,9 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
       };
     }
 
-    // Check if any seats are already taken
+    // Ազատենք լրացած ամրագրումները, ապա ստուգենք զբաղվածությունը
+    await releaseExpiredReservations(data.screeningId);
+
     const seatIds = data.seats.map((s) => s.seatId);
     const existingTickets = await prisma.ticket.findMany({
       where: {
@@ -258,16 +282,14 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
         seatId: {
           in: seatIds,
         },
-        status: {
-          in: ['reserved', 'paid', 'used'],
-        },
+        ...occupiedTicketWhere(),
       },
     });
 
     if (existingTickets.length > 0) {
       return {
         success: false,
-        error: 'Որոշ նստատեղեր արդեն ամրագրված են',
+        error: 'Որոշ նստատեղեր արդեն զբաղված են, խնդրում ենք ընտրել այլ տեղ',
       };
     }
 

@@ -6,11 +6,11 @@ import bcrypt from 'bcryptjs';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isStaffRole } from '@/lib/roles';
+import { occupiedTicketWhere } from '@/lib/reservation';
+import { releaseExpiredReservations } from '@/app/actions/tickets';
 
 const WALK_IN_PHONE = '000000000';
 const WALK_IN_NAME = 'Դրամարկղ (walk-in)';
-
-const ACTIVE_TICKET_STATUSES = ['reserved', 'paid', 'used'];
 
 async function requireStaff() {
   const session = await getServerSession(authOptions);
@@ -59,7 +59,7 @@ export async function getBoxOfficeScreenings() {
         movie: { select: { id: true, title: true, image: true, duration: true } },
         hall: { select: { id: true, name: true, capacity: true } },
         tickets: {
-          where: { status: { in: ACTIVE_TICKET_STATUSES } },
+          where: occupiedTicketWhere(),
           select: { id: true },
         },
       },
@@ -106,7 +106,7 @@ export async function getBoxOfficeSeatMap(screeningId: number) {
           },
         },
         tickets: {
-          where: { status: { in: ACTIVE_TICKET_STATUSES } },
+          where: occupiedTicketWhere(),
           select: { seatId: true },
         },
       },
@@ -165,7 +165,7 @@ export async function getBoxOfficeTicketBySeat(
       where: {
         screeningId,
         seatId,
-        status: { in: ACTIVE_TICKET_STATUSES },
+        ...occupiedTicketWhere(),
       },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -253,12 +253,13 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
       return { success: false, error: 'Բոլոր դաշտերը պետք է ճիշտ լրացված լինեն' };
     }
 
-    // Համոզվել՝ նստատեղը ազատ է
+    // Համոզվել՝ նստատեղը ազատ է (ազատենք լրացած ամրագրումները նախ)
+    await releaseExpiredReservations(screeningId);
     const existing = await prisma.ticket.findFirst({
       where: {
         screeningId,
         seatId,
-        status: { in: ACTIVE_TICKET_STATUSES },
+        ...occupiedTicketWhere(),
       },
       select: { id: true },
     });

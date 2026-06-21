@@ -177,7 +177,7 @@ export default function ScheduleSection() {
     const capacity = screening.hall?.capacity || 80;
     const bookedTickets =
       screening.tickets?.filter(
-        (t) => t.status === 'paid' || t.status === 'reserved'
+        (t) => t.status === 'paid' || t.status === 'used'
       ).length || 0;
     return capacity - bookedTickets;
   };

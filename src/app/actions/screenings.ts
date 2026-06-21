@@ -3,6 +3,8 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
+import { occupiedTicketWhere } from '@/lib/reservation';
+import { releaseExpiredReservations } from '@/app/actions/tickets';
 
 const screeningListInclude = {
   movie: {
@@ -108,6 +110,9 @@ export async function getScreenings(
 
 export async function getScreeningById(id: number) {
   try {
+    // Ազատենք լրացած ամրագրումները, որպեսզի դրանց տեղերը նորից ազատ երևան
+    await releaseExpiredReservations(id);
+
     const screening = await prisma.screening.findUnique({
       where: { id },
       include: {
@@ -120,11 +125,7 @@ export async function getScreeningById(id: number) {
           },
         },
         tickets: {
-          where: {
-            status: {
-              in: ['reserved', 'paid', 'used'],
-            },
-          },
+          where: occupiedTicketWhere(),
           include: {
             seat: {
               select: {
@@ -521,7 +522,7 @@ export async function getRandomUpcomingScreening() {
     const pick = screenings[Math.floor(Math.random() * screenings.length)];
     const capacity = pick.hall?.capacity ?? 80;
     const booked = pick.tickets.filter(
-      (t) => t.status === 'paid' || t.status === 'reserved'
+      (t) => t.status === 'paid' || t.status === 'used'
     ).length;
 
     return {

@@ -359,6 +359,15 @@ export default function BookingPageClient({
           (result as { error?: string }).error ||
             'Պատվեր ստեղծելիս սխալ է տեղի ունեցել'
         );
+        // Տեղերից մի մասը հնարավոր է զբաղվել է — թարմացնենք քարտեզը և
+        // հանենք արդեն զբաղված տեղերն ընտրությունից
+        const refreshed = await getScreeningById(screening.id);
+        if (refreshed.success && refreshed.screening) {
+          const updated = refreshed.screening as unknown as Screening;
+          setScreening(updated);
+          const occupied = new Set(updated.tickets.map((t) => t.seat.id));
+          setSelectedSeats((prev) => prev.filter((id) => !occupied.has(id)));
+        }
       }
     } catch (err) {
       console.error('Error creating order:', err);

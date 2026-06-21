@@ -330,17 +330,64 @@ async function upsertPendingPaymentsForOrder(
   }
 }
 
+export interface SeatConflict {
+  row: string;
+  number: number;
+}
+
 async function finalizeOrderAsPaid(order: {
   id: number;
   userId: number;
   tickets: Array<{
     id: number;
+    screeningId: number;
+    seatId: number;
     price: number;
     status: string;
     qrCode: string | null;
+    seat?: { row: string; number: number } | null;
   }>;
-}) {
+}): Promise<{ conflicts: SeatConflict[] }> {
+  const conflicts: SeatConflict[] = [];
+
   for (const ticket of order.tickets) {
+    // Արդեն վճարված/օգտագործված տոմսերը պարզապես ապահովում ենք QR-ով
+    if (ticket.status === 'paid' || ticket.status === 'used') {
+      if (!ticket.qrCode) {
+        await generateQRCode(ticket.id);
+      }
+      continue;
+    }
+
+    // Կոնֆլիկտի ստուգում. այս ընթացքում ուրիշը չի՞ վճարել նույն տեղի համար
+    const conflict = await prisma.ticket.findFirst({
+      where: {
+        screeningId: ticket.screeningId,
+        seatId: ticket.seatId,
+        id: { not: ticket.id },
+        status: { in: ['paid', 'used'] },
+      },
+      select: { id: true },
+    });
+
+    if (conflict) {
+      // Տեղն արդեն զբաղված է — չեղարկենք այս ամրագրումը և նշենք վճարումը վերադարձման ենթակա
+      await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { status: 'cancelled' },
+      });
+      await prisma.payment.updateMany({
+        where: { ticketId: ticket.id },
+        data: { status: 'refunded' },
+      });
+      conflicts.push(
+        ticket.seat
+          ? { row: ticket.seat.row, number: ticket.seat.number }
+          : { row: '', number: ticket.seatId }
+      );
+      continue;
+    }
+
     await prisma.payment.upsert({
       where: { ticketId: ticket.id },
       update: {
@@ -357,42 +404,52 @@ async function finalizeOrderAsPaid(order: {
       },
     });
 
-    if (ticket.status !== 'paid' && ticket.status !== 'used') {
-      // Use direct DB update here to guarantee status transition.
-      // updateTicketStatus() swallows errors by design, which is not ideal
-      // for payment finalization critical path.
-      await prisma.ticket.update({
-        where: { id: ticket.id },
-        data: { status: 'paid' },
-      });
-    }
+    // Use direct DB update here to guarantee status transition.
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { status: 'paid' },
+    });
 
     // Սկաները կարդում է TICKET-{id} — միշտ թարմացնենք վճարման հաստատման պահին
     await generateQRCode(ticket.id);
   }
 
+  // Եթե բոլոր տեղերը կոնֆլիկտ էին — պատվերը ձախողված է, հակառակ դեպքում՝ կատարված
+  const allConflicted =
+    conflicts.length > 0 && conflicts.length === order.tickets.length;
+
   await prisma.order.update({
     where: { id: order.id },
-    data: { status: 'completed' },
+    data: { status: allConflicted ? 'failed' : 'completed' },
   });
+
+  return { conflicts };
 }
 
 async function markOrderAsFailed(order: {
   id: number;
   tickets: Array<{ id: number }>;
 }) {
+  const ticketIds = order.tickets.map((ticket) => ticket.id);
+
   await prisma.payment.updateMany({
     where: {
-      ticketId: {
-        in: order.tickets.map((ticket) => ticket.id),
-      },
-      status: {
-        not: 'completed',
-      },
+      ticketId: { in: ticketIds },
+      status: { not: 'completed' },
     },
     data: {
       status: 'failed',
     },
+  });
+
+  // Վճարման ձախողման դեպքում անմիջապես ազատենք ամրագրված տեղերը,
+  // որպեսզի դրանք նորից հասանելի լինեն այլ հաճախորդների համար։
+  await prisma.ticket.updateMany({
+    where: {
+      id: { in: ticketIds },
+      status: 'reserved',
+    },
+    data: { status: 'cancelled' },
   });
 
   await prisma.order.update({
@@ -724,20 +781,35 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
         decision: 'paid',
         matchedCount: approvedTxs.length,
       });
-      await finalizeOrderAsPaid({
+      const { conflicts } = await finalizeOrderAsPaid({
         id: order.id,
         userId: order.userId,
         tickets: order.tickets.map((t) => ({
           id: t.id,
+          screeningId: t.screeningId,
+          seatId: t.seatId,
           price: t.price,
           status: t.status,
           qrCode: t.qrCode,
+          seat: t.seat,
         })),
       });
 
       revalidatePath('/tickets');
       revalidatePath('/payment');
       revalidatePath('/checkout');
+
+      if (conflicts.length > 0) {
+        const seatLabels = conflicts
+          .map((c) => `${c.row}${c.number}`)
+          .join(', ');
+        return {
+          success: true,
+          state: 'seat_taken' as const,
+          message: `Ցավոք, ընտրված տեղ(եր)ը (${seatLabels}) այս ընթացքում զբաղվել են այլ հաճախորդի կողմից։ Վճարված գումարը կվերադարձվի։ Խնդրում ենք ընտրել այլ տեղ։`,
+          conflicts,
+        };
+      }
 
       if (hadUnpaidTickets) {
         // Fire-and-forget: payment finalization should not fail if Telegram is unavailable.

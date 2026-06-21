@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar,
@@ -16,6 +16,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { SITE_URL } from '@/utils/consts';
+import { RESERVATION_HOLD_MS, RESERVATION_HOLD_MINUTES } from '@/lib/reservation';
 
 interface TicketCardProps {
   ticket: {
@@ -67,7 +68,36 @@ interface TicketCardProps {
 export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [reservationSecondsLeft, setReservationSecondsLeft] = useState<
+    number | null
+  >(null);
   const qrCodeRef = useRef<HTMLDivElement>(null);
+
+  // Ամրագրման «hold» հետհաշվարկ (10 րոպե տոմսի ստեղծման պահից)
+  useEffect(() => {
+    if (ticket.status !== 'reserved') {
+      setReservationSecondsLeft(null);
+      return;
+    }
+    const expiry = new Date(ticket.createdAt).getTime() + RESERVATION_HOLD_MS;
+    const tick = () => {
+      setReservationSecondsLeft(
+        Math.max(0, Math.floor((expiry - Date.now()) / 1000))
+      );
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [ticket.status, ticket.createdAt]);
+
+  const reservationExpired =
+    reservationSecondsLeft !== null && reservationSecondsLeft <= 0;
+
+  const formatCountdown = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Generate QR code data - only order ID for scanning
   const getQRCodeData = () => {
@@ -227,6 +257,23 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                       Մոտալուտ ցուցադրում
                     </span>
                   )}
+                  {ticket.status === 'reserved' &&
+                    reservationSecondsLeft !== null &&
+                    !reservationExpired && (
+                      <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Վճարման համար մնացել է{' '}
+                        <span className="tabular-nums font-bold">
+                          {formatCountdown(reservationSecondsLeft)}
+                        </span>
+                      </span>
+                    )}
+                  {ticket.status === 'reserved' && reservationExpired && (
+                    <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      Ամրագրման ժամկետը լրացել է
+                    </span>
+                  )}
                   <span className="ml-auto text-[11px] text-gray-400 uppercase tracking-[0.25em]">
                     Cinema Ticket
                   </span>
@@ -350,12 +397,24 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                       </button>
                     </>
                   )}
-                  {ticket.status === 'reserved' && ticket.order && (
+                  {ticket.status === 'reserved' &&
+                    ticket.order &&
+                    !reservationExpired && (
+                      <Link
+                        href={SITE_URL.PAYMENT(ticket.order.id)}
+                        className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all text-center shadow-sm"
+                      >
+                        {reservationSecondsLeft !== null
+                          ? `Վճարել (${formatCountdown(reservationSecondsLeft)})`
+                          : 'Վճարել'}
+                      </Link>
+                    )}
+                  {ticket.status === 'reserved' && reservationExpired && (
                     <Link
-                      href={SITE_URL.PAYMENT(ticket.order.id)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all text-center shadow-sm"
+                      href={SITE_URL.SCHEDULE}
+                      className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-all text-center shadow-sm"
                     >
-                      Վճարել
+                      Ընտրել նոր տեղեր
                     </Link>
                   )}
                   {ticket.status === 'paid' && isUpcoming && (

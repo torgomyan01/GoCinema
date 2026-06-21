@@ -115,6 +115,36 @@ export async function POST(request: NextRequest) {
         invoice,
       });
       for (const ticket of order.tickets) {
+        if (ticket.status !== 'paid' && ticket.status !== 'used') {
+          // Կոնֆլիկտի ստուգում. այս ընթացքում ուրիշը չի՞ վճարել նույն տեղի համար
+          const conflict = await prisma.ticket.findFirst({
+            where: {
+              screeningId: ticket.screeningId,
+              seatId: ticket.seatId,
+              id: { not: ticket.id },
+              status: { in: ['paid', 'used'] },
+            },
+            select: { id: true },
+          });
+
+          if (conflict) {
+            telcellCallbackLog('seat_conflict', {
+              orderId,
+              ticketId: ticket.id,
+              seatId: ticket.seatId,
+            });
+            await prisma.ticket.update({
+              where: { id: ticket.id },
+              data: { status: 'cancelled' },
+            });
+            await prisma.payment.updateMany({
+              where: { ticketId: ticket.id },
+              data: { status: 'refunded' },
+            });
+            continue;
+          }
+        }
+
         await prisma.payment.upsert({
           where: { ticketId: ticket.id },
           update: {

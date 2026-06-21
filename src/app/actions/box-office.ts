@@ -169,7 +169,7 @@ export async function getBoxOfficeTicketBySeat(
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        seat: { select: { row: true, number: true, seatType: true } },
+        seat: { select: { id: true, row: true, number: true, seatType: true } },
         user: { select: { name: true, phone: true } },
         payment: { select: { method: true, status: true, amount: true } },
         screening: {
@@ -368,6 +368,80 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
     return {
       success: false,
       error: 'Տոմս ստեղծելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** Չեղարկել վաճառված/ամրագրված տոմսը՝ նստատեղը նորից ազատելու համար */
+export async function cancelBoxOfficeTicket(ticketId: number) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        payment: true,
+        seat: { select: { id: true, row: true, number: true } },
+      },
+    });
+
+    if (!ticket) {
+      return { success: false, error: 'Տոմսը չի գտնվել' };
+    }
+
+    if (ticket.status === 'cancelled') {
+      return { success: false, error: 'Տոմսն արդեն չեղարկված է' };
+    }
+
+    if (ticket.status === 'used') {
+      return {
+        success: false,
+        error: 'Օգտագործված տոմսը չի կարող չեղարկվել',
+      };
+    }
+
+    if (!['paid', 'reserved'].includes(ticket.status)) {
+      return { success: false, error: 'Այս տոմսը չի կարող չեղարկվել' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: { status: 'cancelled' },
+      });
+
+      if (ticket.payment) {
+        await tx.payment.update({
+          where: { id: ticket.payment.id },
+          data: { status: 'refunded' },
+        });
+      }
+
+      if (ticket.orderId) {
+        await tx.order.update({
+          where: { id: ticket.orderId },
+          data: { status: 'cancelled' },
+        });
+      }
+    });
+
+    revalidatePath('/admin/box-office');
+    revalidatePath('/admin/tickets');
+    revalidatePath('/admin/fiscal');
+
+    return {
+      success: true,
+      seatId: ticket.seatId,
+      screeningId: ticket.screeningId,
+    };
+  } catch (error) {
+    console.error('[Cancel Box Office Ticket] Error:', error);
+    return {
+      success: false,
+      error: 'Տոմսը չեղարկելիս սխալ է տեղի ունեցել',
     };
   }
 }

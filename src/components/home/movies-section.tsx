@@ -75,7 +75,7 @@ export default function MoviesSection() {
               </span>
             </div>
             <h2 className="text-3xl sm:text-4xl md:text-6xl font-black text-white tracking-tight">
-              Ֆիլմերի պատ
+              Մոտակա ֆիլմերը
             </h2>
             <p className="text-base sm:text-lg text-neutral-400 mt-2 sm:mt-3 max-w-xl">
               Թարմ ֆիլմեր, հարմար ժամեր և արագ անցում դեպի ամրագրում։

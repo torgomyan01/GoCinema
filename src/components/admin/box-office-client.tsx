@@ -17,8 +17,10 @@ import {
   Ticket as TicketIcon,
   User,
   X,
+  Ban,
 } from 'lucide-react';
 import {
+  cancelBoxOfficeTicket,
   createBoxOfficeTicket,
   getBoxOfficeProducts,
   getBoxOfficeScreenings,
@@ -72,7 +74,7 @@ interface TakenTicketInfo {
   status: string;
   qrCode?: string | null;
   createdAt: Date | string;
-  seat: { row: string; number: number; seatType: string };
+  seat: { id: number; row: string; number: number; seatType: string };
   user?: { name?: string | null; phone?: string | null } | null;
   payment?: { method: string; status: string; amount: number } | null;
   screening: {
@@ -139,6 +141,8 @@ export default function BoxOfficeClient() {
 
   const [takenTicket, setTakenTicket] = useState<TakenTicketInfo | null>(null);
   const [isTakenLoading, setIsTakenLoading] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const [products, setProducts] = useState<ProductItem[]>([]);
   // productId -> quantity
@@ -255,6 +259,7 @@ export default function BoxOfficeClient() {
     if (!seatMap) return;
     setIsTakenLoading(true);
     setTakenTicket(null);
+    setShowCancelConfirm(false);
     const result = await getBoxOfficeTicketBySeat(seatMap.id, seat.id);
     if (result.success && result.ticket) {
       setTakenTicket(result.ticket as unknown as TakenTicketInfo);
@@ -273,6 +278,48 @@ export default function BoxOfficeClient() {
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [seatMap]);
+
+  const closeTakenModal = () => {
+    setTakenTicket(null);
+    setIsTakenLoading(false);
+    setShowCancelConfirm(false);
+  };
+
+  const handleCancelTicket = async () => {
+    if (!takenTicket || !seatMap || isCancelling) return;
+
+    setIsCancelling(true);
+    setError(null);
+    try {
+      const result = await cancelBoxOfficeTicket(takenTicket.id);
+      if (!result.success) {
+        setError(result.error || 'Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
+        return;
+      }
+
+      setSeatMap((prev) =>
+        prev
+          ? {
+              ...prev,
+              seats: prev.seats.map((s) =>
+                s.id === takenTicket.seat.id ? { ...s, taken: false } : s
+              ),
+            }
+          : prev
+      );
+      closeTakenModal();
+      void loadScreenings();
+    } catch (err) {
+      console.error('Cancel ticket error:', err);
+      setError('Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const canCancelTakenTicket =
+    takenTicket &&
+    (takenTicket.status === 'paid' || takenTicket.status === 'reserved');
 
   const openPrint = (ticketId: number) => {
     window.open(
@@ -726,10 +773,7 @@ export default function BoxOfficeClient() {
       {(takenTicket || isTakenLoading) && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={() => {
-            setTakenTicket(null);
-            setIsTakenLoading(false);
-          }}
+          onClick={closeTakenModal}
         >
           <div
             className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
@@ -741,10 +785,7 @@ export default function BoxOfficeClient() {
                 Տոմսի տվյալներ
               </h3>
               <button
-                onClick={() => {
-                  setTakenTicket(null);
-                  setIsTakenLoading(false);
-                }}
+                onClick={closeTakenModal}
                 className="rounded-full p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
               >
                 <X className="h-5 w-5" />
@@ -827,23 +868,62 @@ export default function BoxOfficeClient() {
                   )}
                 </div>
 
-                <div className="flex gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4">
-                  <button
-                    onClick={() => openPrint(takenTicket.id)}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-500"
-                  >
-                    <Printer className="h-4 w-4" />
-                    Տպել կրկին
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTakenTicket(null);
-                      setIsTakenLoading(false);
-                    }}
-                    className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                  >
-                    Փակել
-                  </button>
+                {showCancelConfirm && canCancelTakenTicket && (
+                  <div className="border-t border-red-100 bg-red-50 px-5 py-4">
+                    <p className="text-sm text-red-800">
+                      Չեղարկե՞լ տոմս #{takenTicket.id} ({takenTicket.seat.row}
+                      {takenTicket.seat.number})։ Նստատեղը կրկին ազատ կլինի
+                      վաճառքի համար։
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => setShowCancelConfirm(false)}
+                        disabled={isCancelling}
+                        className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Ոչ
+                      </button>
+                      <button
+                        onClick={handleCancelTicket}
+                        disabled={isCancelling}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                      >
+                        {isCancelling ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Ban className="h-4 w-4" />
+                        )}
+                        Այո, չեղարկել
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 border-t border-gray-100 bg-gray-50 px-5 py-4">
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => openPrint(takenTicket.id)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-500"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Տպել կրկին
+                    </button>
+                    <button
+                      onClick={closeTakenModal}
+                      className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Փակել
+                    </button>
+                  </div>
+                  {canCancelTakenTicket && !showCancelConfirm && (
+                    <button
+                      onClick={() => setShowCancelConfirm(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                    >
+                      <Ban className="h-4 w-4" />
+                      Չեղարկել տոմսը (ազատել նստատեղը)
+                    </button>
+                  )}
                 </div>
               </>
             )}

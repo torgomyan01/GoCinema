@@ -14,7 +14,10 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { getScreenings, type ScreeningListItem } from '@/app/actions/screenings';
+import {
+  getScreenings,
+  type ScreeningListItem,
+} from '@/app/actions/screenings';
 import { SITE_URL } from '@/utils/consts';
 import { ageRatingClasses } from '@/lib/age-rating';
 
@@ -132,7 +135,7 @@ const fadeUp = (
 
 const TRUST_ITEMS = [
   { value: '42', label: 'Հարմարավետ տեղ' },
-  { value: '4K', label: 'Պատկեր' },
+  { value: '8K', label: 'Պատկեր' },
   { value: 'QR', label: 'Անցումային տոմս' },
 ];
 
@@ -195,7 +198,9 @@ function HeroTicketCard({
         </div>
       </div>
 
-      <div className={`overflow-hidden rounded-3xl bg-neutral-900 ${compact ? 'mb-4' : 'mb-5'}`}>
+      <div
+        className={`overflow-hidden rounded-3xl bg-neutral-900 ${compact ? 'mb-4' : 'mb-5'}`}
+      >
         <Image
           src={ticket.movie.image || '/images/hero-background.png'}
           alt={ticket.movie.title}
@@ -238,7 +243,9 @@ function HeroTicketCard({
 
         <div
           className={`grid gap-3 text-sm text-neutral-300 ${
-            compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'
+            compact
+              ? 'grid-cols-1 sm:grid-cols-2'
+              : 'grid-cols-1 sm:grid-cols-2'
           }`}
         >
           <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">

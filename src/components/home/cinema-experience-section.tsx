@@ -3,17 +3,17 @@
 import { motion } from 'framer-motion';
 import {
   Armchair,
-  BadgeCheck,
+  ArrowRight,
+  Clapperboard,
   Popcorn,
+  QrCode,
+  Smartphone,
+  Sparkles,
+  Ticket,
   Volume2,
-  WandSparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
-
-const SEAT_ROWS = 7;
-const SEATS_PER_ROW = 6;
-const TOTAL_SEATS = SEAT_ROWS * SEATS_PER_ROW;
 
 const highlights = [
   {
@@ -31,6 +31,30 @@ const highlights = [
     title: 'Կինոբար',
     text: 'Խորտիկներ ու ըմպելիքներ, որոնք լրացնում են ֆիլմի փորձը։',
   },
+];
+
+const journeySteps = [
+  {
+    icon: Clapperboard,
+    title: 'Ընտրեք սեանսը',
+    text: 'Ֆիլմ, օր և նստատեղ',
+  },
+  {
+    icon: Smartphone,
+    title: 'Վճարեք օնլայն',
+    text: 'Արագ և անվտանգ',
+  },
+  {
+    icon: QrCode,
+    title: 'Մտեք QR-ով',
+    text: 'Տոմսը հեռախոսում',
+  },
+];
+
+const stats = [
+  { value: '42', label: 'նստատեղ' },
+  { value: '4K', label: 'պատկեր' },
+  { value: 'QR', label: 'անցում' },
 ];
 
 export default function CinemaExperienceSection() {
@@ -82,62 +106,86 @@ export default function CinemaExperienceSection() {
             transition={{ duration: 0.7 }}
             className="relative"
           >
-            <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-2xl shadow-red-950/30 backdrop-blur-xl sm:rounded-[2rem] sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-400 sm:text-sm">
-                    Այսօրվա փորձը
-                  </p>
-                  <h3 className="text-xl font-black sm:text-2xl">
-                    Premium Hall
-                  </h3>
-                </div>
-                <div className="rounded-full bg-green-400/15 px-3 py-1 text-sm font-bold text-green-300">
-                  Բաց է
-                </div>
-              </div>
+            <div className="pointer-events-none absolute -right-6 -top-6 h-32 w-32 rounded-full bg-red-500/20 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-8 -left-4 h-28 w-28 rounded-full bg-yellow-500/10 blur-3xl" />
 
-              <div className="mb-4 rounded-2xl bg-gradient-to-br from-red-500/20 to-yellow-500/10 p-3 sm:mb-6 sm:rounded-3xl sm:p-5">
-                <div className="mb-3 h-1.5 rounded-full bg-gradient-to-r from-red-500 via-yellow-300 to-red-500 shadow-lg shadow-red-500/30 sm:mb-5 sm:h-2" />
-                <div className="grid grid-cols-6 gap-x-1.5 gap-y-2 sm:gap-x-2 sm:gap-y-2.5">
-                  {Array.from({ length: TOTAL_SEATS }).map((_, index) => {
-                    const col = index % SEATS_PER_ROW;
-                    return (
-                      <div
-                        key={index}
-                        className={`h-5 rounded-t-lg border border-white/10 sm:h-7 sm:rounded-t-xl ${
-                          col === 0 || col === SEATS_PER_ROW - 1
-                            ? 'bg-red-500/80'
-                            : col === 2 || col === 3
-                              ? 'bg-yellow-400/70'
-                              : 'bg-white/15'
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {['QR տոմս հեռախոսում', 'Անվտանգ վճարում'].map((text) => (
-                  <div
-                    key={text}
-                    className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4"
-                  >
-                    <BadgeCheck className="h-5 w-5 text-green-300" />
-                    <span className="text-sm font-semibold text-gray-200">
-                      {text}
+            <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.06] shadow-2xl shadow-red-950/30 backdrop-blur-xl sm:rounded-[2rem]">
+              {/* Էկրանի լույս */}
+              <div className="relative overflow-hidden border-b border-white/10 px-5 pb-8 pt-6 sm:px-7 sm:pb-10 sm:pt-8">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(220,38,38,0.35),transparent_65%)]" />
+                <div className="relative">
+                  <div className="mb-5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-red-400">
+                      <span className="text-xs font-bold uppercase tracking-[0.2em]">
+                        GoCinema
+                      </span>
+                    </div>
+                    <span className="rounded-full border border-green-400/20 bg-green-400/10 px-3 py-1 text-xs font-bold text-green-300">
+                      Բաց է այսօր
                     </span>
                   </div>
-                ))}
+
+                  <div className="perspective-near mx-auto max-w-xs">
+                    <div className="h-2 w-full rounded-t-[50%] bg-linear-to-b from-gray-300 to-gray-500 shadow-[0_0_40px_rgba(239,68,68,0.45)] transform-[rotateX(-28deg)]" />
+                    <p className="mt-3 text-center text-[10px] font-semibold uppercase tracking-[0.35em] text-gray-500">
+                      Էկրան
+                    </p>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
+                    {stats.map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-xl border border-white/10 bg-black/25 px-2 py-3 text-center backdrop-blur-sm sm:rounded-2xl sm:px-3 sm:py-4"
+                      >
+                        <div className="text-xl font-black text-white sm:text-2xl">
+                          {item.value}
+                        </div>
+                        <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:text-xs">
+                          {item.label}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <Link
-                href={SITE_URL.SCHEDULE}
-                className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-red-600 px-6 py-4 font-bold text-white shadow-lg shadow-red-950/40 transition hover:bg-red-500"
-              >
-                Ընտրել սեանս
-              </Link>
+              {/* Ամրագրման ճանապարհ */}
+              <div className="space-y-3 p-5 sm:p-6">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
+                  3 քայլ մինչև ֆիլմը
+                </p>
+                {journeySteps.map((step, index) => (
+                  <div
+                    key={step.title}
+                    className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-3.5 sm:p-4"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-600/20 text-red-400">
+                      <step.icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-red-400">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <h4 className="font-bold text-white">{step.title}</h4>
+                      </div>
+                      <p className="mt-0.5 text-sm text-gray-400">
+                        {step.text}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                <Link
+                  href={SITE_URL.MOVIES}
+                  className="group mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-6 py-4 font-bold text-white shadow-lg shadow-red-950/40 transition hover:bg-red-500"
+                >
+                  <Ticket className="h-5 w-5" />
+                  Ամրագրել հիմա
+                  <ArrowRight className="h-5 w-5 transition group-hover:translate-x-1" />
+                </Link>
+              </div>
             </div>
           </motion.div>
         </div>

@@ -14,7 +14,6 @@ import {
   Sparkles,
   QrCode,
   Banknote,
-  Receipt,
   LucideIcon,
 } from 'lucide-react';
 
@@ -47,13 +46,6 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/box-office',
     color: 'text-green-600',
     bgColor: 'bg-green-50',
-  },
-  {
-    title: 'ՀԴՄ չեկեր',
-    icon: Receipt,
-    href: '/admin/fiscal',
-    color: 'text-teal-600',
-    bgColor: 'bg-teal-50',
   },
   {
     title: 'Ֆիլմեր',

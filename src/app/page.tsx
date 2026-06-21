@@ -9,7 +9,6 @@ import FAQSection from '@/components/home/faq-section';
 import { Metadata } from 'next';
 import { unstable_noStore } from 'next/cache';
 import { getFAQs } from '@/app/actions/faq';
-import { getUpcomingScreeningMovies } from '@/app/actions/screenings';
 
 // Force dynamic rendering to prevent caching
 export const dynamic = 'force-dynamic';
@@ -43,13 +42,9 @@ export default async function Page() {
   const faqsResult = await getFAQs();
   const faqs = faqsResult.success && faqsResult.faqs ? faqsResult.faqs : [];
 
-  // Fetch upcoming screening movies for the hero card
-  const upcomingResult = await getUpcomingScreeningMovies(4);
-  const upcomingMovies = upcomingResult.success ? upcomingResult.movies : [];
-
   return (
     <MainTemplate>
-      <HeroSection upcomingMovies={upcomingMovies} />
+      <HeroSection />
       <MoviesSection />
       <CinemaExperienceSection />
       <ScheduleSection />

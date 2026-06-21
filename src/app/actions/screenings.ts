@@ -55,8 +55,11 @@ export async function getScreenings(startDate?: Date, endDate?: Date) {
           select: {
             id: true,
             title: true,
+            slug: true,
             image: true,
             duration: true,
+            rating: true,
+            ageRating: true,
           },
         },
         hall: {
@@ -458,6 +461,72 @@ export async function getUpcomingScreeningMovies(limit = 5) {
       success: false,
       error: 'Ֆիլմերը բեռնելիս սխալ է տեղի ունեցել',
       movies: [],
+    };
+  }
+}
+
+/** Պատահական առաջիկա ցուցադրություն (հերոյի քարտի համար, ամեն refresh-ում տարբեր) */
+export async function getRandomUpcomingScreening() {
+  try {
+    const now = new Date();
+    const screenings = await prisma.screening.findMany({
+      where: {
+        startTime: { gte: now },
+        movie: { isActive: true },
+      },
+      include: {
+        movie: {
+          select: {
+            id: true,
+            title: true,
+            image: true,
+            slug: true,
+            rating: true,
+            ageRating: true,
+          },
+        },
+        hall: {
+          select: {
+            name: true,
+            capacity: true,
+          },
+        },
+        tickets: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (screenings.length === 0) {
+      return { success: true, screening: null };
+    }
+
+    const pick = screenings[Math.floor(Math.random() * screenings.length)];
+    const capacity = pick.hall?.capacity ?? 80;
+    const booked = pick.tickets.filter(
+      (t) => t.status === 'paid' || t.status === 'reserved'
+    ).length;
+
+    return {
+      success: true,
+      screening: {
+        id: pick.id,
+        startTime: pick.startTime,
+        basePrice: pick.basePrice,
+        availableSeats: Math.max(0, capacity - booked),
+        movie: pick.movie,
+        hall: { name: pick.hall.name },
+      },
+    };
+  } catch (error: unknown) {
+    console.error('[Get Random Upcoming Screening] Error:', error);
+    return {
+      success: false,
+      error: 'Ցուցադրություն բեռնելիս սխալ է տեղի ունեցել',
+      screening: null,
     };
   }
 }

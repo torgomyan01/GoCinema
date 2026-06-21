@@ -180,11 +180,6 @@ model Payment {
   method        String    @db.VarChar(50) // card, bank_transfer, cash
   status        String    @default("pending") @db.VarChar(50) // pending, completed, failed, refunded
   transactionId String?   @db.VarChar(255)
-  // ՀԴՄ (fiscal receipt) tracking
-  fiscalReceiptIssued Boolean   @default(false)
-  fiscalReceiptNumber String?   @db.VarChar(100)
-  fiscalReceiptAt     DateTime?
-  fiscalizedBy        Int?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -194,7 +189,6 @@ model Payment {
   @@index([userId])
   @@index([ticketId])
   @@index([status])
-  @@index([fiscalReceiptIssued])
   @@map("payments")
 }
 

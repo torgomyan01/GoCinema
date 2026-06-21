@@ -1,12 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { motion, type Transition } from 'framer-motion';
 import {
   ArrowRight,
   Calendar,
   Clapperboard,
   Clock,
-  Film,
   MapPin,
   Play,
   Star,
@@ -14,20 +14,26 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { getScreenings } from '@/app/actions/screenings';
 import { SITE_URL } from '@/utils/consts';
 import { ageRatingClasses } from '@/lib/age-rating';
 
-export interface HeroUpcomingMovie {
-  id: number;
-  title: string;
-  image: string | null;
-  slug: string | null;
-  ageRating: string | null;
-  nextStart: Date | string;
-}
-
-interface HeroSectionProps {
-  upcomingMovies?: HeroUpcomingMovie[];
+interface HeroTicket {
+  id: number | null;
+  startTime: Date | string;
+  basePrice: number;
+  availableSeats: number;
+  isMock: boolean;
+  movie: {
+    title: string;
+    image: string | null;
+    slug: string | null;
+    rating: number;
+    ageRating: string | null;
+  };
+  hall: {
+    name: string;
+  };
 }
 
 const AM_MONTHS_SHORT = [
@@ -45,6 +51,24 @@ const AM_MONTHS_SHORT = [
   'դեկ',
 ];
 
+const MOCK_TICKET: HeroTicket = {
+  id: null,
+  startTime: new Date(new Date().setHours(20, 30, 0, 0)),
+  basePrice: 2500,
+  availableSeats: 42,
+  isMock: true,
+  movie: {
+    title: 'GoCinema Hall',
+    image: '/images/hero-background.png',
+    slug: null,
+    rating: 0,
+    ageRating: null,
+  },
+  hall: {
+    name: '99 Սուերմարկետ 2 հարկ',
+  },
+};
+
 function pad2(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
 }
@@ -59,6 +83,54 @@ function formatShowtime(value: Date | string) {
   const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   if (isToday) return `Այսօր · ${time}`;
   return `${pad2(d.getDate())} ${AM_MONTHS_SHORT[d.getMonth()]} · ${time}`;
+}
+
+function getAvailableSeats(
+  capacity: number,
+  tickets: Array<{ status: string }> = []
+) {
+  const booked = tickets.filter(
+    (t) => t.status === 'paid' || t.status === 'reserved'
+  ).length;
+  return Math.max(0, capacity - booked);
+}
+
+function mapScreeningToTicket(
+  screening: {
+    id: number;
+    startTime: Date | string;
+    basePrice: number;
+    movie?: {
+      title: string;
+      image: string | null;
+      slug?: string | null;
+      rating?: number;
+      ageRating?: string | null;
+    } | null;
+    hall?: { name: string; capacity: number } | null;
+    tickets?: Array<{ status: string }>;
+  }
+): HeroTicket {
+  return {
+    id: screening.id,
+    startTime: screening.startTime,
+    basePrice: screening.basePrice,
+    availableSeats: getAvailableSeats(
+      screening.hall?.capacity ?? 42,
+      screening.tickets
+    ),
+    isMock: false,
+    movie: {
+      title: screening.movie?.title?.trim() || 'Անհայտ ֆիլմ',
+      image: screening.movie?.image ?? null,
+      slug: screening.movie?.slug ?? null,
+      rating: screening.movie?.rating ?? 0,
+      ageRating: screening.movie?.ageRating ?? null,
+    },
+    hall: {
+      name: screening.hall?.name || 'GoCinema Hall',
+    },
+  };
 }
 
 const fadeUp = (
@@ -79,9 +151,170 @@ const TRUST_ITEMS = [
   { value: 'QR', label: 'Անցումային տոմս' },
 ];
 
-export default function HeroSection({
-  upcomingMovies = [],
-}: HeroSectionProps) {
+function HeroTicketCard({
+  ticket,
+  compact = false,
+}: {
+  ticket: HeroTicket;
+  compact?: boolean;
+}) {
+  const hasSeats = ticket.availableSeats > 0;
+  const bookingHref = ticket.isMock
+    ? SITE_URL.SCHEDULE
+    : hasSeats
+      ? SITE_URL.BOOKING(ticket.id!)
+      : SITE_URL.SCHEDULE;
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-[1.5rem] border border-white/15 bg-neutral-950/85 shadow-2xl shadow-red-950/40 backdrop-blur-xl sm:rounded-[2.3rem] ${
+        compact ? 'p-4 sm:p-5' : 'p-6'
+      }`}
+    >
+      <div
+        className={`flex items-start justify-between gap-3 ${compact ? 'mb-4' : 'mb-5'}`}
+      >
+        <div className="min-w-0">
+          <p
+            className={`font-bold uppercase tracking-[0.2em] text-red-400 ${
+              compact ? 'text-xs sm:text-sm' : 'text-sm tracking-[0.25em]'
+            }`}
+          >
+            {ticket.isMock ? 'Այսօր' : 'Մոտակա սեանս'}
+          </p>
+          <h3
+            className={`mt-1 line-clamp-2 font-black leading-tight text-white ${
+              compact ? 'text-xl sm:text-2xl' : 'text-2xl'
+            }`}
+          >
+            {ticket.movie.title}
+          </h3>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <div
+            className={`rounded-xl bg-red-600 ${compact ? 'p-2.5 sm:p-3' : 'rounded-2xl p-3'}`}
+          >
+            <Clapperboard
+              className={compact ? 'h-5 w-5 sm:h-6 sm:w-6' : 'h-6 w-6'}
+            />
+          </div>
+          {ticket.movie.ageRating && (
+            <span
+              className={`rounded-md px-2 py-0.5 text-xs font-bold ${ageRatingClasses(
+                ticket.movie.ageRating
+              )}`}
+            >
+              {ticket.movie.ageRating}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className={`overflow-hidden rounded-3xl bg-neutral-900 ${compact ? 'mb-4' : 'mb-5'}`}>
+        <Image
+          src={ticket.movie.image || '/images/hero-background.png'}
+          alt={ticket.movie.title}
+          width={520}
+          height={320}
+          className={`w-full object-cover opacity-90 ${compact ? 'h-40 sm:h-48' : 'h-56'}`}
+        />
+      </div>
+
+      <div
+        className={`space-y-3 rounded-3xl border border-white/10 bg-white/[0.04] ${
+          compact ? 'p-4' : 'p-5'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          {ticket.movie.rating > 0 ? (
+            <div className="flex items-center gap-1.5 text-yellow-400">
+              <Star className="h-4 w-4 fill-current" />
+              <span className="text-sm font-bold text-white">
+                {ticket.movie.rating.toFixed(1)}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-yellow-400">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Star key={index} className="h-4 w-4 fill-current" />
+              ))}
+            </div>
+          )}
+          <span
+            className={`rounded-full px-3 py-1 text-sm font-bold ${
+              hasSeats
+                ? 'bg-green-500/15 text-green-300'
+                : 'bg-red-500/15 text-red-300'
+            }`}
+          >
+            {hasSeats ? 'Տեղեր կան' : 'Վաճառված'}
+          </span>
+        </div>
+
+        <div
+          className={`grid gap-3 text-sm text-neutral-300 ${
+            compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'
+          }`}
+        >
+          <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">
+            <Clock className="h-4 w-4 shrink-0 text-red-400" />
+            <span className="truncate">{formatShowtime(ticket.startTime)}</span>
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">
+            <MapPin className="h-4 w-4 shrink-0 text-red-400" />
+            <span className="truncate">{ticket.hall.name}</span>
+          </div>
+        </div>
+
+        <div className="text-center text-sm font-bold text-red-400">
+          {ticket.basePrice.toLocaleString('hy-AM')} ֏
+        </div>
+
+        <Link
+          href={bookingHref}
+          className={`flex items-center justify-center gap-2 rounded-2xl bg-white font-black text-neutral-950 transition hover:bg-red-50 ${
+            compact ? 'px-4 py-3 text-sm sm:text-base' : 'mt-2 px-5 py-3'
+          }`}
+        >
+          <Ticket className="h-5 w-5" />
+          {ticket.isMock || !hasSeats ? 'Ժամանակացույց' : 'Ամրագրել տեղ'}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export default function HeroSection() {
+  const [ticket, setTicket] = useState<HeroTicket>(MOCK_TICKET);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const result = await getScreenings();
+        if (!result.success || !result.screenings?.length) return;
+
+        const now = new Date();
+        let pool = result.screenings.filter(
+          (s) => new Date(s.endTime) >= now
+        );
+
+        if (pool.length === 0) {
+          pool = [...result.screenings].sort(
+            (a, b) =>
+              new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+          );
+        }
+
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        setTicket(mapScreeningToTicket(pick));
+      } catch (err) {
+        console.error('[Hero] screenings load error:', err);
+      }
+    };
+
+    load();
+  }, []);
+
   return (
     <section className="relative min-h-[100svh] overflow-hidden bg-[#050505] text-white">
       <div className="absolute inset-0 z-0">
@@ -154,89 +387,18 @@ export default function HeroSection({
             ))}
           </motion.div>
 
-          {/* Mobile ticket preview */}
+          {/* Mobile ticket mock */}
           <motion.div
             className="mt-6 lg:hidden"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.75, ease: 'easeOut' }}
           >
-            <div className="overflow-hidden rounded-2xl border border-white/15 bg-neutral-950/85 p-4 shadow-2xl shadow-red-950/30 backdrop-blur-xl sm:p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-400 sm:text-sm">
-                    Ցուցադրության ենթակա
-                  </p>
-                  <h3 className="mt-1 truncate text-xl font-black sm:text-2xl">
-                    Ֆիլմեր
-                  </h3>
-                </div>
-                <div className="shrink-0 rounded-xl bg-red-600 p-2.5 sm:p-3">
-                  <Clapperboard className="h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-              </div>
-
-              {upcomingMovies.length > 0 ? (
-                <div className="space-y-2">
-                  {upcomingMovies.map((movie) => (
-                    <Link
-                      key={movie.id}
-                      href={SITE_URL.MOVIE_DETAIL(movie.slug || movie.id)}
-                      className="flex items-center gap-3 rounded-xl bg-black/30 p-2 transition hover:bg-black/50"
-                    >
-                      <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded-md bg-neutral-800">
-                        {movie.image ? (
-                          <Image
-                            src={movie.image}
-                            alt={movie.title}
-                            fill
-                            className="object-cover"
-                            sizes="40px"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center">
-                            <Film className="h-5 w-5 text-neutral-500" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-white">
-                          {movie.title}
-                        </p>
-                        <p className="mt-0.5 flex items-center gap-1 text-xs text-neutral-400">
-                          <Clock className="h-3.5 w-3.5 shrink-0 text-red-400" />
-                          {formatShowtime(movie.nextStart)}
-                        </p>
-                      </div>
-                      {movie.ageRating && (
-                        <span
-                          className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${ageRatingClasses(
-                            movie.ageRating
-                          )}`}
-                        >
-                          {movie.ageRating}
-                        </span>
-                      )}
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="rounded-xl bg-black/30 p-3 text-sm text-neutral-400">
-                  Մոտակա ցուցադրություններ չկան
-                </p>
-              )}
-
-              <Link
-                href={SITE_URL.SCHEDULE}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-neutral-950 transition hover:bg-red-50 sm:mt-4 sm:rounded-2xl sm:px-5 sm:text-base"
-              >
-                <Ticket className="h-5 w-5" />
-                Բոլոր սեանսները
-              </Link>
-            </div>
+            <HeroTicketCard ticket={ticket} compact />
           </motion.div>
         </div>
 
+        {/* Desktop ticket mock */}
         <motion.div
           initial={{ opacity: 0, x: 40, rotate: 2 }}
           animate={{ opacity: 1, x: 0, rotate: 0 }}
@@ -250,60 +412,8 @@ export default function HeroSection({
             <div className="h-full rounded-[1.4rem] bg-[radial-gradient(circle_at_50%_20%,rgba(234,179,8,0.45),transparent_35%),linear-gradient(160deg,#1f1f1f,#050505)]" />
           </div>
 
-          <div className="relative mx-auto max-w-md overflow-hidden rounded-[2.3rem] border border-white/15 bg-neutral-950/85 p-6 shadow-2xl shadow-red-950/40 backdrop-blur-xl">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold uppercase tracking-[0.25em] text-red-400">
-                  Այսօր
-                </p>
-                <h3 className="mt-1 text-3xl font-black">GoCinema Hall</h3>
-              </div>
-              <div className="rounded-2xl bg-red-600 p-3">
-                <Clapperboard className="h-6 w-6" />
-              </div>
-            </div>
-
-            <div className="mb-5 overflow-hidden rounded-3xl bg-neutral-900">
-              <Image
-                src="/images/hero-background.png"
-                alt="Cinema hall"
-                width={520}
-                height={320}
-                className="h-56 w-full object-cover opacity-80"
-              />
-            </div>
-
-            <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-yellow-400">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Star key={index} className="h-4 w-4 fill-current" />
-                  ))}
-                </div>
-                <span className="rounded-full bg-green-500/15 px-3 py-1 text-sm font-bold text-green-300">
-                  Տեղեր կան
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm text-neutral-300">
-                <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">
-                  <Clock className="h-4 w-4 text-red-400" />
-                  Այսօր · 20:30
-                </div>
-                <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-3">
-                  <MapPin className="h-4 w-4 text-red-400" />
-                  99 Սուերմարկետ 2 հարկ
-                </div>
-              </div>
-
-              <Link
-                href={SITE_URL.SCHEDULE}
-                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 font-black text-neutral-950 transition hover:bg-red-50"
-              >
-                <Ticket className="h-5 w-5" />
-                Ամրագրել տեղ
-              </Link>
-            </div>
+          <div className="relative mx-auto max-w-md">
+            <HeroTicketCard ticket={ticket} />
           </div>
         </motion.div>
       </div>

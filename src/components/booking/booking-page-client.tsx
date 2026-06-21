@@ -1003,7 +1003,7 @@ export default function BookingPageClient({
                           }`}
                         >
                           {product.image ? (
-                            <div className="relative w-18 h-18 shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                            <div className="relative w-[200px] h-[200px] shrink-0 rounded-lg overflow-hidden bg-gray-100">
                               <Image
                                 src={product.image}
                                 alt={product.name}
@@ -1012,7 +1012,7 @@ export default function BookingPageClient({
                               />
                             </div>
                           ) : (
-                            <div className="w-14 h-14 shrink-0 rounded-lg bg-gray-100 flex items-center justify-center">
+                            <div className="w-[200px] h-[200px] shrink-0 rounded-lg bg-gray-100 flex items-center justify-center">
                               <ShoppingCart className="w-6 h-6 text-gray-300" />
                             </div>
                           )}

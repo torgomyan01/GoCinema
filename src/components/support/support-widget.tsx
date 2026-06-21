@@ -16,6 +16,7 @@ import {
 import {
   addSupportMessage,
   createSupportRequest,
+  getMySupportRequest,
   getSupportMessages,
   getSupportRequestById,
 } from '@/app/actions/support';
@@ -150,11 +151,31 @@ export default function SupportWidget() {
   );
 
   useEffect(() => {
-    const stored = Number(localStorage.getItem(STORAGE_KEY));
-    if (Number.isFinite(stored) && stored > 0) {
-      void loadFullChat(stored);
-    }
-  }, [loadFullChat]);
+    const initChat = async () => {
+      if (session?.user) {
+        const result = await getMySupportRequest();
+        if (result.success && result.request) {
+          const req = result.request as {
+            id: number;
+            subject: string;
+            status: string;
+            messages: ChatMessage[];
+          };
+          localStorage.setItem(STORAGE_KEY, String(req.id));
+          setMeta({ id: req.id, subject: req.subject, status: req.status });
+          setMessages(req.messages);
+          return;
+        }
+      }
+
+      const stored = Number(localStorage.getItem(STORAGE_KEY));
+      if (Number.isFinite(stored) && stored > 0) {
+        await loadFullChat(stored);
+      }
+    };
+
+    void initChat();
+  }, [session?.user, loadFullChat]);
 
   useEffect(() => {
     if (isOpen && messages.length > 0) {
@@ -318,38 +339,40 @@ export default function SupportWidget() {
                 className="flex-1 space-y-4 overflow-y-auto p-4"
               >
                 {!isLoggedIn && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <input
-                      name="name"
-                      required
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
-                      placeholder="Անուն"
-                    />
-                    <input
-                      name="phone"
-                      required
-                      inputMode="tel"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
-                      placeholder="077123456"
-                    />
-                  </div>
+                  <>
+                    <p className="text-xs text-gray-500">
+                      Յուրաքանչյուր հեռախոսահամարի համար մեկ աջակցության չատ է։
+                      Նույն համարով կրկին գրելիս հաղորդագրությունը կգնա նույն չատ։
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input
+                        name="name"
+                        required
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
+                        placeholder="Անուն"
+                      />
+                      <input
+                        name="phone"
+                        required
+                        inputMode="tel"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
+                        placeholder="077123456"
+                      />
+                    </div>
+                  </>
                 )}
 
                 {isLoggedIn && (
                   <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
-                    Չատը կսկսվի ձեր գրանցված տվյալներով՝{' '}
+                    Ձեր աջակցության չատը մեկ է՝{' '}
                     <span className="font-semibold text-gray-900">
                       {session?.user?.name || session?.user?.phone}
                     </span>
+                    : գրեք հաղորդագրություն, և մենք կպատասխանենք նույն չատում։
                   </div>
                 )}
 
-                <input
-                  name="subject"
-                  required
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
-                  placeholder="Թեմա"
-                />
+                <input type="hidden" name="subject" value="Աջակցություն" />
 
                 <textarea
                   name="message"
@@ -388,7 +411,7 @@ export default function SupportWidget() {
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
-                  {isSubmitting ? 'Ուղարկվում է...' : 'Սկսել չատը'}
+                  {isSubmitting ? 'Ուղարկվում է...' : 'Ուղարկել'}
                 </button>
               </form>
             ) : (

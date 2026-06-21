@@ -150,6 +150,140 @@ async function saveAttachments(requestId: number, files: File[]) {
   }
 }
 
+async function findExistingSupportRequest(userId: number | null, phone: string) {
+  if (userId) {
+    const byUser = await prisma.supportRequest.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (byUser) return byUser;
+
+    if (phone) {
+      const guestChat = await prisma.supportRequest.findFirst({
+        where: { phone, userId: null },
+        orderBy: { updatedAt: 'desc' },
+      });
+      if (guestChat) {
+        return prisma.supportRequest.update({
+          where: { id: guestChat.id },
+          data: { userId },
+        });
+      }
+    }
+
+    return null;
+  }
+
+  if (phone) {
+    return prisma.supportRequest.findFirst({
+      where: {
+        phone,
+        userId: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  return null;
+}
+
+async function appendCustomerMessage(
+  requestId: number,
+  senderName: string,
+  message: string,
+  files: File[]
+) {
+  const request = await prisma.supportRequest.findUnique({
+    where: { id: requestId },
+  });
+
+  if (!request) {
+    throw new Error('Չատը չի գտնվել');
+  }
+
+  const chatMessage = await prisma.supportMessage.create({
+    data: {
+      requestId,
+      senderType: 'customer',
+      senderName,
+      message,
+    },
+  });
+
+  await saveAttachments(requestId, files.slice(0, 5));
+
+  await prisma.supportRequest.update({
+    where: { id: requestId },
+    data: {
+      message,
+      status:
+        request.status === 'resolved' || request.status === 'archived'
+          ? 'new'
+          : request.status,
+    },
+  });
+
+  await notifyStaffAboutSupportRequest(requestId, message);
+
+  return chatMessage;
+}
+
+/** Օգտատիրոջ միակ (կամ վերջին) աջակցության չատը */
+export async function getMySupportRequest() {
+  try {
+    const session = await getServerSession(authOptions);
+    const sessionUser = session?.user as { id?: string } | undefined;
+    const userId = sessionUser?.id ? Number(sessionUser.id) : null;
+
+    if (!userId) {
+      return { success: true, request: null };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true },
+    });
+
+    let request = await prisma.supportRequest.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!request && user?.phone) {
+      const guestChat = await prisma.supportRequest.findFirst({
+        where: { phone: user.phone, userId: null },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      if (guestChat) {
+        request = await prisma.supportRequest.update({
+          where: { id: guestChat.id },
+          data: { userId },
+          include: {
+            messages: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      }
+    }
+
+    return { success: true, request };
+  } catch (error) {
+    console.error('[Get My Support Request] Error:', error);
+    return {
+      success: false,
+      error: 'Աջակցության չատը բեռնելիս սխալ է տեղի ունեցել',
+      request: null,
+    };
+  }
+}
+
 export async function createSupportRequest(formData: FormData) {
   try {
     const session = await getServerSession(authOptions);
@@ -178,10 +312,10 @@ export async function createSupportRequest(formData: FormData) {
         error: 'Խնդրում ենք լրացնել անունը և հեռախոսահամարը',
       };
     }
-    if (!subject || !message) {
+    if (!message) {
       return {
         success: false,
-        error: 'Խնդրում ենք լրացնել թեման և հաղորդագրությունը',
+        error: 'Խնդրում ենք գրել հաղորդագրությունը',
       };
     }
     if (!/^0[0-9]{8}$/.test(phone)) {
@@ -191,12 +325,31 @@ export async function createSupportRequest(formData: FormData) {
       };
     }
 
+    const resolvedSubject = subject || 'Աջակցություն';
+    const files = formData
+      .getAll('attachments')
+      .filter((item): item is File => item instanceof File && item.size > 0);
+
+    const existing = await findExistingSupportRequest(userId, phone);
+    if (existing) {
+      await appendCustomerMessage(existing.id, name, message, files);
+
+      revalidatePath('/admin/support');
+      revalidatePath(`/admin/support/${existing.id}`);
+
+      return {
+        success: true,
+        requestId: existing.id,
+        reused: true,
+      };
+    }
+
     const request = await prisma.supportRequest.create({
       data: {
         name,
         phone,
         email,
-        subject,
+        subject: resolvedSubject,
         message,
         userId,
         status: 'new',
@@ -212,16 +365,12 @@ export async function createSupportRequest(formData: FormData) {
       },
     });
 
-    const files = formData
-      .getAll('attachments')
-      .filter((item): item is File => item instanceof File && item.size > 0);
-
     await saveAttachments(request.id, files.slice(0, 5));
     await notifyStaffAboutSupportRequest(request.id, message);
 
     revalidatePath('/admin/support');
 
-    return { success: true, requestId: request.id };
+    return { success: true, requestId: request.id, reused: false };
   } catch (error: any) {
     console.error('[Create Support Request] Error:', error);
     return {
@@ -340,6 +489,13 @@ export async function addSupportMessage(formData: FormData) {
 
     if (!request) {
       return { success: false, error: 'Չատը չի գտնվել' };
+    }
+
+    if (sessionUser?.id) {
+      const userId = Number(sessionUser.id);
+      if (request.userId && request.userId !== userId) {
+        return { success: false, error: 'Մուտքն արգելված է' };
+      }
     }
 
     let senderName = request.name;

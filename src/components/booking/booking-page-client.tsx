@@ -604,9 +604,14 @@ export default function BookingPageClient({
                       Տոմսեր
                     </p>
                     {selectedSeats.map((seatId) => {
-                      const seat = screening.hall.seats.find((s) => s.id === seatId);
+                      const seat = screening.hall.seats.find(
+                        (s) => s.id === seatId
+                      );
                       return (
-                        <div key={seatId} className="flex justify-between text-sm">
+                        <div
+                          key={seatId}
+                          className="flex justify-between text-sm"
+                        >
                           <span className="text-gray-600">
                             Շարք {seat?.row}, {seat?.number}
                           </span>
@@ -624,27 +629,39 @@ export default function BookingPageClient({
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
                         Կինոբար
                       </p>
-                      {Array.from(seatProducts.entries()).map(([seatId, productMap]) => {
-                        if (productMap.size === 0) return null;
-                        const seat = screening.hall.seats.find((s) => s.id === seatId);
-                        return Array.from(productMap.entries()).map(([productId, qty]) => {
-                          const product = products.find((p) => p.id === productId);
-                          if (!product) return null;
-                          return (
-                            <div key={`${seatId}-${productId}`} className="flex justify-between text-sm">
-                              <span className="text-gray-500 truncate pr-2">
-                                {product.name}
-                                <span className="text-gray-400 text-xs ml-1">
-                                  ×{qty} ({seat?.row}{seat?.number})
-                                </span>
-                              </span>
-                              <span className="font-medium text-gray-800 shrink-0">
-                                {(product.price * qty).toFixed(0)} ֏
-                              </span>
-                            </div>
+                      {Array.from(seatProducts.entries()).map(
+                        ([seatId, productMap]) => {
+                          if (productMap.size === 0) return null;
+                          const seat = screening.hall.seats.find(
+                            (s) => s.id === seatId
                           );
-                        });
-                      })}
+                          return Array.from(productMap.entries()).map(
+                            ([productId, qty]) => {
+                              const product = products.find(
+                                (p) => p.id === productId
+                              );
+                              if (!product) return null;
+                              return (
+                                <div
+                                  key={`${seatId}-${productId}`}
+                                  className="flex justify-between text-sm"
+                                >
+                                  <span className="text-gray-500 truncate pr-2">
+                                    {product.name}
+                                    <span className="text-gray-400 text-xs ml-1">
+                                      ×{qty} ({seat?.row}
+                                      {seat?.number})
+                                    </span>
+                                  </span>
+                                  <span className="font-medium text-gray-800 shrink-0">
+                                    {(product.price * qty).toFixed(0)} ֏
+                                  </span>
+                                </div>
+                              );
+                            }
+                          );
+                        }
+                      )}
                     </div>
                   )}
 
@@ -652,7 +669,12 @@ export default function BookingPageClient({
                   <div className="border-t border-gray-100 pt-3 mb-4 space-y-1.5">
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>Տոմսեր ({selectedSeats.length})</span>
-                      <span>{(selectedSeats.length * screening.basePrice).toFixed(0)} ֏</span>
+                      <span>
+                        {(selectedSeats.length * screening.basePrice).toFixed(
+                          0
+                        )}{' '}
+                        ֏
+                      </span>
                     </div>
                     {productsTotal > 0 && (
                       <div className="flex justify-between text-sm text-gray-500">
@@ -661,7 +683,9 @@ export default function BookingPageClient({
                       </div>
                     )}
                     <div className="flex justify-between items-center pt-1.5 border-t border-gray-100">
-                      <span className="font-semibold text-gray-700">Ընդամենը</span>
+                      <span className="font-semibold text-gray-700">
+                        Ընդամենը
+                      </span>
                       <span className="text-xl font-bold text-gray-900">
                         {totalPrice.toFixed(0)} ֏
                       </span>
@@ -681,7 +705,11 @@ export default function BookingPageClient({
                   </button>
                   <p className="mt-2 text-xs text-gray-400 text-center leading-relaxed">
                     Ամրագրելով՝ ընդունում եք{' '}
-                    <Link href="/refund" target="_blank" className="text-red-500 hover:underline">
+                    <Link
+                      href="/refund"
+                      target="_blank"
+                      className="text-red-500 hover:underline"
+                    >
                       Վերադարձի քաղաքականությունը
                     </Link>
                   </p>
@@ -715,14 +743,22 @@ export default function BookingPageClient({
               className="bg-white border-t border-gray-200 shadow-2xl px-4 pt-3 pb-2 max-h-64 overflow-y-auto"
             >
               {/* Tickets */}
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Տոմսեր</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Տոմսեր
+              </p>
               <div className="space-y-1.5 mb-2">
                 {selectedSeats.map((seatId) => {
-                  const seat = screening.hall.seats.find((s) => s.id === seatId);
+                  const seat = screening.hall.seats.find(
+                    (s) => s.id === seatId
+                  );
                   return (
                     <div key={seatId} className="flex justify-between text-sm">
-                      <span className="text-gray-600">Շարք {seat?.row}, {seat?.number}</span>
-                      <span className="font-medium">{screening.basePrice} ֏</span>
+                      <span className="text-gray-600">
+                        Շարք {seat?.row}, {seat?.number}
+                      </span>
+                      <span className="font-medium">
+                        {screening.basePrice} ֏
+                      </span>
                     </div>
                   );
                 })}
@@ -731,23 +767,40 @@ export default function BookingPageClient({
               {/* Products */}
               {seatProducts.size > 0 && (
                 <>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 mt-2">Կինոբար</p>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 mt-2">
+                    Կինոբար
+                  </p>
                   <div className="space-y-1.5 mb-2">
-                    {Array.from(seatProducts.entries()).map(([seatId, productMap]) =>
-                      Array.from(productMap.entries()).map(([productId, qty]) => {
-                        const product = products.find((p) => p.id === productId);
-                        const seat = screening.hall.seats.find((s) => s.id === seatId);
-                        if (!product) return null;
-                        return (
-                          <div key={`${seatId}-${productId}`} className="flex justify-between text-sm">
-                            <span className="text-gray-500 truncate pr-2">
-                              {product.name}
-                              <span className="text-gray-400 text-xs ml-1">×{qty} ({seat?.row}{seat?.number})</span>
-                            </span>
-                            <span className="font-medium shrink-0">{(product.price * qty).toFixed(0)} ֏</span>
-                          </div>
-                        );
-                      })
+                    {Array.from(seatProducts.entries()).map(
+                      ([seatId, productMap]) =>
+                        Array.from(productMap.entries()).map(
+                          ([productId, qty]) => {
+                            const product = products.find(
+                              (p) => p.id === productId
+                            );
+                            const seat = screening.hall.seats.find(
+                              (s) => s.id === seatId
+                            );
+                            if (!product) return null;
+                            return (
+                              <div
+                                key={`${seatId}-${productId}`}
+                                className="flex justify-between text-sm"
+                              >
+                                <span className="text-gray-500 truncate pr-2">
+                                  {product.name}
+                                  <span className="text-gray-400 text-xs ml-1">
+                                    ×{qty} ({seat?.row}
+                                    {seat?.number})
+                                  </span>
+                                </span>
+                                <span className="font-medium shrink-0">
+                                  {(product.price * qty).toFixed(0)} ֏
+                                </span>
+                              </div>
+                            );
+                          }
+                        )
                     )}
                   </div>
                 </>
@@ -757,7 +810,9 @@ export default function BookingPageClient({
               <div className="border-t border-gray-100 pt-2 mt-1 space-y-1">
                 <div className="flex justify-between text-xs text-gray-400">
                   <span>Տոմսեր ({selectedSeats.length})</span>
-                  <span>{(selectedSeats.length * screening.basePrice).toFixed(0)} ֏</span>
+                  <span>
+                    {(selectedSeats.length * screening.basePrice).toFixed(0)} ֏
+                  </span>
                 </div>
                 {productsTotal > 0 && (
                   <div className="flex justify-between text-xs text-gray-400">
@@ -948,7 +1003,7 @@ export default function BookingPageClient({
                           }`}
                         >
                           {product.image ? (
-                            <div className="relative w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                            <div className="relative w-18 h-18 shrink-0 rounded-lg overflow-hidden bg-gray-100">
                               <Image
                                 src={product.image}
                                 alt={product.name}

@@ -3,6 +3,7 @@
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { sendVerificationSms } from '@/lib/sms';
 
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_ATTEMPTS_PER_HOUR = 5;
@@ -15,43 +16,10 @@ function generateSessionToken(): string {
   return randomBytes(16).toString('hex'); // 32-char hex, fits VarChar(64)
 }
 
-async function sendTelegramOtp(chatId: string, otp: string): Promise<boolean> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
-    console.error('[ForgotPassword] TELEGRAM_BOT_TOKEN is not set');
-    return false;
-  }
-
-  const text =
-    `🔐 <b>GoCinema</b> — Գաղտնաբառի վերականգնում\n\n` +
-    `Ձեր վերականգնման կոդն է` + `\u003a\n\n` +
-    `<code>${otp}</code>\n\n` +
-    `⏰ Կոդը վավեր է <b>${OTP_EXPIRY_MINUTES} րոպե</b>:\n` +
-    `⚠️ Մի կիսվեք այս կոդով ոչ ոքի հետ:`;
-
-  try {
-    const res = await fetch(
-      `https://api.telegram.org/bot${token}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-      },
-    );
-    const data = await res.json();
-    return data.ok === true;
-  } catch (err) {
-    console.error('[ForgotPassword] Telegram send error:', err);
-    return false;
-  }
-}
-
 // ─── Step 1: User enters phone ───────────────────────────────────────────────
 export async function requestPasswordReset(phone: string): Promise<{
   success: boolean;
   error?: string;
-  hasTelegram?: boolean;
-  telegramBotUsername?: string;
 }> {
   try {
     const cleanPhone = phone.replace(/\s/g, '');
@@ -62,12 +30,12 @@ export async function requestPasswordReset(phone: string): Promise<{
 
     const user = await prisma.user.findUnique({
       where: { phone: cleanPhone },
-      select: { id: true, telegramChatId: true },
+      select: { id: true },
     });
 
     if (!user) {
       // Return success anyway to not leak user existence
-      return { success: true, hasTelegram: false };
+      return { success: true };
     }
 
     // Rate limiting: max 5 requests per hour
@@ -79,15 +47,6 @@ export async function requestPasswordReset(phone: string): Promise<{
       return {
         success: false,
         error: 'Չափազանց շատ փորձ: Խնդրում ենք 1 ժամ հետո կրկին փորձել:',
-      };
-    }
-
-    if (!user.telegramChatId) {
-      // User has not started the bot yet
-      return {
-        success: true,
-        hasTelegram: false,
-        telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? '',
       };
     }
 
@@ -105,49 +64,18 @@ export async function requestPasswordReset(phone: string): Promise<{
       data: { userId: user.id, token: otp, expiresAt },
     });
 
-    const sent = await sendTelegramOtp(user.telegramChatId, otp);
-    if (!sent) {
+    const sent = await sendVerificationSms(cleanPhone, otp, 'reset');
+    if (!sent.success) {
       return {
         success: false,
-        error: 'Telegram-ի միջոցով կոդ ուղարկելը ձախողվեց: Փորձեք կրկին:',
+        error: sent.error || 'SMS-ով կոդ ուղարկելը ձախողվեց: Փորձեք կրկին:',
       };
     }
 
-    return { success: true, hasTelegram: true };
+    return { success: true };
   } catch (err) {
     console.error('[requestPasswordReset] Error:', err);
     return { success: false, error: 'Սխալ է տեղի ունեցել: Փորձեք կրկին:' };
-  }
-}
-
-// ─── Poll whether user started the bot (by phone) ────────────────────────────
-export async function checkTelegramLinked(phone: string): Promise<{
-  linked: boolean;
-}> {
-  try {
-    const cleanPhone = phone.replace(/\s/g, '');
-    const user = await prisma.user.findUnique({
-      where: { phone: cleanPhone },
-      select: { telegramChatId: true },
-    });
-    return { linked: !!user?.telegramChatId };
-  } catch {
-    return { linked: false };
-  }
-}
-
-// ─── Poll whether user started the bot (by userId) ───────────────────────────
-export async function checkTelegramLinkedById(userId: number): Promise<{
-  linked: boolean;
-}> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { telegramChatId: true },
-    });
-    return { linked: !!user?.telegramChatId };
-  } catch {
-    return { linked: false };
   }
 }
 

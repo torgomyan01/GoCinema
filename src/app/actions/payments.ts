@@ -33,140 +33,6 @@ function paymentServerLog(event: string, payload: Record<string, unknown>) {
   }
 }
 
-const CINEMA_ADDRESS = 'Ք․ Մարտունի, Երեվանյան 74/7';
-
-function formatArDateTime(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleString('hy-AM', {
-    timeZone: 'Asia/Yerevan',
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-async function sendTelegramText(chatId: string, text: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return false;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
-    });
-    const data = await res.json();
-    return data?.ok === true;
-  } catch (err) {
-    console.error('[Payment][Telegram] sendMessage error:', err);
-    return false;
-  }
-}
-
-async function sendTelegramQrPhoto(chatId: string, qrValue: string, caption: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return false;
-  try {
-    // Use external generator for scannable QR image.
-    const photoUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrValue)}&size=360`;
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        photo: photoUrl,
-        caption,
-        parse_mode: 'HTML',
-      }),
-    });
-    const data = await res.json();
-    return data?.ok === true;
-  } catch (err) {
-    console.error('[Payment][Telegram] sendPhoto error:', err);
-    return false;
-  }
-}
-
-async function sendVPostSuccessTelegramNotification(orderId: number) {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          telegramChatId: true,
-        },
-      },
-      tickets: {
-        include: {
-          screening: {
-            include: {
-              movie: { select: { title: true } },
-            },
-          },
-          seat: {
-            select: { row: true, number: true },
-          },
-        },
-      },
-    },
-  });
-
-  if (!order?.user?.telegramChatId) {
-    paymentServerLog('telegram_skip', {
-      orderId,
-      reason: 'telegram_not_linked',
-    });
-    return;
-  }
-
-  const chatId = order.user.telegramChatId;
-  await sendTelegramText(
-    chatId,
-    `🙏 Շնորհակալություն գնման համար, <b>${order.user.name || 'GoCinema'}</b>:\n\n` +
-      `✅ Ձեր վճարումը հաջողությամբ հաստատվել է:\n` +
-      `📍 Հասցե՝ <b>${CINEMA_ADDRESS}</b>\n\n` +
-      `Խնդրում ենք մոտենալ դահլիճին ցուցադրությունից <b>15 րոպե շուտ</b>։`
-  );
-
-  for (const ticket of order.tickets) {
-    const qrPayload = ticket.qrCode?.trim() || `TICKET-${ticket.id}`;
-    const caption =
-      `🎬 <b>${ticket.screening.movie.title}</b>\n` +
-      `🕒 <b>${formatArDateTime(ticket.screening.startTime)}</b>\n` +
-      `💺 Տեղ՝ <b>${ticket.seat.row}${ticket.seat.number}</b>\n` +
-      `📍 ${CINEMA_ADDRESS}\n\n` +
-      `🎫 Տոմսի QR կոդը ուղարկված է այս նկարով։\n` +
-      `⏰ Խնդրում ենք մոտենալ ցուցադրությունից <b>15 րոպե շուտ</b>։`;
-
-    const ok = await sendTelegramQrPhoto(chatId, qrPayload, caption);
-    if (!ok) {
-      await sendTelegramText(
-        chatId,
-        `🎫 Տոմս #${ticket.id}\n` +
-          `QR կոդ՝ <code>${qrPayload}</code>\n` +
-          `🎬 ${ticket.screening.movie.title}\n` +
-          `🕒 ${formatArDateTime(ticket.screening.startTime)}\n` +
-          `📍 ${CINEMA_ADDRESS}\n` +
-          `⏰ Խնդրում ենք մոտենալ 15 րոպե շուտ։`
-      );
-    }
-  }
-
-  paymentServerLog('telegram_sent', {
-    orderId,
-    ticketCount: order.tickets.length,
-    chatIdPreview: `${chatId.slice(0, 3)}***`,
-  });
-}
-
 export interface CreatePaymentData {
   userId: number;
   ticketId: number;
@@ -690,7 +556,6 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
         user: {
           select: {
             id: true,
-            telegramChatId: true,
           },
         },
         tickets: {
@@ -773,9 +638,6 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
 
     const approvedTxs = txList.filter(isVPostPaymentApproved);
     if (approvedTxs.length > 0) {
-      const hadUnpaidTickets = order.tickets.some(
-        (t) => t.status !== 'paid' && t.status !== 'used'
-      );
       paymentServerLog('vpost_sync_decision', {
         orderId: order.id,
         decision: 'paid',
@@ -809,13 +671,6 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
           message: `Ցավոք, ընտրված տեղ(եր)ը (${seatLabels}) այս ընթացքում զբաղվել են այլ հաճախորդի կողմից։ Վճարված գումարը կվերադարձվի։ Խնդրում ենք ընտրել այլ տեղ։`,
           conflicts,
         };
-      }
-
-      if (hadUnpaidTickets) {
-        // Fire-and-forget: payment finalization should not fail if Telegram is unavailable.
-        void sendVPostSuccessTelegramNotification(order.id).catch((err) => {
-          console.error('[Payment][Telegram] vPost notify error:', err);
-        });
       }
 
       return {

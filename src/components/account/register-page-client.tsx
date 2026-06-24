@@ -12,14 +12,22 @@ import {
   Phone,
   CheckCircle,
   FileText,
-  ExternalLink,
+  MessageSquare,
+  RefreshCw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
 import { registerUser } from '@/app/actions/auth';
-import { checkTelegramLinkedById } from '@/app/actions/forgot-password';
+import {
+  sendRegistrationOtp,
+  verifyRegistrationOtp,
+} from '@/app/actions/phone-verification';
 
-type Step = 'form' | 'telegram' | 'success';
+type Step = 'form' | 'otp' | 'success';
+
+// SMS վերիֆիկացիան միացված է միայն երբ Sender ID-ն հաստատված է։
+const SMS_VERIFICATION_ENABLED =
+  process.env.NEXT_PUBLIC_SMS_VERIFICATION_ENABLED === 'true';
 
 export default function RegisterPageClient() {
   // ── Form state ─────────────────────────────────────────────────────────────
@@ -35,36 +43,80 @@ export default function RegisterPageClient() {
   const [step, setStep] = useState<Step>('form');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [newUserId, setNewUserId] = useState<number | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
 
-  const telegramBotUsername =
-    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'gocinema_bot';
+  // ── OTP state ──────────────────────────────────────────────────────────────
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // ── Polling: check if user linked Telegram ─────────────────────────────────
+  // ── OTP resend cooldown ────────────────────────────────────────────────────
   useEffect(() => {
-    if (step !== 'telegram' || !isPolling || !newUserId) return;
+    if (otpResendCooldown <= 0) return;
+    const t = setTimeout(() => setOtpResendCooldown((v) => v - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpResendCooldown]);
 
-    let active = true;
+  // ── OTP handlers ───────────────────────────────────────────────────────────
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^[0-9]?$/.test(value)) return;
+    const next = [...otp];
+    next[index] = value;
+    setOtp(next);
+    if (value && index < 5) otpRefs.current[index + 1]?.focus();
+  };
 
-    const poll = async () => {
-      while (active) {
-        await new Promise((r) => setTimeout(r, 3000));
-        if (!active) break;
-        const { linked } = await checkTelegramLinkedById(newUserId);
-        if (linked && active) {
-          active = false;
-          setIsPolling(false);
-          setStep('success');
-        }
-      }
-    };
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
 
-    poll();
-    return () => {
-      active = false;
-    };
-  }, [step, isPolling, newUserId]);
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData
+      .getData('text')
+      .replace(/\D/g, '')
+      .slice(0, 6);
+    const next = [...otp];
+    pasted.split('').forEach((ch, i) => {
+      next[i] = ch;
+    });
+    setOtp(next);
+    otpRefs.current[Math.min(pasted.length, 5)]?.focus();
+  };
+
+  const resendOtp = async () => {
+    const cleanPhone = phone.replace(/\s/g, '');
+    setOtp(['', '', '', '', '', '']);
+    setError('');
+    setIsLoading(true);
+    const result = await sendRegistrationOtp(cleanPhone);
+    setIsLoading(false);
+    if (!result.success) {
+      setError(result.error ?? 'SMS ուղարկելը ձախողվեց');
+      return;
+    }
+    setOtpResendCooldown(60);
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = otp.join('');
+    if (code.length < 6) {
+      setError('Մուտքագրեք 6-նիշ կոդը');
+      return;
+    }
+    const cleanPhone = phone.replace(/\s/g, '');
+    setIsLoading(true);
+    setError('');
+    const result = await verifyRegistrationOtp(cleanPhone, code);
+    setIsLoading(false);
+    if (!result.success) {
+      setError(result.error ?? 'Սխալ կոդ');
+      return;
+    }
+    setStep('success');
+  };
 
   // ── Phone formatter ────────────────────────────────────────────────────────
   const formatPhoneNumber = (value: string): string => {
@@ -114,9 +166,25 @@ export default function RegisterPageClient() {
         setError(result.error || 'Գրանցումը ձախողվեց');
         return;
       }
-      setNewUserId(result.user.id);
-      setStep('telegram');
-      setIsPolling(true);
+
+      // Քանի դեռ Sender ID-ն հաստատված չէ՝ գրանցումն ավարտում ենք առանց SMS վերիֆիկացիայի։
+      if (!SMS_VERIFICATION_ENABLED) {
+        setStep('success');
+        return;
+      }
+
+      // Հաշիվը ստեղծվեց — ուղարկում ենք SMS վերիֆիկացիայի կոդը
+      setStep('otp');
+      setOtp(['', '', '', '', '', '']);
+      const otpResult = await sendRegistrationOtp(cleanPhone);
+      if (!otpResult.success) {
+        setError(
+          otpResult.error ??
+            'Կոդ ուղարկելը ձախողվեց: Սեղմեք «Կրկին ուղարկել»:'
+        );
+      } else {
+        setOtpResendCooldown(60);
+      }
     } catch {
       setError('Սխալ է տեղի ունեցել');
     } finally {
@@ -126,7 +194,7 @@ export default function RegisterPageClient() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pt-24 pb-20">
+    <div className="min-h-screen bg-linear-to-b from-slate-50 to-white pt-24 pb-20">
       <div className="container mx-auto px-4">
         <div className="max-w-md mx-auto">
           <AnimatePresence mode="wait">
@@ -336,7 +404,7 @@ export default function RegisterPageClient() {
                       password !== confirmPassword ||
                       !agreeToTerms
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
+                        : 'bg-linear-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
                     }`}
                   >
                     {isLoading ? (
@@ -374,88 +442,101 @@ export default function RegisterPageClient() {
               </motion.div>
             )}
 
-            {/* ── STEP 2: Telegram verification ── */}
-            {step === 'telegram' && (
+            {/* ── STEP 2: SMS OTP verification ── */}
+            {step === 'otp' && (
               <motion.div
-                key="telegram"
+                key="otp"
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="bg-white rounded-xl shadow-lg p-8 text-center"
+                className="bg-white rounded-xl shadow-lg p-8"
               >
-                {/* Telegram icon */}
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-6">
-                  <svg viewBox="0 0 24 24" className="w-10 h-10 fill-blue-500">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.289c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.932z" />
-                  </svg>
+                <div className="text-center mb-8">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                    <MessageSquare className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    Հաստատման կոդ
+                  </h2>
+                  <p className="text-gray-500 text-sm">
+                    6-նիշ կոդ ուղարկվեց SMS-ով՝{' '}
+                    <span className="font-medium text-gray-700">{phone}</span>
+                  </p>
                 </div>
 
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Վերիֆիկացրեք Telegram-ով
-                </h2>
-                <p className="text-gray-500 text-sm mb-8">
-                  Հաշիվը ստեղծվեց: Հաստատելու համար կապեք ձեր Telegram-ն:
-                </p>
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"
+                  >
+                    {error}
+                  </motion.div>
+                )}
 
-                {/* Steps */}
-                <ol className="text-left space-y-4 mb-8">
-                  <li className="flex gap-3 items-start">
-                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">
-                      1
-                    </span>
-                    <span className="text-sm text-gray-600 pt-1">
-                      Բացեք GoCinema Telegram բոտը
-                    </span>
-                  </li>
-                  <li className="flex gap-3 items-start">
-                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">
-                      2
-                    </span>
-                    <span className="text-sm text-gray-600 pt-1">
-                      Սեղմեք <strong>START</strong>, ապա ուղարկեք ձեր
-                      հեռախոսահամարը՝{' '}
-                      <code className="bg-gray-100 px-1.5 py-0.5 rounded text-purple-700 font-mono">
-                        {phone}
-                      </code>
-                    </span>
-                  </li>
-                  <li className="flex gap-3 items-start">
-                    <span className="shrink-0 w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-sm">
-                      3
-                    </span>
-                    <span className="text-sm text-gray-600 pt-1">
-                      Վերադարձեք կայք — հաստատումն ավտոմատ կկատարվի
-                    </span>
-                  </li>
-                </ol>
+                <form onSubmit={handleOtpSubmit} className="space-y-6">
+                  <div
+                    className="flex gap-2 justify-center"
+                    onPaste={handleOtpPaste}
+                  >
+                    {otp.map((digit, i) => (
+                      <input
+                        key={i}
+                        ref={(el) => {
+                          otpRefs.current[i] = el;
+                        }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleOtpChange(i, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                        className="w-12 h-14 text-center text-xl font-bold border-2 border-gray-300 rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-colors"
+                      />
+                    ))}
+                  </div>
 
-                {/* Telegram button */}
-                <a
-                  href={`https://t.me/${telegramBotUsername}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors mb-8"
-                >
-                  <ExternalLink className="w-5 h-5" />
-                  Բացել Telegram բոտը
-                </a>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className={`w-full px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
+                      isLoading
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-linear-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
+                    }`}
+                  >
+                    {isLoading ? (
+                      <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      'Հաստատել'
+                    )}
+                  </button>
+                </form>
 
-                {/* Polling indicator */}
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-400 mb-6">
-                  <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                  Սպասում ենք հաստատմանը...
+                <div className="text-center mt-4">
+                  {otpResendCooldown > 0 ? (
+                    <p className="text-sm text-gray-400">
+                      Կրկին ուղարկել {otpResendCooldown}վ հետո
+                    </p>
+                  ) : (
+                    <button
+                      onClick={resendOtp}
+                      disabled={isLoading}
+                      className="inline-flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700"
+                    >
+                      <RefreshCw className="w-4 h-4" /> Կրկին ուղարկել կոդը
+                    </button>
+                  )}
                 </div>
 
-                {/* Skip option */}
-                <button
-                  onClick={() => {
-                    setIsPolling(false);
-                    setStep('success');
-                  }}
-                  className="text-sm text-gray-400 hover:text-gray-600 transition-colors underline"
-                >
-                  Բաց թողնել հիմա, կապել հետո
-                </button>
+                <div className="text-center mt-6">
+                  <button
+                    onClick={() => setStep('success')}
+                    className="text-sm text-gray-400 hover:text-gray-600 transition-colors underline"
+                  >
+                    Բաց թողնել հիմա, հաստատել հետո
+                  </button>
+                </div>
               </motion.div>
             )}
 
@@ -474,11 +555,13 @@ export default function RegisterPageClient() {
                   Գրանցումն ավարտված է
                 </h1>
                 <p className="text-gray-600 mb-8">
-                  Ձեր հաշիվը հաջողությամբ ստեղծվեց և վերիֆիկացված է:
+                  {SMS_VERIFICATION_ENABLED
+                    ? 'Ձեր հաշիվը հաջողությամբ ստեղծվեց և վերիֆիկացված է:'
+                    : 'Ձեր հաշիվը հաջողությամբ ստեղծվեց:'}
                 </p>
                 <Link
                   href={SITE_URL.LOGIN}
-                  className="inline-block px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all shadow-md"
+                  className="inline-block px-6 py-3 bg-linear-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all shadow-md"
                 >
                   Մուտք գործել
                 </Link>

@@ -11,17 +11,15 @@ import {
   CheckCircle,
   Send,
   RefreshCw,
-  ExternalLink,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
   requestPasswordReset,
-  checkTelegramLinked,
   verifyResetOtp,
   resetPassword,
 } from '@/app/actions/forgot-password';
 
-type Step = 'phone' | 'telegram-connect' | 'otp' | 'new-password' | 'success';
+type Step = 'phone' | 'otp' | 'new-password' | 'success';
 
 export default function ForgotPasswordClient() {
   const [step, setStep] = useState<Step>('phone');
@@ -38,12 +36,9 @@ export default function ForgotPasswordClient() {
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [telegramBotUsername, setTelegramBotUsername] = useState('');
-  const [isPolling, setIsPolling] = useState(false);
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── OTP resend cooldown ────────────────────────────────────────────────────
   useEffect(() => {
@@ -51,48 +46,6 @@ export default function ForgotPasswordClient() {
     const t = setTimeout(() => setOtpResendCooldown((v) => v - 1), 1000);
     return () => clearTimeout(t);
   }, [otpResendCooldown]);
-
-  // ── Polling: check if user has started the Telegram bot ───────────────────
-  useEffect(() => {
-    if (step !== 'telegram-connect' || !isPolling) return;
-
-    let active = true;
-
-    const poll = async () => {
-      while (active) {
-        await new Promise((r) => setTimeout(r, 3000));
-        if (!active) break;
-
-        const { linked } = await checkTelegramLinked(phone);
-        if (linked && active) {
-          active = false;
-          setIsPolling(false);
-          // Directly send OTP — user now has a telegramChatId
-          setIsLoading(true);
-          setError('');
-          const result = await requestPasswordReset(phone);
-          setIsLoading(false);
-
-          if (!result.success) {
-            setError(result.error ?? 'Սխալ է տեղի ունեցել');
-            setStep('phone');
-            return;
-          }
-
-          setOtpResendCooldown(60);
-          setStep('otp');
-          return;
-        }
-      }
-    };
-
-    poll();
-
-    return () => {
-      active = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, isPolling, phone]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const formatPhone = (value: string): string => {
@@ -115,14 +68,6 @@ export default function ForgotPasswordClient() {
 
     if (!result.success) {
       setError(result.error ?? 'Սխալ է տեղի ունեցել');
-      return;
-    }
-
-    if (!result.hasTelegram) {
-      // User has not started the bot
-      setTelegramBotUsername(result.telegramBotUsername ?? '');
-      setStep('telegram-connect');
-      setIsPolling(true);
       return;
     }
 
@@ -210,7 +155,7 @@ export default function ForgotPasswordClient() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pt-24 pb-20">
+    <div className="min-h-screen bg-linear-to-b from-slate-50 to-white pt-24 pb-20">
       <div className="container mx-auto px-4">
         <div className="max-w-md mx-auto">
           <AnimatePresence mode="wait">
@@ -271,75 +216,7 @@ export default function ForgotPasswordClient() {
               </motion.div>
             )}
 
-            {/* ── STEP 2: Telegram connect ── */}
-            {step === 'telegram-connect' && (
-              <motion.div
-                key="telegram"
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-white rounded-xl shadow-lg p-8 text-center"
-              >
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-6">
-                  <svg viewBox="0 0 24 24" className="w-10 h-10 fill-blue-500">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.289c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.932z" />
-                  </svg>
-                </div>
-
-                <h2 className="text-xl font-bold text-gray-900 mb-3">
-                  Միացե՛ք մեր Telegram բոտին
-                </h2>
-                <p className="text-gray-500 text-sm mb-6">
-                  Հաստատման կոդ ստանալու համար անհրաժեշտ է.
-                </p>
-
-                <ol className="text-left space-y-3 mb-8 text-sm text-gray-600">
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-xs">1</span>
-                    <span>Բացեք Telegram բոտը հետևյալ կոճակով</span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-xs">2</span>
-                    <span>Սեղմեք <strong>START</strong> կոճակը բոտում</span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-semibold text-xs">3</span>
-                    <span>
-                      Ուղարկեք ձեր հեռախոսահամարը բոտին.{' '}
-                      <code className="bg-gray-100 px-1 rounded">{phone}</code>
-                    </span>
-                  </li>
-                </ol>
-
-                <a
-                  href={`https://t.me/${telegramBotUsername}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors mb-6"
-                >
-                  <ExternalLink className="w-5 h-5" />
-                  Բացել Telegram բոտը
-                </a>
-
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-                  <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                  Սպասում ենք Telegram-ի կապին...
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (pollingRef.current) clearInterval(pollingRef.current);
-                    setIsPolling(false);
-                    setStep('phone');
-                  }}
-                  className="mt-6 text-sm text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  Չեղարկել
-                </button>
-              </motion.div>
-            )}
-
-            {/* ── STEP 3: OTP ── */}
+            {/* ── STEP 2: OTP ── */}
             {step === 'otp' && (
               <motion.div
                 key="otp"
@@ -356,7 +233,7 @@ export default function ForgotPasswordClient() {
                     Հաստատման կոդ
                   </h2>
                   <p className="text-gray-500 text-sm">
-                    6-նիշ կոդ ուղարկվեց Telegram-ի միջոցով
+                    6-նիշ կոդ ուղարկվեց SMS-ով ձեր հեռախոսահամարին
                   </p>
                 </div>
 
@@ -467,7 +344,7 @@ export default function ForgotPasswordClient() {
                 </p>
                 <Link
                   href="/account"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all shadow-md"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-linear-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all shadow-md"
                 >
                   Մուտք գործել
                 </Link>
@@ -502,7 +379,7 @@ function SubmitButton({ isLoading, label }: { isLoading: boolean; label: string 
       className={`w-full px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
         isLoading
           ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-          : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
+          : 'bg-linear-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
       }`}
     >
       {isLoading ? (

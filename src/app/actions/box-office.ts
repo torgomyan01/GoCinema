@@ -372,6 +372,112 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
   }
 }
 
+export interface CreateBoxOfficeOrderData {
+  products: BoxOfficeProductSelection[];
+}
+
+/** Ինքնուրույն ապրանքների վաճառք դրամարկղից՝ առանց տոմսի (կանխիկ) */
+export async function createBoxOfficeProductOrder(
+  data: CreateBoxOfficeOrderData
+) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const selections = (data.products ?? []).filter(
+      (p) => p && p.productId > 0 && Number(p.quantity) > 0
+    );
+
+    if (selections.length === 0) {
+      return { success: false, error: 'Ընտրեք առնվազն մեկ ապրանք' };
+    }
+
+    // Գները միշտ բազայից (չվստահել client-ին)
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
+      select: { id: true, price: true },
+    });
+
+    let total = 0;
+    for (const sel of selections) {
+      const product = dbProducts.find((p) => p.id === sel.productId);
+      if (!product) {
+        return { success: false, error: 'Ընտրված ապրանքը հասանելի չէ' };
+      }
+      total += product.price * Math.floor(Number(sel.quantity));
+    }
+
+    const walkInUserId = await getOrCreateWalkInUser();
+
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          userId: walkInUserId,
+          totalAmount: total,
+          status: 'completed',
+        },
+      });
+
+      await tx.orderItem.createMany({
+        data: selections.map((sel) => {
+          const product = dbProducts.find((p) => p.id === sel.productId)!;
+          return {
+            orderId: created.id,
+            productId: sel.productId,
+            quantity: Math.floor(Number(sel.quantity)),
+            price: product.price,
+          };
+        }),
+      });
+
+      return tx.order.findUnique({
+        where: { id: created.id },
+        include: { orderItems: { include: { product: true } } },
+      });
+    });
+
+    revalidatePath('/admin/box-office');
+
+    return { success: true, order, total };
+  } catch (error) {
+    console.error('[Create Box Office Product Order] Error:', error);
+    return {
+      success: false,
+      error: 'Ապրանքների վաճառքը չստացվեց',
+    };
+  }
+}
+
+/** Բերում է ապրանքների պատվերը՝ չեկ տպելու համար */
+export async function getBoxOfficeOrder(orderId: number) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է', order: null };
+  }
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { orderItems: { include: { product: true } } },
+    });
+
+    if (!order) {
+      return { success: false, error: 'Պատվերը չի գտնվել', order: null };
+    }
+
+    return { success: true, order };
+  } catch (error) {
+    console.error('[Box Office Order] Error:', error);
+    return {
+      success: false,
+      error: 'Պատվերը բեռնելիս սխալ է տեղի ունեցել',
+      order: null,
+    };
+  }
+}
+
 /** Չեղարկել վաճառված/ամրագրված տոմսը՝ նստատեղը նորից ազատելու համար */
 export async function cancelBoxOfficeTicket(ticketId: number) {
   const staff = await requireStaff();

@@ -6,7 +6,7 @@ import { getServerSession } from 'next-auth';
 import { revalidatePath } from 'next/cache';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { STAFF_ROLES, isStaffRole } from '@/lib/roles';
+import { isStaffRole } from '@/lib/roles';
 
 const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -27,95 +27,6 @@ function sanitizeFileName(name: string) {
     .replace(/[^a-zA-Z0-9-_]/g, '-')
     .slice(0, 60);
   return `${base || 'attachment'}${ext}`;
-}
-
-function getAppUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || '')
-    .trim()
-    .replace(/\/$/, '');
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-async function sendTelegramMessage(chatId: string, text: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return false;
-
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
-    });
-    const data = await res.json();
-    return data?.ok === true;
-  } catch (error) {
-    console.error('[Support Telegram] Send error:', error);
-    return false;
-  }
-}
-
-async function notifyStaffAboutSupportRequest(requestId: number, latestMessage?: string) {
-  const request = await prisma.supportRequest.findUnique({
-    where: { id: requestId },
-    include: {
-      attachments: true,
-      messages: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-      user: {
-        select: { id: true, name: true, phone: true },
-      },
-    },
-  });
-
-  if (!request) return;
-
-  const staffUsers = await prisma.user.findMany({
-    where: {
-      telegramChatId: { not: null },
-      OR: STAFF_ROLES.map((role) => ({
-        role: { contains: role },
-      })),
-    },
-    select: {
-      id: true,
-      role: true,
-      telegramChatId: true,
-    },
-  });
-
-  const appUrl = getAppUrl();
-  const adminLink = appUrl
-    ? `${appUrl}/admin/support/${request.id}`
-    : `/admin/support/${request.id}`;
-  const text =
-    `🆘 <b>Աջակցության նոր հաղորդագրություն</b>\n\n` +
-    `#${request.id} — <b>${escapeHtml(request.subject)}</b>\n` +
-    `👤 ${escapeHtml(request.name)}\n` +
-    `📞 <code>${escapeHtml(request.phone)}</code>\n` +
-    `📎 Կցված ֆայլեր՝ ${request.attachments.length}\n\n` +
-    `${escapeHtml((latestMessage || request.messages[0]?.message || request.message).slice(0, 220))}${
-      (latestMessage || request.messages[0]?.message || request.message).length > 220 ? '…' : ''
-    }\n\n` +
-    `🔗 <a href="${adminLink}">Բացել ադմինում</a>`;
-
-  await Promise.all(
-    staffUsers
-      .filter((user) => user.telegramChatId && isStaffRole(user.role))
-      .map((user) => sendTelegramMessage(user.telegramChatId as string, text))
-  );
 }
 
 async function saveAttachments(requestId: number, files: File[]) {
@@ -222,8 +133,6 @@ async function appendCustomerMessage(
           : request.status,
     },
   });
-
-  await notifyStaffAboutSupportRequest(requestId, message);
 
   return chatMessage;
 }
@@ -366,7 +275,6 @@ export async function createSupportRequest(formData: FormData) {
     });
 
     await saveAttachments(request.id, files.slice(0, 5));
-    await notifyStaffAboutSupportRequest(request.id, message);
 
     revalidatePath('/admin/support');
 
@@ -529,8 +437,6 @@ export async function addSupportMessage(formData: FormData) {
         message,
       },
     });
-
-    await notifyStaffAboutSupportRequest(requestId, message);
 
     revalidatePath('/admin/support');
     revalidatePath(`/admin/support/${requestId}`);

@@ -9,11 +9,9 @@ import {
   Clock,
   Film,
   Loader2,
-  Minus,
-  Plus,
-  Popcorn,
   Printer,
   RotateCcw,
+  ShoppingBag,
   Ticket as TicketIcon,
   User,
   X,
@@ -21,12 +19,15 @@ import {
 } from 'lucide-react';
 import {
   cancelBoxOfficeTicket,
+  createBoxOfficeProductOrder,
   createBoxOfficeTicket,
   getBoxOfficeProducts,
   getBoxOfficeScreenings,
   getBoxOfficeSeatMap,
   getBoxOfficeTicketBySeat,
 } from '@/app/actions/box-office';
+import ProductSaleModal from '@/components/admin/box-office-product-sale-modal';
+import TicketSaleModal from '@/components/admin/box-office-ticket-sale-modal';
 
 interface ScreeningListItem {
   id: number;
@@ -99,12 +100,6 @@ const statusLabels: Record<string, string> = {
   cancelled: 'Չեղարկված',
 };
 
-const categoryLabels: Record<string, string> = {
-  snack: 'Խորտիկներ',
-  drink: 'Ըմպելիքներ',
-  combo: 'Կոմբո',
-};
-
 function formatDay(value: Date | string) {
   return new Date(value).toLocaleDateString('hy-AM', {
     weekday: 'short',
@@ -145,8 +140,17 @@ export default function BoxOfficeClient() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const [products, setProducts] = useState<ProductItem[]>([]);
-  // productId -> quantity
+  // productId -> quantity (տոմսի հետ վաճառվող ապրանքներ)
   const [cart, setCart] = useState<Record<number, number>>({});
+
+  // Ինքնուրույն ապրանքների վաճառք (առանց տոմսի)
+  const [productSaleOpen, setProductSaleOpen] = useState(false);
+  const [productCart, setProductCart] = useState<Record<number, number>>({});
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [lastOrder, setLastOrder] = useState<{
+    id: number;
+    total: number;
+  } | null>(null);
 
   const loadScreenings = async () => {
     setIsLoading(true);
@@ -193,16 +197,86 @@ export default function BoxOfficeClient() {
     [cart, products]
   );
 
-  const grandTotal = (Number.isFinite(price) ? price : 0) + productsTotal;
+  const setStandaloneQty = (productId: number, qty: number) => {
+    setProductCart((prev) => {
+      const next = { ...prev };
+      if (qty <= 0) {
+        delete next[productId];
+      } else {
+        next[productId] = qty;
+      }
+      return next;
+    });
+  };
 
-  const groupedProducts = useMemo(() => {
-    const map = new Map<string, ProductItem[]>();
-    for (const product of products) {
-      if (!map.has(product.category)) map.set(product.category, []);
-      map.get(product.category)!.push(product);
+  const standaloneTotal = useMemo(
+    () =>
+      Object.entries(productCart).reduce((sum, [id, qty]) => {
+        const product = products.find((p) => p.id === Number(id));
+        return product ? sum + product.price * qty : sum;
+      }, 0),
+    [productCart, products]
+  );
+
+  const standaloneCount = useMemo(
+    () => Object.values(productCart).reduce((sum, qty) => sum + qty, 0),
+    [productCart]
+  );
+
+  const openProductSale = () => {
+    setProductCart({});
+    setError(null);
+    setProductSaleOpen(true);
+  };
+
+  const closeProductSale = () => {
+    if (isCreatingOrder) return;
+    setProductSaleOpen(false);
+    setProductCart({});
+  };
+
+  const openOrderPrint = (orderId: number) => {
+    window.open(
+      `/admin/box-office/print-order/${orderId}`,
+      '_blank',
+      'width=420,height=640'
+    );
+  };
+
+  const handleCreateProductOrder = async () => {
+    if (isCreatingOrder) return;
+    const selections = Object.entries(productCart).map(([id, qty]) => ({
+      productId: Number(id),
+      quantity: qty,
+    }));
+    if (selections.length === 0) {
+      setError('Ընտրեք առնվազն մեկ ապրանք');
+      return;
     }
-    return Array.from(map.entries());
-  }, [products]);
+    setIsCreatingOrder(true);
+    setError(null);
+    try {
+      const result = await createBoxOfficeProductOrder({
+        products: selections,
+      });
+      if (!result.success || !result.order) {
+        setError(result.error || 'Ապրանքների վաճառքը չստացվեց');
+        return;
+      }
+      const order = result.order as { id: number };
+      setLastOrder({ id: order.id, total: result.total ?? standaloneTotal });
+      openOrderPrint(order.id);
+      setProductSaleOpen(false);
+      setProductCart({});
+    } catch (err) {
+      console.error('Product order error:', err);
+      setError('Ապրանքների վաճառքը չստացվեց');
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  };
+
+  const grandTotal = (Number.isFinite(price) ? price : 0) + productsTotal;
 
   const days = useMemo(() => {
     const map = new Map<string, Date | string>();
@@ -385,16 +459,25 @@ export default function BoxOfficeClient() {
 
   return (
     <div className="p-4 sm:p-6">
-      <div className="mb-6 flex items-center gap-3">
-        <div className="rounded-lg bg-green-100 p-2">
-          <Banknote className="h-6 w-6 text-green-600" />
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-green-100 p-2">
+            <Banknote className="h-6 w-6 text-green-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Դրամարկղ</h1>
+            <p className="text-sm text-gray-600">
+              Տոմսերի և ապրանքների վաճառք՝ կանխիկ վճարումով
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Դրամարկղ</h1>
-          <p className="text-sm text-gray-600">
-            Տոմսի վաճառք դրամարկղից՝ կանխիկ վճարումով
-          </p>
-        </div>
+        <button
+          onClick={openProductSale}
+          className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-400"
+        >
+          <ShoppingBag className="h-4 w-4" />
+          Ապրանքների վաճառք
+        </button>
       </div>
 
       {error && (
@@ -417,6 +500,25 @@ export default function BoxOfficeClient() {
           <button
             onClick={() => openPrint(lastTicket.id)}
             className="flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500"
+          >
+            <Printer className="h-4 w-4" />
+            Տպել կրկին
+          </button>
+        </div>
+      )}
+
+      {lastOrder && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 text-sm text-amber-800">
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            <span>
+              Ապրանքների վաճառք #{lastOrder.id} —{' '}
+              {lastOrder.total.toLocaleString()} ֏
+            </span>
+          </div>
+          <button
+            onClick={() => openOrderPrint(lastOrder.id)}
+            className="flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500"
           >
             <Printer className="h-4 w-4" />
             Տպել կրկին
@@ -602,171 +704,35 @@ export default function BoxOfficeClient() {
 
       {/* Վաճառքի մոդալ՝ ապրանքների ընտրությամբ */}
       {seatMap && selectedSeat && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={closeSale}
-        >
-          <div
-            className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Վերնագիր */}
-            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-5 py-4">
-              <div>
-                <h3 className="flex items-center gap-2 font-bold text-gray-900">
-                  <TicketIcon className="h-5 w-5 text-green-600" />
-                  Նոր վաճառք
-                </h3>
-                <p className="mt-0.5 text-sm text-gray-500">
-                  {seatMap.movie.title} · {formatTime(seatMap.startTime)} · Տեղ{' '}
-                  {selectedSeat.row}
-                  {selectedSeat.number}
-                  {selectedSeat.seatType === 'vip' ? ' (VIP)' : ''}
-                </p>
-              </div>
-              <button
-                onClick={closeSale}
-                disabled={isCreating}
-                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700 disabled:opacity-40"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+        <TicketSaleModal
+          movieTitle={seatMap.movie.title}
+          startTime={seatMap.startTime}
+          seat={selectedSeat}
+          price={price}
+          setPrice={setPrice}
+          products={products}
+          cart={cart}
+          setQty={setProductQty}
+          productsTotal={productsTotal}
+          grandTotal={grandTotal}
+          isCreating={isCreating}
+          onClose={closeSale}
+          onSubmit={handleCreate}
+        />
+      )}
 
-            {/* Բովանդակություն */}
-            <div className="flex-1 overflow-y-auto p-5">
-              {/* Տոմսի գին */}
-              <label className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-                Տոմսի գին՝
-                <input
-                  type="number"
-                  min={0}
-                  step={100}
-                  value={price}
-                  onChange={(e) => setPrice(Number(e.target.value))}
-                  className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
-                />
-                <span className="font-semibold text-gray-900">֏</span>
-              </label>
-
-              {/* Ապրանքներ */}
-              {products.length > 0 ? (
-                <div className="rounded-xl border border-gray-100 p-4">
-                  <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-                    <Popcorn className="h-4 w-4 text-amber-500" />
-                    Ապրանքներ տոմսի հետ
-                  </h4>
-                  <div className="space-y-4">
-                    {groupedProducts.map(([category, items]) => (
-                      <div key={category}>
-                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-                          {categoryLabels[category] || category}
-                        </p>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {items.map((product) => {
-                            const qty = cart[product.id] || 0;
-                            return (
-                              <div
-                                key={product.id}
-                                className={`flex items-center justify-between gap-2 rounded-lg border p-2.5 transition ${
-                                  qty > 0
-                                    ? 'border-green-400 bg-green-50'
-                                    : 'border-gray-200'
-                                }`}
-                              >
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-gray-900">
-                                    {product.name}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {product.price.toLocaleString()} ֏
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setProductQty(product.id, qty - 1)
-                                    }
-                                    disabled={qty <= 0}
-                                    className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                  >
-                                    <Minus className="h-3.5 w-3.5" />
-                                  </button>
-                                  <span className="w-6 text-center text-sm font-bold text-gray-900">
-                                    {qty}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setProductQty(product.id, qty + 1)
-                                    }
-                                    className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-600 transition hover:bg-green-100 hover:text-green-700"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="rounded-xl border border-gray-100 p-4 text-sm text-gray-400">
-                  Ապրանքներ չկան
-                </p>
-              )}
-            </div>
-
-            {/* Հաշվարկ + կոճակ */}
-            <div className="border-t border-gray-100 bg-gray-50 px-5 py-4">
-              <div className="mb-3 space-y-1 text-sm">
-                <div className="flex items-center justify-between text-gray-600">
-                  <span>Տոմս</span>
-                  <span>
-                    {(Number.isFinite(price) ? price : 0).toLocaleString()} ֏
-                  </span>
-                </div>
-                {productsTotal > 0 && (
-                  <div className="flex items-center justify-between text-gray-600">
-                    <span>Ապրանքներ</span>
-                    <span>{productsTotal.toLocaleString()} ֏</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between border-t border-gray-200 pt-2 text-base font-bold text-gray-900">
-                  <span>Ընդհանուր</span>
-                  <span className="text-green-700">
-                    {grandTotal.toLocaleString()} ֏
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={closeSale}
-                  disabled={isCreating}
-                  className="rounded-lg border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                >
-                  Չեղարկել
-                </button>
-                <button
-                  onClick={handleCreate}
-                  disabled={isCreating}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isCreating ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Printer className="h-5 w-5" />
-                  )}
-                  Ստեղծել և տպել
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Ինքնուրույն ապրանքների վաճառքի մոդալ */}
+      {productSaleOpen && (
+        <ProductSaleModal
+          products={products}
+          cart={productCart}
+          setQty={setStandaloneQty}
+          total={standaloneTotal}
+          count={standaloneCount}
+          isCreating={isCreatingOrder}
+          onClose={closeProductSale}
+          onSubmit={handleCreateProductOrder}
+        />
       )}
 
       {/* Զբաղված տեղի տոմսի ինֆո */}

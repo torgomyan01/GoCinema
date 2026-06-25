@@ -141,6 +141,7 @@ export default function BoxOfficeClient() {
   const [isTakenLoading, setIsTakenLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [takenModalError, setTakenModalError] = useState<string | null>(null);
 
   const [products, setProducts] = useState<ProductItem[]>([]);
   // productId -> quantity (տոմսի հետ վաճառվող ապրանքներ)
@@ -409,6 +410,7 @@ export default function BoxOfficeClient() {
     setIsTakenLoading(true);
     setTakenTicket(null);
     setShowCancelConfirm(false);
+    setTakenModalError(null);
     const result = await getBoxOfficeTicketBySeat(seatMap.id, seat.id);
     if (result.success && result.ticket) {
       setTakenTicket(result.ticket as unknown as TakenTicketInfo);
@@ -438,17 +440,20 @@ export default function BoxOfficeClient() {
     setTakenTicket(null);
     setIsTakenLoading(false);
     setShowCancelConfirm(false);
+    setTakenModalError(null);
   };
 
   const handleCancelTicket = async () => {
     if (!takenTicket || !seatMap || isCancelling) return;
 
     setIsCancelling(true);
-    setError(null);
+    setTakenModalError(null);
     try {
       const result = await cancelBoxOfficeTicket(takenTicket.id);
       if (!result.success) {
-        setError(result.error || 'Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
+        setTakenModalError(
+          result.error || 'Տոմսը չեղարկելիս սխալ է տեղի ունեցել'
+        );
         return;
       }
 
@@ -466,7 +471,7 @@ export default function BoxOfficeClient() {
       void loadScreenings();
     } catch (err) {
       console.error('Cancel ticket error:', err);
-      setError('Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
+      setTakenModalError('Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
     } finally {
       setIsCancelling(false);
     }
@@ -475,6 +480,13 @@ export default function BoxOfficeClient() {
   const canCancelTakenTicket =
     takenTicket &&
     (takenTicket.status === 'paid' || takenTicket.status === 'reserved');
+
+  const cannotCancelReason =
+    takenTicket?.status === 'used'
+      ? 'Տոմսն արդեն օգտագործված է (սկանավորված մուտք) և չի կարող չեղարկվել'
+      : takenTicket?.status === 'cancelled'
+        ? 'Տոմսն արդեն չեղարկված է'
+        : null;
 
   const openPrint = (ticketId: number) => {
     window.open(
@@ -966,6 +978,12 @@ export default function BoxOfficeClient() {
               </div>
             ) : (
               <>
+                {takenModalError && (
+                  <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {takenModalError}
+                  </div>
+                )}
+
                 <div className="space-y-3 p-5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">Տոմս</span>
@@ -981,7 +999,9 @@ export default function BoxOfficeClient() {
                           ? 'bg-gray-100 text-gray-700'
                           : takenTicket.status === 'paid'
                             ? 'bg-green-100 text-green-700'
-                            : 'bg-amber-100 text-amber-700'
+                            : takenTicket.status === 'cancelled'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
                       }`}
                     >
                       {statusLabels[takenTicket.status] || takenTicket.status}
@@ -1045,7 +1065,10 @@ export default function BoxOfficeClient() {
                     </p>
                     <div className="mt-3 flex gap-2">
                       <button
-                        onClick={() => setShowCancelConfirm(false)}
+                        onClick={() => {
+                          setShowCancelConfirm(false);
+                          setTakenModalError(null);
+                        }}
                         disabled={isCancelling}
                         className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
@@ -1068,6 +1091,26 @@ export default function BoxOfficeClient() {
                 )}
 
                 <div className="flex flex-col gap-2 border-t border-gray-100 bg-gray-50 px-5 py-4">
+                  {canCancelTakenTicket && !showCancelConfirm && (
+                    <button
+                      onClick={() => {
+                        setTakenModalError(null);
+                        setShowCancelConfirm(true);
+                      }}
+                      disabled={isCancelling}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Ban className="h-4 w-4" />
+                      Չեղարկել տոմսը (ազատել նստատեղը)
+                    </button>
+                  )}
+
+                  {cannotCancelReason && (
+                    <p className="text-center text-xs text-gray-500">
+                      {cannotCancelReason}
+                    </p>
+                  )}
+
                   <div className="flex gap-3">
                     <button
                       onClick={() => openPrint(takenTicket.id)}
@@ -1078,20 +1121,12 @@ export default function BoxOfficeClient() {
                     </button>
                     <button
                       onClick={closeTakenModal}
-                      className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                      disabled={isCancelling}
+                      className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
                     >
                       Փակել
                     </button>
                   </div>
-                  {canCancelTakenTicket && !showCancelConfirm && (
-                    <button
-                      onClick={() => setShowCancelConfirm(true)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                    >
-                      <Ban className="h-4 w-4" />
-                      Չեղարկել տոմսը (ազատել նստատեղը)
-                    </button>
-                  )}
                 </div>
               </>
             )}

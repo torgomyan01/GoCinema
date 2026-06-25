@@ -98,6 +98,7 @@ export default function AdminScreeningsClient({
     null
   );
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [movieSearchQuery, setMovieSearchQuery] = useState('');
 
@@ -476,21 +477,39 @@ export default function AdminScreeningsClient({
 
   const handleDeleteScreening = async (id: number) => {
     if (
-      !confirm('Դուք համոզված եք, որ ցանկանում եք ջնջել այս ցուցադրությունը?')
+      !confirm('Դուք համոզված եք, որ ցանկանում եք հանել այս ցուցադրությունը?')
     ) {
       return;
     }
 
+    setIsDeleting(true);
     try {
       const result = await deleteScreening(id);
       if (result.success) {
         setScreenings(screenings.filter((s) => s.id !== id));
+        if (editingScreening?.id === id) {
+          setIsModalOpen(false);
+          resetForm();
+        }
       } else {
-        alert(result.error || 'Ցուցադրությունը ջնջելիս սխալ է տեղի ունեցել');
+        const message =
+          result.error || 'Ցուցադրությունը հանելիս սխալ է տեղի ունեցել';
+        if (editingScreening?.id === id) {
+          setError(message);
+        } else {
+          alert(message);
+        }
       }
     } catch (err) {
       console.error('Error deleting screening:', err);
-      alert('Ցուցադրությունը ջնջելիս սխալ է տեղի ունեցել');
+      const message = 'Ցուցադրությունը հանելիս սխալ է տեղի ունեցել';
+      if (editingScreening?.id === id) {
+        setError(message);
+      } else {
+        alert(message);
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1144,10 +1163,32 @@ export default function AdminScreeningsClient({
                     />
                   </div>
 
+                  {editingScreening && (
+                    <div className="border-t border-gray-200 pt-4">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDeleteScreening(editingScreening.id)
+                        }
+                        disabled={isLoading || isDeleting}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {isDeleting
+                          ? 'Հանվում է...'
+                          : 'Հանել ցուցադրությունը'}
+                      </button>
+                      <p className="mt-2 text-center text-xs text-gray-400">
+                        Եթե արդեն կան վաճառված տոմսեր, ցուցադրությունը հանել
+                        հնարավոր չէ
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-4 pt-4 border-t border-gray-200">
                     <button
                       type="submit"
-                      disabled={isLoading}
+                      disabled={isLoading || isDeleting}
                       className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isLoading
@@ -1162,7 +1203,8 @@ export default function AdminScreeningsClient({
                         setIsModalOpen(false);
                         resetForm();
                       }}
-                      className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                      disabled={isDeleting}
+                      className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
                     >
                       Չեղարկել
                     </button>

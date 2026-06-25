@@ -9,6 +9,8 @@ import {
   Clock,
   Film,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
   Printer,
   RotateCcw,
   ShoppingBag,
@@ -125,6 +127,7 @@ export default function BoxOfficeClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [seatMap, setSeatMap] = useState<SeatMap | null>(null);
   const [isSeatLoading, setIsSeatLoading] = useState(false);
@@ -278,25 +281,97 @@ export default function BoxOfficeClient() {
 
   const grandTotal = (Number.isFinite(price) ? price : 0) + productsTotal;
 
-  const days = useMemo(() => {
-    const map = new Map<string, Date | string>();
+  const movies = useMemo(() => {
+    const map = new Map<
+      number,
+      {
+        id: number;
+        title: string;
+        image?: string | null;
+        screeningCount: number;
+      }
+    >();
     for (const s of screenings) {
+      const existing = map.get(s.movie.id);
+      if (existing) {
+        existing.screeningCount += 1;
+      } else {
+        map.set(s.movie.id, {
+          id: s.movie.id,
+          title: s.movie.title,
+          image: s.movie.image,
+          screeningCount: 1,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.title.localeCompare(b.title, 'hy')
+    );
+  }, [screenings]);
+
+  const selectedMovie = useMemo(() => {
+    if (!selectedMovieId) return null;
+    return movies.find((m) => m.id === selectedMovieId) ?? null;
+  }, [movies, selectedMovieId]);
+
+  const movieScreenings = useMemo(() => {
+    if (!selectedMovieId) return [];
+    return screenings
+      .filter((s) => s.movie.id === selectedMovieId)
+      .sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      );
+  }, [screenings, selectedMovieId]);
+
+  const movieDays = useMemo(() => {
+    const map = new Map<string, Date | string>();
+    for (const s of movieScreenings) {
       const key = dayKey(s.startTime);
       if (!map.has(key)) map.set(key, s.startTime);
     }
     return Array.from(map.entries()).map(([key, date]) => ({ key, date }));
-  }, [screenings]);
+  }, [movieScreenings]);
 
   useEffect(() => {
-    if (!selectedDay && days.length > 0) {
-      setSelectedDay(days[0].key);
+    if (!selectedMovieId) {
+      setSelectedDay(null);
+      return;
     }
-  }, [days, selectedDay]);
+    if (
+      movieDays.length > 0 &&
+      (!selectedDay || !movieDays.some((d) => d.key === selectedDay))
+    ) {
+      setSelectedDay(movieDays[0].key);
+    }
+  }, [selectedMovieId, movieDays, selectedDay]);
 
   const dayScreenings = useMemo(
-    () => screenings.filter((s) => dayKey(s.startTime) === selectedDay),
-    [screenings, selectedDay]
+    () => movieScreenings.filter((s) => dayKey(s.startTime) === selectedDay),
+    [movieScreenings, selectedDay]
   );
+
+  const selectMovie = (movieId: number) => {
+    setSelectedMovieId(movieId);
+    setSeatMap(null);
+    setSelectedSeat(null);
+    setSelectedDay(null);
+    setError(null);
+  };
+
+  const backToMovies = () => {
+    setSelectedMovieId(null);
+    setSeatMap(null);
+    setSelectedSeat(null);
+    setSelectedDay(null);
+    setError(null);
+  };
+
+  const backToScreenings = () => {
+    setSeatMap(null);
+    setSelectedSeat(null);
+    setError(null);
+  };
 
   const openSeatMap = async (screeningId: number) => {
     setIsSeatLoading(true);
@@ -343,14 +418,20 @@ export default function BoxOfficeClient() {
     setIsTakenLoading(false);
   };
 
-  const seatRows = useMemo(() => {
+  const seatRows = useMemo((): [string, SeatItem[]][] => {
     if (!seatMap) return [];
     const map = new Map<string, SeatItem[]>();
     for (const seat of seatMap.seats) {
       if (!map.has(seat.row)) map.set(seat.row, []);
       map.get(seat.row)!.push(seat);
     }
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    const rows = Array.from(map.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0])
+    );
+    for (const [, seats] of rows) {
+      seats.sort((a, b) => b.number - a.number);
+    }
+    return rows;
   }, [seatMap]);
 
   const closeTakenModal = () => {
@@ -527,12 +608,12 @@ export default function BoxOfficeClient() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        {/* Ձախ՝ ցուցադրությունների ընտրություն */}
+        {/* Ձախ՝ ֆիլմ → ցուցադրություն → նստատեղ */}
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 font-semibold text-gray-900">
               <CalendarDays className="h-5 w-5 text-gray-500" />
-              Ցուցադրություններ
+              Վաճառք
             </h2>
             <button
               onClick={loadScreenings}
@@ -541,6 +622,41 @@ export default function BoxOfficeClient() {
             >
               <RotateCcw className="h-4 w-4" />
             </button>
+          </div>
+
+          {/* Քայլերի ցուցիչ */}
+          <div className="mb-4 flex items-center gap-1.5 text-xs">
+            <span
+              className={`rounded-full px-2.5 py-1 font-medium ${
+                !selectedMovieId
+                  ? 'bg-green-600 text-white'
+                  : 'bg-green-50 text-green-700'
+              }`}
+            >
+              1. Ֆիլմ
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300" />
+            <span
+              className={`rounded-full px-2.5 py-1 font-medium ${
+                selectedMovieId && !seatMap
+                  ? 'bg-green-600 text-white'
+                  : selectedMovieId
+                    ? 'bg-green-50 text-green-700'
+                    : 'bg-gray-100 text-gray-400'
+              }`}
+            >
+              2. Ցուցադրություն
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300" />
+            <span
+              className={`rounded-full px-2.5 py-1 font-medium ${
+                seatMap
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-100 text-gray-400'
+              }`}
+            >
+              3. Նստատեղ
+            </span>
           </div>
 
           {isLoading ? (
@@ -552,57 +668,141 @@ export default function BoxOfficeClient() {
             <div className="py-10 text-center text-sm text-gray-500">
               Առաջիկա ցուցադրություններ չկան
             </div>
-          ) : (
+          ) : !selectedMovieId ? (
+            /* Քայլ 1 — ֆիլմի ընտրություն */
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+              <p className="mb-2 text-xs text-gray-500">Ընտրեք ֆիլմը</p>
+              {movies.map((movie) => (
+                <button
+                  key={movie.id}
+                  onClick={() => selectMovie(movie.id)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-gray-200 p-3 text-left transition hover:border-green-300 hover:bg-green-50/50"
+                >
+                  <div className="h-14 w-10 shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                    {movie.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={movie.image}
+                        alt={movie.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-gray-300">
+                        <Film className="h-5 w-5" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-gray-900">
+                      {movie.title}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {movie.screeningCount} ցուցադրություն
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+                </button>
+              ))}
+            </div>
+          ) : !seatMap ? (
+            /* Քայլ 2 — ցուցադրության ընտրություն */
             <>
-              <div className="mb-3 flex flex-wrap gap-2">
-                {days.map(({ key, date }) => (
+              <button
+                onClick={backToMovies}
+                className="mb-3 flex items-center gap-1 text-xs font-medium text-gray-500 transition hover:text-green-700"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Վերադառնալ ֆիլմերին
+              </button>
+
+              {selectedMovie && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-3">
+                  <div className="h-12 w-9 shrink-0 overflow-hidden rounded-lg bg-white">
+                    {selectedMovie.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={selectedMovie.image}
+                        alt={selectedMovie.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-gray-300">
+                        <Film className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="truncate font-semibold text-green-900">
+                    {selectedMovie.title}
+                  </p>
+                </div>
+              )}
+
+              {movieDays.length > 1 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {movieDays.map(({ key, date }) => (
+                    <button
+                      key={key}
+                      onClick={() => setSelectedDay(key)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                        selectedDay === key
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {formatDay(date)}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <p className="mb-2 text-xs text-gray-500">Ընտրեք ցուցադրությունը</p>
+              <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+                {dayScreenings.map((s) => (
                   <button
-                    key={key}
-                    onClick={() => setSelectedDay(key)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                      selectedDay === key
-                        ? 'border-green-500 bg-green-50 text-green-700'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
+                    key={s.id}
+                    onClick={() => openSeatMap(s.id)}
+                    className="w-full rounded-xl border border-gray-200 p-3 text-left transition hover:border-green-300 hover:bg-green-50/50"
                   >
-                    {formatDay(date)}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                        <Clock className="h-4 w-4 text-green-600" />
+                        {formatTime(s.startTime)}
+                      </span>
+                      <span className="text-xs font-medium text-gray-500">
+                        {s.hall.name}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                      <span>{formatDay(s.startTime)}</span>
+                      <span>
+                        {s.soldCount}/{s.capacity} վաճառված ·{' '}
+                        {s.basePrice.toLocaleString()} ֏
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>
+            </>
+          ) : (
+            /* Քայլ 3 — ընտրված ցուցադրության ամփոփում */
+            <>
+              <button
+                onClick={backToScreenings}
+                className="mb-3 flex items-center gap-1 text-xs font-medium text-gray-500 transition hover:text-green-700"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Փոխել ցուցադրությունը
+              </button>
 
-              <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
-                {dayScreenings.map((s) => {
-                  const isActive = seatMap?.id === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => openSeatMap(s.id)}
-                      className={`w-full rounded-xl border p-3 text-left transition ${
-                        isActive
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-1.5 font-semibold text-gray-900">
-                          <Film className="h-4 w-4 text-gray-400" />
-                          {s.movie.title}
-                        </span>
-                        <span className="flex items-center gap-1 text-sm font-bold text-green-700">
-                          <Clock className="h-3.5 w-3.5" />
-                          {formatTime(s.startTime)}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
-                        <span>{s.hall.name}</span>
-                        <span>
-                          {s.soldCount}/{s.capacity} վաճառված ·{' '}
-                          {s.basePrice.toLocaleString()} ֏
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                <p className="font-bold text-green-900">{seatMap.movie.title}</p>
+                <p className="mt-1 text-sm text-green-800">
+                  {formatDay(seatMap.startTime)} · {formatTime(seatMap.startTime)}
+                </p>
+                <p className="mt-0.5 text-sm text-green-700">{seatMap.hall.name}</p>
+                <p className="mt-2 text-xs text-green-600">
+                  Ընտրեք նստատեղը աջ կողմից
+                </p>
               </div>
             </>
           )}
@@ -617,8 +817,10 @@ export default function BoxOfficeClient() {
           ) : !seatMap ? (
             <div className="flex h-72 flex-col items-center justify-center gap-3 text-gray-400">
               <Film className="h-12 w-12" />
-              <p className="text-sm">
-                Ընտրեք ցուցադրություն՝ նստատեղ ընտրելու համար
+              <p className="text-center text-sm">
+                {!selectedMovieId
+                  ? 'Նախ ընտրեք ֆիլմը ձախ կողմից'
+                  : 'Ընտրեք ցուցադրությունը՝ նստատեղ ընտրելու համար'}
               </p>
             </div>
           ) : (

@@ -14,6 +14,7 @@ import {
   Sparkles,
   QrCode,
   Banknote,
+  FileBarChart,
   LucideIcon,
 } from 'lucide-react';
 
@@ -122,6 +123,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     title: 'Վիճակագրություն',
     icon: BarChart3,
     href: '/admin/analytics',
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
+  },
+  {
+    title: 'Ֆիլմերի հաշվետվություն',
+    icon: FileBarChart,
+    href: '/admin/reports',
     color: 'text-indigo-600',
     bgColor: 'bg-indigo-50',
   },

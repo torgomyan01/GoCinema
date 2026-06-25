@@ -219,6 +219,7 @@ model Product {
   price       Float
   image       String?   @db.VarChar(500)
   category    String    @db.VarChar(50) // snack, drink, combo
+  stock       Int       @default(0) // պահեստի առկա քանակ (հանվում է դրամարկղի վաճառքից)
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

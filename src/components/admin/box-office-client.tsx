@@ -93,6 +93,7 @@ interface ProductItem {
   price: number;
   category: string;
   image?: string | null;
+  stock: number;
 }
 
 const statusLabels: Record<string, string> = {
@@ -170,14 +171,16 @@ export default function BoxOfficeClient() {
     setIsLoading(false);
   };
 
+  const loadProducts = async () => {
+    const result = await getBoxOfficeProducts();
+    if (result.success) {
+      setProducts(result.products as ProductItem[]);
+    }
+  };
+
   useEffect(() => {
     void loadScreenings();
-    void (async () => {
-      const result = await getBoxOfficeProducts();
-      if (result.success) {
-        setProducts(result.products as ProductItem[]);
-      }
-    })();
+    void loadProducts();
   }, []);
 
   const setProductQty = (productId: number, qty: number) => {
@@ -272,6 +275,7 @@ export default function BoxOfficeClient() {
       openOrderPrint(order.id);
       setProductSaleOpen(false);
       setProductCart({});
+      void loadProducts();
     } catch (err) {
       console.error('Product order error:', err);
       setError('Ապրանքների վաճառքը չստացվեց');
@@ -469,6 +473,7 @@ export default function BoxOfficeClient() {
       );
       closeTakenModal();
       void loadScreenings();
+      void loadProducts();
     } catch (err) {
       console.error('Cancel ticket error:', err);
       setTakenModalError('Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
@@ -542,6 +547,7 @@ export default function BoxOfficeClient() {
       setSelectedSeat(null);
       setCart({});
       void loadScreenings();
+      void loadProducts();
     } catch (err) {
       console.error('Box office create error:', err);
       setError('Տոմս ստեղծելիս սխալ է տեղի ունեցել');

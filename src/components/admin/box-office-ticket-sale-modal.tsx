@@ -19,6 +19,7 @@ interface ProductItem {
   price: number;
   category: string;
   image?: string | null;
+  stock: number;
 }
 
 interface TicketSaleModalProps {
@@ -221,18 +222,27 @@ export default function TicketSaleModal({
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                       {items.map((product) => {
                         const qty = cart[product.id] || 0;
+                        const outOfStock = product.stock <= 0;
+                        const reachedMax = qty >= product.stock;
                         return (
                           <div
                             key={product.id}
                             className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white transition ${
-                              qty > 0
-                                ? 'border-green-400 ring-2 ring-green-200'
-                                : 'border-gray-200 hover:border-green-300 hover:shadow-md'
+                              outOfStock
+                                ? 'border-gray-200 opacity-60'
+                                : qty > 0
+                                  ? 'border-green-400 ring-2 ring-green-200'
+                                  : 'border-gray-200 hover:border-green-300 hover:shadow-md'
                             }`}
                           >
                             {qty > 0 && (
                               <span className="absolute right-2 top-2 z-10 flex h-7 min-w-7 items-center justify-center rounded-full bg-green-600 px-2 text-sm font-bold text-white shadow">
                                 {qty}
+                              </span>
+                            )}
+                            {outOfStock && (
+                              <span className="absolute left-2 top-2 z-10 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white shadow">
+                                Առկա չէ
                               </span>
                             )}
 
@@ -258,13 +268,27 @@ export default function TicketSaleModal({
                               <p className="mt-0.5 text-sm font-bold text-green-600">
                                 {product.price.toLocaleString()} ֏
                               </p>
+                              <p
+                                className={`mt-0.5 text-xs ${
+                                  outOfStock
+                                    ? 'text-red-500'
+                                    : product.stock <= 5
+                                      ? 'text-amber-600'
+                                      : 'text-gray-400'
+                                }`}
+                              >
+                                {outOfStock
+                                  ? 'Առկա չէ'
+                                  : `Մնացել է՝ ${product.stock}`}
+                              </p>
 
                               <div className="mt-3">
                                 {qty === 0 ? (
                                   <button
                                     type="button"
+                                    disabled={outOfStock}
                                     onClick={() => setQty(product.id, 1)}
-                                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-50 py-2 text-sm font-semibold text-green-700 transition hover:bg-green-100"
+                                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-50 py-2 text-sm font-semibold text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                                   >
                                     <Plus className="h-4 w-4" />
                                     Ավելացնել
@@ -283,8 +307,9 @@ export default function TicketSaleModal({
                                     </span>
                                     <button
                                       type="button"
+                                      disabled={reachedMax}
                                       onClick={() => setQty(product.id, qty + 1)}
-                                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-green-100 hover:text-green-700"
+                                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-green-100 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                       <Plus className="h-4 w-4" />
                                     </button>
@@ -382,8 +407,9 @@ export default function TicketSaleModal({
                       </span>
                       <button
                         type="button"
+                        disabled={qty >= product.stock}
                         onClick={() => setQty(product.id, qty + 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 transition hover:bg-green-100 hover:text-green-700"
+                        className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 transition hover:bg-green-100 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>

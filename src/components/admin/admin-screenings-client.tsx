@@ -31,6 +31,19 @@ import {
   deleteScreening,
 } from '@/app/actions/screenings';
 
+/**
+ * Վերադարձնում է ամսաթվի տեղական (local) բանալին` YYYY-MM-DD ձևաչափով։
+ * ՉԵՆՔ օգտագործում toISOString()-ը, քանի որ այն փոխարկում է UTC-ի, և UTC+4-ում
+ * տեղական կեսգիշերը դառնում է նախորդ օրը` առաջացնելով +1 օրվա շեղում կալենդարում։
+ */
+function getLocalDateKey(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 interface AdminScreeningsClientProps {
   user: {
     id: string;
@@ -106,7 +119,7 @@ export default function AdminScreeningsClient({
   const [formData, setFormData] = useState({
     movieId: '',
     hallId: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateKey(new Date()),
     startTime: '',
     endTime: '',
     basePrice: '2000',
@@ -155,11 +168,9 @@ export default function AdminScreeningsClient({
   // Filter screenings by selected date
   const filteredScreenings = useMemo(() => {
     if (!selectedDate) return [];
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = getLocalDateKey(selectedDate);
     return screenings.filter((screening) => {
-      const screeningDate = new Date(screening.startTime)
-        .toISOString()
-        .split('T')[0];
+      const screeningDate = getLocalDateKey(screening.startTime);
       return screeningDate === dateStr;
     });
   }, [screenings, selectedDate]);
@@ -187,9 +198,7 @@ export default function AdminScreeningsClient({
   const formDateScreenings = useMemo(() => {
     if (!formData.date) return [];
     return screenings.filter((screening) => {
-      const screeningDate = new Date(screening.startTime)
-        .toISOString()
-        .split('T')[0];
+      const screeningDate = getLocalDateKey(screening.startTime);
       // Exclude the current editing screening to allow editing
       return (
         screeningDate === formData.date && screening.id !== editingScreening?.id
@@ -277,12 +286,12 @@ export default function AdminScreeningsClient({
     setSelectedDate(date);
     setFormData({
       ...formData,
-      date: date.toISOString().split('T')[0],
+      date: getLocalDateKey(date),
     });
   };
 
   const handleDayClick = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = getLocalDateKey(date);
     setSelectedDate(date);
     setFormData({
       movieId: '',
@@ -330,8 +339,7 @@ export default function AdminScreeningsClient({
   const screeningsByDate = useMemo(() => {
     const grouped = new Map<string, Screening[]>();
     screenings.forEach((screening) => {
-      const date = new Date(screening.startTime);
-      const dateKey = date.toISOString().split('T')[0];
+      const dateKey = getLocalDateKey(screening.startTime);
       if (!grouped.has(dateKey)) {
         grouped.set(dateKey, []);
       }
@@ -431,7 +439,7 @@ export default function AdminScreeningsClient({
   const handleAddScreening = () => {
     setEditingScreening(null);
     setError(null);
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = getLocalDateKey(selectedDate);
     setFormData({
       movieId: '',
       hallId: '', // Will be auto-set on server
@@ -450,7 +458,7 @@ export default function AdminScreeningsClient({
     setFormData({
       movieId: '',
       hallId: '',
-      date: selectedDate.toISOString().split('T')[0],
+      date: getLocalDateKey(selectedDate),
       startTime: '',
       endTime: '',
       basePrice: '2000',
@@ -462,7 +470,7 @@ export default function AdminScreeningsClient({
     setError(null);
     setMovieSearchQuery('');
     const startDate = new Date(screening.startTime);
-    const dateStr = startDate.toISOString().split('T')[0];
+    const dateStr = getLocalDateKey(startDate);
     setSelectedDate(startDate);
     setFormData({
       movieId: screening.movieId.toString(),
@@ -730,7 +738,7 @@ export default function AdminScreeningsClient({
                   {/* Calendar Days */}
                   <div className="grid grid-cols-7 gap-2">
                     {calendarDays.map((date, index) => {
-                      const dateKey = date.toISOString().split('T')[0];
+                      const dateKey = getLocalDateKey(date);
                       const dayScreenings = screeningsByDate.get(dateKey) || [];
                       const isCurrentMonthDay = isCurrentMonth(date);
                       const isSelectedDay = isSelected(date);
@@ -1590,13 +1598,9 @@ export default function AdminScreeningsClient({
 
                 <div className="flex-1 overflow-y-auto p-6">
                   {(() => {
-                    const dateKey = selectedDayForDetails
-                      .toISOString()
-                      .split('T')[0];
+                    const dateKey = getLocalDateKey(selectedDayForDetails);
                     const dayScreenings = screenings.filter((screening) => {
-                      const screeningDate = new Date(screening.startTime)
-                        .toISOString()
-                        .split('T')[0];
+                      const screeningDate = getLocalDateKey(screening.startTime);
                       return screeningDate === dateKey;
                     });
 

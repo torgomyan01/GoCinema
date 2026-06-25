@@ -213,6 +213,7 @@ export async function getBoxOfficeProducts() {
         price: true,
         category: true,
         image: true,
+        stock: true,
       },
     });
     return { success: true, products };
@@ -273,19 +274,30 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
     );
 
     let productsTotal = 0;
-    let dbProducts: { id: number; price: number }[] = [];
+    let dbProducts: { id: number; name: string; price: number; stock: number }[] =
+      [];
 
     if (selections.length > 0) {
       dbProducts = await prisma.product.findMany({
         where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
-        select: { id: true, price: true },
+        select: { id: true, name: true, price: true, stock: true },
       });
       for (const sel of selections) {
         const product = dbProducts.find((p) => p.id === sel.productId);
         if (!product) {
           return { success: false, error: 'Ընտրված ապրանքը հասանելի չէ' };
         }
-        productsTotal += product.price * Math.floor(Number(sel.quantity));
+        const qty = Math.floor(Number(sel.quantity));
+        if (product.stock < qty) {
+          return {
+            success: false,
+            error:
+              product.stock <= 0
+                ? `«${product.name}» ապրանքն առկա չէ`
+                : `«${product.name}» ապրանքի պաշարը բավարար չէ (առկա է ${product.stock})`,
+          };
+        }
+        productsTotal += product.price * qty;
       }
     }
 
@@ -332,6 +344,18 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
           }),
         });
 
+        // Պաշարից հանել՝ ատոմիկ, պաշարի բավարարության պայմանով
+        for (const sel of selections) {
+          const qty = Math.floor(Number(sel.quantity));
+          const decremented = await tx.product.updateMany({
+            where: { id: sel.productId, stock: { gte: qty } },
+            data: { stock: { decrement: qty } },
+          });
+          if (decremented.count === 0) {
+            throw new Error('STOCK_CONFLICT');
+          }
+        }
+
         await tx.ticket.update({
           where: { id: created.id },
           data: { orderId: order.id },
@@ -364,6 +388,12 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
 
     return { success: true, ticket, total: grandTotal };
   } catch (error) {
+    if (error instanceof Error && error.message === 'STOCK_CONFLICT') {
+      return {
+        success: false,
+        error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
+      };
+    }
     console.error('[Create Box Office Ticket] Error:', error);
     return {
       success: false,
@@ -397,7 +427,7 @@ export async function createBoxOfficeProductOrder(
     // Գները միշտ բազայից (չվստահել client-ին)
     const dbProducts = await prisma.product.findMany({
       where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
-      select: { id: true, price: true },
+      select: { id: true, name: true, price: true, stock: true },
     });
 
     let total = 0;
@@ -406,7 +436,17 @@ export async function createBoxOfficeProductOrder(
       if (!product) {
         return { success: false, error: 'Ընտրված ապրանքը հասանելի չէ' };
       }
-      total += product.price * Math.floor(Number(sel.quantity));
+      const qty = Math.floor(Number(sel.quantity));
+      if (product.stock < qty) {
+        return {
+          success: false,
+          error:
+            product.stock <= 0
+              ? `«${product.name}» ապրանքն առկա չէ`
+              : `«${product.name}» ապրանքի պաշարը բավարար չէ (առկա է ${product.stock})`,
+        };
+      }
+      total += product.price * qty;
     }
 
     const walkInUserId = await getOrCreateWalkInUser();
@@ -432,6 +472,18 @@ export async function createBoxOfficeProductOrder(
         }),
       });
 
+      // Պաշարից հանել՝ ատոմիկ, պաշարի բավարարության պայմանով
+      for (const sel of selections) {
+        const qty = Math.floor(Number(sel.quantity));
+        const decremented = await tx.product.updateMany({
+          where: { id: sel.productId, stock: { gte: qty } },
+          data: { stock: { decrement: qty } },
+        });
+        if (decremented.count === 0) {
+          throw new Error('STOCK_CONFLICT');
+        }
+      }
+
       return tx.order.findUnique({
         where: { id: created.id },
         include: { orderItems: { include: { product: true } } },
@@ -442,6 +494,12 @@ export async function createBoxOfficeProductOrder(
 
     return { success: true, order, total };
   } catch (error) {
+    if (error instanceof Error && error.message === 'STOCK_CONFLICT') {
+      return {
+        success: false,
+        error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
+      };
+    }
     console.error('[Create Box Office Product Order] Error:', error);
     return {
       success: false,
@@ -491,6 +549,7 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       include: {
         payment: true,
         seat: { select: { id: true, row: true, number: true } },
+        order: { include: { orderItems: true } },
       },
     });
 
@@ -513,6 +572,11 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       return { success: false, error: 'Այս տոմսը չի կարող չեղարկվել' };
     }
 
+    // Այս տոմսին կապված ապրանքների քանակները՝ պաշար վերադարձնելու համար
+    const itemsToRestore = (ticket.order?.orderItems ?? []).filter(
+      (item) => item.ticketId === ticketId
+    );
+
     await prisma.$transaction(async (tx) => {
       await tx.ticket.update({
         where: { id: ticketId },
@@ -524,6 +588,16 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
           where: { id: ticket.payment.id },
           data: { status: 'refunded' },
         });
+      }
+
+      // Վերադարձնել ապրանքների քանակը պաշար
+      for (const item of itemsToRestore) {
+        if (item.quantity > 0) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
       }
 
       if (ticket.orderId) {

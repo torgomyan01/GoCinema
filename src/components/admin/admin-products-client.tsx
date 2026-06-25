@@ -10,6 +10,8 @@ import {
   Save,
   Image as ImageIcon,
   ShoppingCart,
+  PackagePlus,
+  Boxes,
 } from 'lucide-react';
 import Image from 'next/image';
 import AdminLayout from './admin-layout';
@@ -19,6 +21,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  restockProduct,
 } from '@/app/actions/products';
 
 interface AdminProductsClientProps {
@@ -38,6 +41,7 @@ interface Product {
   price: number;
   image?: string | null;
   category: string;
+  stock: number;
   isActive: boolean;
 }
 
@@ -63,8 +67,14 @@ export default function AdminProductsClient({
     price: '',
     image: '',
     category: 'snack',
+    stock: '0',
     isActive: true,
   });
+
+  // «Լրացնել քանակ» modal
+  const [restockTarget, setRestockTarget] = useState<Product | null>(null);
+  const [restockAmount, setRestockAmount] = useState('');
+  const [isRestocking, setIsRestocking] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -92,6 +102,7 @@ export default function AdminProductsClient({
       price: '',
       image: '',
       category: 'snack',
+      stock: '0',
       isActive: true,
     });
     setIsAddModalOpen(true);
@@ -105,6 +116,7 @@ export default function AdminProductsClient({
       price: product.price.toString(),
       image: product.image || '',
       category: product.category,
+      stock: product.stock.toString(),
       isActive: product.isActive,
     });
     setIsEditModalOpen(true);
@@ -120,8 +132,55 @@ export default function AdminProductsClient({
       price: '',
       image: '',
       category: 'snack',
+      stock: '0',
       isActive: true,
     });
+  };
+
+  const handleRestock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restockTarget) return;
+
+    const amount = parseInt(restockAmount, 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Քանակը պետք է լինի 0-ից մեծ ամբողջ թիվ',
+      });
+      return;
+    }
+
+    setIsRestocking(true);
+    setStatusMessage(null);
+    try {
+      const result = await restockProduct(restockTarget.id, amount);
+      if (result.success && result.product) {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === restockTarget.id ? (result.product as Product) : p
+          )
+        );
+        setStatusMessage({
+          type: 'success',
+          text: result.message || 'Քանակը լրացվեց',
+        });
+        setRestockTarget(null);
+        setRestockAmount('');
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: result.error || 'Քանակ լրացնելիս սխալ է տեղի ունեցել',
+        });
+      }
+    } catch (err) {
+      console.error('Error restocking product:', err);
+      setStatusMessage({
+        type: 'error',
+        text: 'Քանակ լրացնելիս սխալ է տեղի ունեցել',
+      });
+    } finally {
+      setIsRestocking(false);
+    }
   };
 
   const handleDeleteProduct = (product: Product) => {
@@ -194,6 +253,7 @@ export default function AdminProductsClient({
           price: parseFloat(formData.price),
           image: formData.image || null,
           category: formData.category as string,
+          stock: parseInt(formData.stock, 10) || 0,
           isActive: formData.isActive,
         });
 
@@ -218,6 +278,7 @@ export default function AdminProductsClient({
           price: parseFloat(formData.price),
           image: formData.image || null,
           category: formData.category as string,
+          stock: parseInt(formData.stock, 10) || 0,
           isActive: formData.isActive,
         });
 
@@ -384,15 +445,44 @@ export default function AdminProductsClient({
                     {getCategoryLabel(product.category)}
                   </p>
                   {product.description && (
-                    <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">
                       {product.description}
                     </p>
                   )}
+
+                  {/* Պաշար (stock) */}
+                  <div className="mb-4 flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        product.stock <= 0
+                          ? 'bg-red-100 text-red-700'
+                          : product.stock <= 5
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-green-100 text-green-700'
+                      }`}
+                    >
+                      <Boxes className="h-3.5 w-3.5" />
+                      {product.stock <= 0
+                        ? 'Առկա չէ'
+                        : `Պաշար՝ ${product.stock}`}
+                    </span>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <span className="text-2xl font-bold text-gray-900">
                       {product.price.toFixed(0)} ֏
                     </span>
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setRestockTarget(product);
+                          setRestockAmount('');
+                        }}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded transition-colors"
+                        title="Լրացնել քանակ"
+                      >
+                        <PackagePlus className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => handleOpenEditModal(product)}
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -538,6 +628,26 @@ export default function AdminProductsClient({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Պաշար (քանակ)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.stock}
+                      onChange={(e) =>
+                        setFormData({ ...formData, stock: e.target.value })
+                      }
+                      min="0"
+                      step="1"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Առկա քանակը պահեստում։ Քանակ ավելացնելու համար օգտագործեք
+                      նաև «Լրացնել քանակ» կոճակը։
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Նկար URL
                     </label>
                     <FileUpload
@@ -638,6 +748,89 @@ export default function AdminProductsClient({
                     {isDeleting ? 'Ջնջվում է...' : 'Ջնջել'}
                   </button>
                 </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Restock (Լրացնել քանակ) modal */}
+        <AnimatePresence>
+          {restockTarget && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+              onClick={() => !isRestocking && setRestockTarget(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700">
+                    <PackagePlus className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">
+                      Լրացնել քանակ
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      «{restockTarget.name}» · ընթացիկ պաշար՝{' '}
+                      <span className="font-semibold">
+                        {restockTarget.stock}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleRestock} className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Ավելացվող քանակ
+                    </label>
+                    <input
+                      type="number"
+                      autoFocus
+                      value={restockAmount}
+                      onChange={(e) => setRestockAmount(e.target.value)}
+                      min="1"
+                      step="1"
+                      placeholder="Օր.՝ 50"
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    {restockAmount && parseInt(restockAmount, 10) > 0 && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Նոր պաշարը կլինի՝{' '}
+                        <span className="font-semibold text-green-700">
+                          {restockTarget.stock + (parseInt(restockAmount, 10) || 0)}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setRestockTarget(null)}
+                      disabled={isRestocking}
+                      className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Չեղարկել
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isRestocking}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
+                    >
+                      <PackagePlus className="h-4 w-4" />
+                      {isRestocking ? 'Լրացվում է...' : 'Լրացնել'}
+                    </button>
+                  </div>
+                </form>
               </motion.div>
             </motion.div>
           )}

@@ -931,7 +931,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                 </button>
 
                 {/* TelCell option */}
-                <button
+                {/* <button
                   type="button"
                   onClick={() => setPaymentMethod('bank_transfer')}
                   className={`w-full p-4 rounded-xl border-2 transition-all text-left group ${
@@ -978,7 +978,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                       </p>
                     </div>
                   </div>
-                </button>
+                </button> */}
 
                 {/* Card form */}
                 {/* {paymentMethod === 'card' && (

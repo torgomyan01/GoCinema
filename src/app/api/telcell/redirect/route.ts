@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildPublicAppUrl } from '@/lib/app-url';
 import { fromBase64 } from '@/lib/telcell';
 
 function parseOrderId(rawIssuerId: string): number | null {
@@ -21,11 +22,13 @@ function buildRedirect(
 ): NextResponse {
   const orderId = parseOrderId(issuerId);
   if (!orderId) {
-    return NextResponse.redirect(new URL('/tickets', request.url));
+    return NextResponse.redirect(buildPublicAppUrl('/tickets', request));
   }
 
   const status = (rawStatus || '').toUpperCase();
-  const redirectUrl = new URL(`/payment/${orderId}`, request.url);
+  // Միշտ env-ի domain-ով (gocinema.am), ոչ request.url-ով — Telcell-ը կարող է
+  // redirect անել localhost, եթե merchant panel-ում այդպես է կարգավորված։
+  const redirectUrl = buildPublicAppUrl(`/payment/${orderId}`, request);
   redirectUrl.searchParams.set('gateway', 'telcell');
   redirectUrl.searchParams.set('redirect', '1');
   redirectUrl.searchParams.set(

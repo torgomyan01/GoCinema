@@ -1,0 +1,14 @@
+{
+  "name": "EmarkCode",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "invoiceId": {
+       "type": "Uuid",
+    },
+    "code": {
+       "type": "Str",
+    }
+  }
+}

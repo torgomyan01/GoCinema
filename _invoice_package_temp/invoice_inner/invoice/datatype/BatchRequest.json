@@ -1,0 +1,29 @@
+{
+  "name": "BatchRequest",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "seqNo": {
+       "type": "Int",
+    },
+    "tin": {
+       "type": "Str",
+    },
+    "requestType": {
+       "type": "BatchRequestType",
+    },
+    "createdAt": {
+       "type": "Timestamp",
+    },
+    "batchSize": {
+       "type": "Int",
+    },
+    "requestStatus": {
+       "type": "BatchRequestStatus",
+    },
+    "errorMessage": {
+       "type": "Str",
+    }
+  }
+}

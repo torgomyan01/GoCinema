@@ -1,0 +1,30 @@
+{
+  "name": "Commodity",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "originalId": {
+       "type": "Int",
+    },
+    "code": {
+       "type": "Str",
+    },
+    "name": {
+       "type": "Str",
+    },
+    "nameRu": {
+       "type": "Str",
+    },
+    "startDate": {
+       "type": "Timestamp",
+    },
+    "expireDate": {
+       "type": "Timestamp",
+    },
+    "commodityMeasureId": {
+       "refTo": "CommodityMeasure,"
+       "type": "Uuid",
+    }
+  }
+}

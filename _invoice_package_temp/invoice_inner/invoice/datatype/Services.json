@@ -1,0 +1,218 @@
+{
+  "name": "Services",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "status": {
+       "type": "Status",
+    },
+    "createdAt": {
+       "type": "Timestamp",
+    },
+    "deliveredAt": {
+       "type": "Timestamp",
+    },
+    "crmNo": {
+       "type": "Str",
+    },
+    "additionalInfo": {
+       "type": "Str",
+    },
+    "userName": {
+       "type": "Str",
+    },
+    "dealtAt": {
+       "type": "Timestamp",
+    },
+    "dealNo": {
+       "type": "Str",
+    },
+    "serialNo": {
+       "type": "Str",
+    },
+    "version": {
+       "type": "Int",
+    },
+    "behalfOf": {
+       "type": "BehalfOf",
+    },
+    "isCorrector": {
+       "type": "Bool",
+    },
+    "correctorNo": {
+       "type": "Str",
+    },
+    "correctorWrittenOfAt": {
+       "type": "Timestamp",
+    },
+    "correctionType": {
+       "type": "CorrectionType",
+    },
+    "supplierTin": {
+       "type": "Str",
+    },
+    "supplierVatTin": {
+       "type": "Str",
+    },
+    "supplierName": {
+       "type": "Str",
+    },
+    "supplierAddress": {
+       "type": "Str",
+    },
+    "supplierAdditionalInfo": {
+       "type": "Str",
+    },
+    "supplierBank": {
+       "type": "Str",
+    },
+    "supplierAccNo": {
+       "type": "Str",
+    },
+    "poaNumber": {
+       "type": "Str",
+    },
+    "jointDealtAt": {
+       "type": "Timestamp",
+    },
+    "jointDealNo": {
+       "type": "Str",
+    },
+    "beneficiaryHasNoTin": {
+       "type": "Bool",
+    },
+    "beneficiaryTin": {
+       "type": "Str",
+    },
+    "beneficiaryVatTin": {
+       "type": "Str",
+    },
+    "beneficiaryName": {
+       "type": "Str",
+    },
+    "beneficiaryAddress": {
+       "type": "Str",
+    },
+    "beneficiaryAdditionalInfo": {
+       "type": "Str",
+    },
+    "beneficiaryBank": {
+       "type": "Str",
+    },
+    "beneficiaryAccNo": {
+       "type": "Str",
+    },
+    "buyerTin": {
+       "type": "Str",
+    },
+    "buyerVatTin": {
+       "type": "Str",
+    },
+    "buyerName": {
+       "type": "Str",
+    },
+    "buyerAddress": {
+       "type": "Str",
+    },
+    "buyerAdditionalInfo": {
+       "type": "Str",
+    },
+    "buyerBank": {
+       "type": "Str",
+    },
+    "buyerAccNo": {
+       "type": "Str",
+    },
+    "buyerSsn": {
+       "type": "Str",
+    },
+    "buyerIdentityType": {
+       "type": "Identity",
+    },
+    "buyerIdentityNo": {
+       "type": "Str",
+    },
+    "buyerHasNoTin": {
+       "type": "Bool",
+    },
+    "buyerIsNatural": {
+       "type": "Bool",
+    },
+    "citizenArmenia": {
+       "type": "Bool",
+    },
+    "insuringEmployer": {
+       "type": "Bool",
+    },
+    "socialCostType": {
+       "type": "SocialCostType",
+    },
+    "socialCostReference": {
+       "type": "Str",
+    },
+    "socialCostPersonFullName": {
+       "type": "Str",
+    },
+    "socialCostPersonDocType": {
+       "type": "Identity",
+    },
+    "socialCostPersonSerialNum": {
+       "type": "Str",
+    },
+    "physicalPersonChecked": {
+       "type": "Bool",
+    },
+    "socialCostPersonChecked": {
+       "type": "Bool",
+    },
+    "authPersonName": {
+       "type": "Str",
+    },
+    "authPersonPoaNo": {
+       "type": "Str",
+    },
+    "authPersonPoaIssuedAt": {
+       "type": "Timestamp",
+    },
+    "totalValue": {
+       "type": "Money",
+    },
+    "totalVatAmount": {
+       "type": "Money",
+    },
+    "total": {
+       "type": "Money",
+    },
+    "isBatch": {
+       "type": "Bool",
+    },
+    "supplierSignId": {
+       "type": "Uuid",
+    },
+    "buyerSignId": {
+       "type": "Uuid",
+    },
+    "issuedAt": {
+       "type": "Timestamp",
+    },
+    "approvedAt": {
+       "type": "Timestamp",
+    },
+    "supplierCn": {
+       "type": "Str",
+    },
+    "buyerCn": {
+       "type": "Str",
+    },
+    "supplierUser": {
+       "type": "Str",
+    },
+    "buyerUser": {
+       "type": "Str",
+    },
+    "source": {
+       "type": "Source",
+    }
+  }
+}

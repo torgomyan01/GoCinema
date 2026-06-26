@@ -1,0 +1,126 @@
+{
+  "name": "VatRefund",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "createdAt": {
+       "type": "Timestamp",
+    },
+    "status": {
+       "type": "Status",
+    },
+    "deliveredAt": {
+       "type": "Timestamp",
+    },
+    "userName": {
+       "type": "Str",
+    },
+    "version": {
+       "type": "Int",
+    },
+    "supplierTin": {
+       "type": "Str",
+    },
+    "supplierVatTin": {
+       "type": "Str",
+    },
+    "supplierName": {
+       "type": "Str",
+    },
+    "supplierAddress": {
+       "type": "Str",
+    },
+    "supplierAdditionalInfo": {
+       "type": "Str",
+    },
+    "sourceRegionId": {
+       "refTo": "Region,"
+       "type": "Uuid",
+    },
+    "sourceCommunityId": {
+       "refTo": "Community,"
+       "type": "Uuid",
+    },
+    "sourceResidenceId": {
+       "refTo": "Residence,"
+       "type": "Uuid",
+    },
+    "sourceRegion": {
+       "type": "Str",
+    },
+    "sourceCommunity": {
+       "type": "Str",
+    },
+    "sourceResidence": {
+       "type": "Str",
+    },
+    "sourceStreet": {
+       "type": "Str",
+    },
+    "sourceHouse": {
+       "type": "Str",
+    },
+    "sourceApartment": {
+       "type": "Str",
+    },
+    "sourceFullAddress": {
+       "type": "Str",
+    },
+    "buyerFullName": {
+       "type": "Str",
+    },
+    "buyerPassport": {
+       "type": "Str",
+    },
+    "buyerEmail": {
+       "type": "Str",
+    },
+    "buyerCountryId": {
+       "refTo": "Country,"
+       "type": "Uuid",
+    },
+    "buyerAddress": {
+       "type": "Str",
+    },
+    "buyerBank": {
+       "type": "Str",
+    },
+    "buyerAccNo": {
+       "type": "Str",
+    },
+    "supplierSignId": {
+       "type": "Uuid",
+    },
+    "isBatch": {
+       "type": "Bool",
+    },
+    "issuedAt": {
+       "type": "Timestamp",
+    },
+    "supplierCn": {
+       "type": "Str",
+    },
+    "supplierUser": {
+       "type": "Str",
+    },
+    "serialNo": {
+       "type": "Str",
+    },
+    "totalValue": {
+       "type": "Money",
+    },
+    "totalVatAmount": {
+       "type": "Money",
+    },
+    "total": {
+       "type": "Money",
+    },
+    "source": {
+       "type": "Source",
+    },
+    "hasCodes": {
+       "type": "Bool",
+    }
+  }
+}

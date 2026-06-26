@@ -232,11 +232,42 @@ export interface BoxOfficeProductSelection {
   quantity: number;
 }
 
+export type BoxOfficePaymentMethod = 'cash' | 'card';
+
+/**
+ * Վճարման մեթոդի և կանխիկ ստացված գումարի վալիդացիա։
+ * Կանխիկի դեպքում՝ ստացված գումարը չի կարող պակաս լինել ընդհանուրից։
+ */
+function resolvePayment(
+  method: unknown,
+  amountPaid: unknown,
+  total: number
+):
+  | { ok: true; method: BoxOfficePaymentMethod; amountPaid: number | null }
+  | { ok: false; error: string } {
+  const paymentMethod: BoxOfficePaymentMethod = method === 'card' ? 'card' : 'cash';
+
+  if (paymentMethod === 'card') {
+    return { ok: true, method: 'card', amountPaid: total };
+  }
+
+  const received = Number(amountPaid);
+  if (!Number.isFinite(received) || received < total) {
+    return {
+      ok: false,
+      error: 'Ստացված կանխիկ գումարը չի կարող պակաս լինել ընդհանուր գումարից',
+    };
+  }
+  return { ok: true, method: 'cash', amountPaid: received };
+}
+
 export interface CreateBoxOfficeTicketData {
   screeningId: number;
   seatId: number;
   price: number;
   products?: BoxOfficeProductSelection[];
+  paymentMethod?: BoxOfficePaymentMethod;
+  amountPaid?: number;
 }
 
 /** Կանխիկ վաճառք դրամարկղից՝ ստեղծում է վճարված տոմս + ապրանքներ + Payment + QR */
@@ -302,6 +333,16 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
     }
 
     const grandTotal = price + productsTotal;
+
+    const payment = resolvePayment(
+      data.paymentMethod,
+      data.amountPaid,
+      grandTotal
+    );
+    if (!payment.ok) {
+      return { success: false, error: payment.error };
+    }
+
     const walkInUserId = await getOrCreateWalkInUser();
 
     const ticket = await prisma.$transaction(async (tx) => {
@@ -367,7 +408,8 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
           userId: walkInUserId,
           ticketId: created.id,
           amount: grandTotal,
-          method: 'cash',
+          amountPaid: payment.amountPaid,
+          method: payment.method,
           status: 'completed',
           transactionId: `BOXOFFICE-${created.id}`,
         },
@@ -404,6 +446,8 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
 
 export interface CreateBoxOfficeOrderData {
   products: BoxOfficeProductSelection[];
+  paymentMethod?: BoxOfficePaymentMethod;
+  amountPaid?: number;
 }
 
 /** Ինքնուրույն ապրանքների վաճառք դրամարկղից՝ առանց տոմսի (կանխիկ) */
@@ -449,6 +493,11 @@ export async function createBoxOfficeProductOrder(
       total += product.price * qty;
     }
 
+    const payment = resolvePayment(data.paymentMethod, data.amountPaid, total);
+    if (!payment.ok) {
+      return { success: false, error: payment.error };
+    }
+
     const walkInUserId = await getOrCreateWalkInUser();
 
     const order = await prisma.$transaction(async (tx) => {
@@ -457,6 +506,8 @@ export async function createBoxOfficeProductOrder(
           userId: walkInUserId,
           totalAmount: total,
           status: 'completed',
+          paymentMethod: payment.method,
+          amountPaid: payment.amountPaid,
         },
       });
 

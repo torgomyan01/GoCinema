@@ -1,0 +1,1339 @@
+openapi: "3.0.0"
+info:
+  version: "1.0.0"
+  title: "Invoicing"
+servers:
+  - url: "http://localhost:8080"
+    description: Local
+paths:
+  /dispatcher/document-count:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    mine:
+                      type: boolean
+                      nullable: true
+                    tin:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      all:
+                        type: integer
+                        format: int32
+                      signed:
+                        type: integer
+                        format: int32
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-by-id:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      sub:
+                        type: string
+                        nullable: true
+                      tin:
+                        type: string
+                        nullable: true
+                      cn:
+                        type: string
+                        nullable: true
+                      signer:
+                        type: string
+                        nullable: true
+                      documentHash:
+                        type: string
+                        nullable: true
+                      startAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      signedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      type:
+                        type: string
+                        nullable: true
+                      state:
+                        type: string
+                        nullable: true
+                      requestType:
+                        type: string
+                        nullable: true
+                      failMessage:
+                        type: string
+                        nullable: true
+                      seqId:
+                        type: integer
+                        format: int32
+                        nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                    offSet:
+                      type: integer
+                      format: int32
+                      nullable: true
+                    limit:
+                      type: integer
+                      format: int32
+                      nullable: true
+                    mine:
+                      type: boolean
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        sub:
+                          type: string
+                          nullable: true
+                        tin:
+                          type: string
+                          nullable: true
+                        cn:
+                          type: string
+                          nullable: true
+                        signer:
+                          type: string
+                          nullable: true
+                        documentHash:
+                          type: string
+                          nullable: true
+                        startAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        signedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        type:
+                          type: string
+                          nullable: true
+                        state:
+                          type: string
+                          nullable: true
+                        requestType:
+                          type: string
+                          nullable: true
+                        failMessage:
+                          type: string
+                          nullable: true
+                        seqId:
+                          type: integer
+                          format: int32
+                          nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-count:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                    mine:
+                      type: boolean
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-item-by-id:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      signTaskId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      invoiceId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      status:
+                        type: string
+                        nullable: true
+                      invoiceType:
+                        type: string
+                        nullable: true
+                      failMessage:
+                        type: string
+                        nullable: true
+                      warnings:
+                        type: string
+                        nullable: true
+                      serialNo:
+                        type: string
+                        nullable: true
+                      supplierTin:
+                        type: string
+                        nullable: true
+                      supplierName:
+                        type: string
+                        nullable: true
+                      buyerTin:
+                        type: string
+                        nullable: true
+                      buyerName:
+                        type: string
+                        nullable: true
+                      deliveredAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      total:
+                        type: number
+                        nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-item-list-by-sign-id:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        signTaskId:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        invoiceId:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        status:
+                          type: string
+                          nullable: true
+                        invoiceType:
+                          type: string
+                          nullable: true
+                        failMessage:
+                          type: string
+                          nullable: true
+                        warnings:
+                          type: string
+                          nullable: true
+                        serialNo:
+                          type: string
+                          nullable: true
+                        supplierTin:
+                          type: string
+                          nullable: true
+                        supplierName:
+                          type: string
+                          nullable: true
+                        buyerTin:
+                          type: string
+                          nullable: true
+                        buyerName:
+                          type: string
+                          nullable: true
+                        deliveredAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        total:
+                          type: number
+                          nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-item-list-by-sign-ids:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        signTaskId:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        invoiceId:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        status:
+                          type: string
+                          nullable: true
+                        invoiceType:
+                          type: string
+                          nullable: true
+                        failMessage:
+                          type: string
+                          nullable: true
+                        warnings:
+                          type: string
+                          nullable: true
+                        serialNo:
+                          type: string
+                          nullable: true
+                        supplierTin:
+                          type: string
+                          nullable: true
+                        supplierName:
+                          type: string
+                          nullable: true
+                        buyerTin:
+                          type: string
+                          nullable: true
+                        buyerName:
+                          type: string
+                          nullable: true
+                        deliveredAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        total:
+                          type: number
+                          nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-item-by-invoice-id:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        signTaskId:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        invoiceId:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        status:
+                          type: string
+                          nullable: true
+                        invoiceType:
+                          type: string
+                          nullable: true
+                        failMessage:
+                          type: string
+                          nullable: true
+                        warnings:
+                          type: string
+                          nullable: true
+                        serialNo:
+                          type: string
+                          nullable: true
+                        supplierTin:
+                          type: string
+                          nullable: true
+                        supplierName:
+                          type: string
+                          nullable: true
+                        buyerTin:
+                          type: string
+                          nullable: true
+                        buyerName:
+                          type: string
+                          nullable: true
+                        deliveredAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        total:
+                          type: number
+                          nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-item-check-lock:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    invoiceId:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      isLock:
+                        type: boolean
+                      taskId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/sign-task-item-locked-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/xml-export:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+                    sortCol:
+                      type: string
+                      nullable: true
+                    sortAsc:
+                      type: boolean
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      url:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/pdf-export:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+                    includeDependents:
+                      type: boolean
+                      nullable: true
+                    sortCol:
+                      type: string
+                      nullable: true
+                    sortAsc:
+                      type: boolean
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      url:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/bid-export:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      url:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/csv-export:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    invoiceId:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      url:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/excel-export:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+                    templateType:
+                      type: string
+                    tin:
+                      type: string
+                    withItems:
+                      type: boolean
+                      nullable: true
+                    correctionInfo:
+                      type: boolean
+                      nullable: true
+                    sortCol:
+                      type: string
+                      nullable: true
+                    sortAsc:
+                      type: boolean
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      url:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/batch-reserve-sn:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                    series:
+                      type: string
+                    batchSize:
+                      type: integer
+                      format: int32
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      seqNo:
+                        type: integer
+                        format: int32
+                      sn:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/batch-register:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                    fileUrl:
+                      type: object
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      seqNo:
+                        type: integer
+                        format: int32
+                      sn:
+                        type: object
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/batch-invalidate:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                    sn:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      seqNo:
+                        type: integer
+                        format: int32
+                      sn:
+                        type: object
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/xml-import:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    url:
+                      type: string
+                    tin:
+                      type: string
+                    userName:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      ids:
+                        type: string
+                      errors:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/clean-outdated-files:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/find-sign-task-page:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    signTaskId:
+                      type: string
+                      format: uuid
+                    pageSize:
+                      type: integer
+                      format: int32
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dispatcher/app-version:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string

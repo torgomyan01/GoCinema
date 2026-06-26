@@ -1,0 +1,1131 @@
+openapi: "3.0.0"
+info:
+  version: "1.0.0"
+  title: "Invoicing"
+servers:
+  - url: "http://localhost:8080"
+    description: Local
+paths:
+  /vat-refund/vat-refund-create-draft:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    deliveredAt:
+                      type: string
+                      format: date-time
+                    userName:
+                      type: string
+                      nullable: true
+                    version:
+                      type: integer
+                      format: int32
+                      nullable: true
+                    supplierTin:
+                      type: string
+                    supplierVatTin:
+                      type: string
+                      nullable: true
+                    supplierName:
+                      type: string
+                      nullable: true
+                    supplierAddress:
+                      type: string
+                      nullable: true
+                    supplierAdditionalInfo:
+                      type: string
+                      nullable: true
+                    sourceRegionId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceCommunityId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceResidenceId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceStreet:
+                      type: string
+                      nullable: true
+                    sourceHouse:
+                      type: string
+                      nullable: true
+                    sourceApartment:
+                      type: string
+                      nullable: true
+                    sourceFullAddress:
+                      type: string
+                      nullable: true
+                    buyerFullName:
+                      type: string
+                    buyerPassport:
+                      type: string
+                    buyerEmail:
+                      type: string
+                    buyerCountryId:
+                      type: string
+                      format: uuid
+                    buyerAddress:
+                      type: string
+                    buyerBank:
+                      type: string
+                      nullable: true
+                    buyerAccNo:
+                      type: string
+                      nullable: true
+                    supplierSignId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    isBatch:
+                      type: boolean
+                      nullable: true
+                    issuedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    supplierCn:
+                      type: string
+                      nullable: true
+                    supplierUser:
+                      type: string
+                      nullable: true
+                    serialNo:
+                      type: string
+                      nullable: true
+                    totalValue:
+                      type: number
+                    totalVatAmount:
+                      type: number
+                      nullable: true
+                    total:
+                      type: number
+                    source:
+                      type: string
+                    hasCodes:
+                      type: boolean
+                    items:
+                      type: object
+                    tin:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-save-draft:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    deliveredAt:
+                      type: string
+                      format: date-time
+                    userName:
+                      type: string
+                      nullable: true
+                    version:
+                      type: integer
+                      format: int32
+                      nullable: true
+                    supplierTin:
+                      type: string
+                    supplierVatTin:
+                      type: string
+                      nullable: true
+                    supplierName:
+                      type: string
+                      nullable: true
+                    supplierAddress:
+                      type: string
+                      nullable: true
+                    supplierAdditionalInfo:
+                      type: string
+                      nullable: true
+                    sourceRegionId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceCommunityId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceResidenceId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceStreet:
+                      type: string
+                      nullable: true
+                    sourceHouse:
+                      type: string
+                      nullable: true
+                    sourceApartment:
+                      type: string
+                      nullable: true
+                    sourceFullAddress:
+                      type: string
+                      nullable: true
+                    buyerFullName:
+                      type: string
+                    buyerPassport:
+                      type: string
+                    buyerEmail:
+                      type: string
+                    buyerCountryId:
+                      type: string
+                      format: uuid
+                    buyerAddress:
+                      type: string
+                    buyerBank:
+                      type: string
+                      nullable: true
+                    buyerAccNo:
+                      type: string
+                      nullable: true
+                    supplierSignId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    isBatch:
+                      type: boolean
+                      nullable: true
+                    issuedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    supplierCn:
+                      type: string
+                      nullable: true
+                    supplierUser:
+                      type: string
+                      nullable: true
+                    serialNo:
+                      type: string
+                      nullable: true
+                    totalValue:
+                      type: number
+                    totalVatAmount:
+                      type: number
+                      nullable: true
+                    total:
+                      type: number
+                    source:
+                      type: string
+                    hasCodes:
+                      type: boolean
+                    items:
+                      type: object
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-product-create:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    invoiceId:
+                      type: string
+                      format: uuid
+                    seqNo:
+                      type: integer
+                      format: int32
+                    name:
+                      type: string
+                    classifierId:
+                      type: string
+                      format: uuid
+                    unit:
+                      type: string
+                    quantity:
+                      type: number
+                    unitPrice:
+                      type: number
+                    discount:
+                      type: number
+                      nullable: true
+                    totalValue:
+                      type: number
+                    vatRate:
+                      type: string
+                    vatAmount:
+                      type: number
+                    total:
+                      type: number
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-product-save:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    invoiceId:
+                      type: string
+                      format: uuid
+                    seqNo:
+                      type: integer
+                      format: int32
+                    name:
+                      type: string
+                    classifierId:
+                      type: string
+                      format: uuid
+                    unit:
+                      type: string
+                    quantity:
+                      type: number
+                    unitPrice:
+                      type: number
+                    discount:
+                      type: number
+                      nullable: true
+                    totalValue:
+                      type: number
+                    vatRate:
+                      type: string
+                    vatAmount:
+                      type: number
+                    total:
+                      type: number
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-product-remove:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-remove-draft:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-remove-draft-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-invalidate-issued:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    signature:
+                      type: string
+                    certificate:
+                      type: string
+                    serialNo:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    user:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-cancel-issued:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    signature:
+                      type: string
+                    certificate:
+                      type: string
+                    serialNo:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    user:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-cancel-issued-co-sign:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    userName:
+                      type: string
+                    password:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-invalidate-issued-co-sign:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    userName:
+                      type: string
+                    password:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-cancel-issued-mid:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    phone:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+                    signType:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-invalidate-issued-mid:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    phone:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+                    signType:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-xml-import:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    url:
+                      type: string
+                    tin:
+                      type: string
+                    userName:
+                      type: string
+                    isBatch:
+                      type: boolean
+                      nullable: true
+                    fromDispatcher:
+                      type: boolean
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-issue:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    requestId:
+                      type: string
+                      format: uuid
+                    signedAt:
+                      type: string
+                      format: date-time
+                    cn:
+                      type: string
+                    signer:
+                      type: string
+                    validationResult:
+                      type: object
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-xml-batch-import:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    url:
+                      type: string
+                    tin:
+                      type: string
+                    requestId:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-batch-invalidate:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    sn:
+                      type: string
+                    tin:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /vat-refund/vat-refund-create-draft-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+                    userName:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string

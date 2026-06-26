@@ -1,0 +1,26 @@
+{
+  "name": "Country",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "name": {
+       "type": "Str",
+    },
+    "code": {
+       "type": "Str",
+    },
+    "nameEn": {
+       "type": "Str",
+    },
+    "nameRu": {
+       "type": "Str",
+    },
+    "taxFreeVisible": {
+       "type": "Bool",
+    },
+    "visibility": {
+       "type": "Bool",
+    }
+  }
+}

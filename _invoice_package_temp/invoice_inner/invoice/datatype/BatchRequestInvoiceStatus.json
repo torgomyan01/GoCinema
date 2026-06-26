@@ -1,0 +1,21 @@
+{
+  "name": "BatchRequestInvoiceStatus",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "batchRequestId": {
+       "refTo": "BatchRequest,"
+       "type": "Uuid",
+    },
+    "invNumber": {
+       "type": "Str",
+    },
+    "requestStatus": {
+       "type": "BatchRequestStatus",
+    },
+    "errorMessage": {
+       "type": "Str",
+    }
+  }
+}

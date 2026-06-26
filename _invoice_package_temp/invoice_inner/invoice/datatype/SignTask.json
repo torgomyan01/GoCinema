@@ -1,0 +1,44 @@
+{
+  "name": "SignTask",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "sub": {
+       "type": "Str",
+    },
+    "tin": {
+       "type": "Str",
+    },
+    "cn": {
+       "type": "Str",
+    },
+    "signer": {
+       "type": "Str",
+    },
+    "documentHash": {
+       "type": "Str",
+    },
+    "startAt": {
+       "type": "Timestamp",
+    },
+    "signedAt": {
+       "type": "Timestamp",
+    },
+    "type": {
+       "type": "SignTaskType",
+    },
+    "state": {
+       "type": "SignTaskState",
+    },
+    "requestType": {
+       "type": "RequestType",
+    },
+    "failMessage": {
+       "type": "Str",
+    },
+    "seqId": {
+       "type": "Int",
+    }
+  }
+}

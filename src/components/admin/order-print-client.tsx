@@ -13,6 +13,8 @@ interface PrintOrder {
   createdAt: string;
   items: PrintOrderItem[];
   total: number;
+  paymentMethod?: string;
+  amountPaid?: number | null;
 }
 
 const CINEMA_NAME = 'GoCinema';
@@ -152,10 +154,59 @@ export default function OrderPrintClient({ order }: { order: PrintOrder }) {
           <span>{order.total.toLocaleString()} ֏</span>
         </div>
 
-        <div style={{ fontSize: '8pt', fontWeight: 700, marginTop: '3mm' }}>
+        <div
+          style={{
+            textAlign: 'left',
+            fontSize: '9pt',
+            margin: '3mm 0',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginBottom: '0.5mm',
+            }}
+          >
+            <span>Վճարման եղանակ</span>
+            <span style={{ fontWeight: 700 }}>
+              {order.paymentMethod === 'card' ? 'Քարտով' : 'Կանխիկ'}
+            </span>
+          </div>
+          {order.paymentMethod !== 'card' && order.amountPaid != null && (
+            <>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '0.5mm',
+                }}
+              >
+                <span>Ստացված կանխիկ</span>
+                <span style={{ fontWeight: 700 }}>
+                  {order.amountPaid.toLocaleString()} ֏
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontWeight: 800,
+                }}
+              >
+                <span>Մանր</span>
+                <span>
+                  {Math.max(order.amountPaid - order.total, 0).toLocaleString()}{' '}
+                  ֏
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div style={{ fontSize: '8pt', fontWeight: 700 }}>
           Պատվեր #{order.id}
         </div>
-        <div style={{ fontSize: '8pt', marginTop: '1mm' }}>Կանխիկ վճարում</div>
 
         <div style={{ borderTop: '1px dashed #000', margin: '3mm 0' }} />
         <div style={{ fontSize: '7.5pt', lineHeight: 1.3 }}>{CINEMA_ADDRESS}</div>

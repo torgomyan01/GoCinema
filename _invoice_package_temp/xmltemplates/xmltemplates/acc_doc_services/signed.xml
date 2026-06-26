@@ -1,0 +1,127 @@
+<ExportedAccDocData xmlns="http://www.taxservice.am/tp3/invoice/definitions">
+  <SignedAccDocData>
+    <Data>
+      <SignableData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="AccountingDocument" Version="1.0">
+        <User>{user|String}</User>
+        <Type>{type|Number}</Type>
+        <GeneralInfo>
+          <ParentInvoiceNumber>{correctorNo|String}</ParentInvoiceNumber>
+          <EcrReceipt>{crmNo|String}</EcrReceipt>
+          <ParentInvoiceSubmitDate>{correctorWrittenOfAt|Date}</ParentInvoiceSubmitDate>
+          <InvoiceNumber>
+            <Number>{invoiceNumber|String}</Number>
+            <Series>{invoiceSeries|String}</Series>
+          </InvoiceNumber>
+          <AdjustmentDiffFlag>{correctionType|tax.model.CorrectionType|-1:DECREASING|1:INCREASING}</AdjustmentDiffFlag>
+          <DeliveryDate>{deliveredAt|Date}</DeliveryDate>
+          <Procedure>{behalfOf|tax.model.BehalfOf|1:TAXPAYER|2:PRINCIPAL}</Procedure>
+          <DealInfo>
+            <DealDate>{dealtAt|Date}</DealDate>
+            <DealNumber>{dealNo|String}</DealNumber>
+          </DealInfo>
+          <AdditionalData>{additionalInfo|String}</AdditionalData>
+          <AdjustmentAccount>{isCorrector|Boolean}</AdjustmentAccount>
+        </GeneralInfo>
+        <SupplierInfo>
+          <VATNumber>{supplierVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{supplierTin|String}</TIN>
+            <Name>{supplierName|String}</Name>
+            <Address>{supplierAddress|String}</Address>
+            <BankAccount>
+              <BankName>{supplierBank|String}</BankName>
+              <BankAccountNumber>{supplierAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{supplierAdditionalInfo|String}</AdditionalData>
+            <!-- CredentialNumber is available only in the form "onBehalfOfbeneficiary" -->
+            <CredentialsNumber>{poaNumber|String}</CredentialsNumber>
+          </Taxpayer>
+          <!-- SupplyLocation is available only in the form "onBehalfOfBeneficiary" -->
+          <SupplyLocation>{sourceFullAddress|String}</SupplyLocation>
+        </SupplierInfo>
+        <!-- OnBehalfOfSupplierInfo section is available only in the form "onBehalfOfBeneficiary" / START -->
+        <OnBehalfOfSupplierInfo>
+          <Taxpayer>
+            <TIN>{beneficiaryTin|String}</TIN>
+            <Name>{beneficiaryName|String}</Name>
+            <Address>{beneficiaryAddress|String}</Address>
+            <BankAccount>
+              <BankName>{beneficiaryBank|String}</BankName>
+              <BankAccountNumber>{beneficiaryAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{beneficiaryAdditionalInfo|String}</AdditionalData>
+            <PrincipalTinNotRequired>{beneficiaryHasNoTin|Boolean}</PrincipalTinNotRequired>
+          </Taxpayer>
+        </OnBehalfOfSupplierInfo>
+        <!-- OnBehalfOfSupplierInfo section is available only in the form "onBehalfOfbeneficiary" / END-->
+        <BuyerInfo>
+          <VATNumber>{buyerVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{buyerTin|String}</TIN>
+            <Passport>{buyerIdentityNo|String}</Passport>
+            <PIDType>{buyerIdentityType|String}</PIDType>
+            <Name>{buyerName|String}</Name>
+            <Address>{buyerAddress|String}</Address>
+            <BankAccount>
+              <BankName>{buyerBank|String}</BankName>
+              <BankAccountNumber>{buyerAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{buyerAdditionalInfo|String}</AdditionalData>
+            <TinNotRequired>{buyerHasNoTin|Boolean}</TinNotRequired>
+            <IsNatural>{buyerIsNatural|Boolean}</IsNatural>
+            <PSNOrAbsence>{buyerSsn|String}</PSNOrAbsence>
+          </Taxpayer>
+          <Mediator>
+            <Name>{authPersonName|String}</Name>
+            <LicenseNumber>{authPersonPoaNo|String}</LicenseNumber>
+            <LicenseDate>{authPersonPoaIssuedAt|Date}</LicenseDate>
+          </Mediator>
+          <IsCitizenArmenia>{citizenArmenia|Boolean}</IsCitizenArmenia>
+          <InsuringEmployer>{insuringEmployer|Boolean}</InsuringEmployer>
+          <SocialCostPerson>
+            <CostType>{socialCostType|String}</CostType>
+            <PSNOrAbsence>{socialCostReference|String}</PSNOrAbsence>
+            <FullName>{socialCostPersonFullName|String}</FullName>
+            <Identity>{socialCostPersonDocType|String}</Identity>
+            <SerialNumber>{socialCostPersonSerialNum|String}</SerialNumber>
+          </SocialCostPerson>
+        </BuyerInfo>
+        <GoodsInfo>
+          <Good>
+            <shownextif field="dummy_value" value="1"/>
+            <GoodId>{id|String}</GoodId>
+            <GoodParentId>{parentId|String}</GoodParentId>
+            <Description>{name|String}</Description>
+            <Unit>{unit|String}</Unit>
+            <!-- Amount relates to Quantity => confirmed with Harut -->
+            <Amount>{quantity|Number4}</Amount>
+            <PricePerUnit>{unitPrice|Number5}</PricePerUnit>
+            <!-- TODO!!! is Price == PricePerUnit-->
+            <Price>{totalValue|Number}</Price>
+            <Discount>{discount|Number4}</Discount>
+            <DealType>{dealType|String}</DealType>
+            <TotalPrice>{totalValue|Number}</TotalPrice>
+          </Good>
+          <Total>
+            <!-- Total of all goods. This is property of AccDocServices entity-->
+            <TotalPrice>{totalValue|Number}</TotalPrice>
+          </Total>
+        </GoodsInfo>
+      </SignableData>
+    </Data>
+    <Signature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{supplierSignature|String}</SignatureValue>
+    </Signature>
+    <shownextif field="showbs" value="1"/>
+    <renamenext field="Signature" />
+    <bSignature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{buyerSignature|String}</SignatureValue>
+    </bSignature>
+    <AccDocMetadata>
+      <SubmissionDate>{supplierSignedAt|DateTime}</SubmissionDate>
+      <CoSignDate>{buyerSignedAt|DateTime}</CoSignDate>
+    </AccDocMetadata>
+  </SignedAccDocData>
+</ExportedAccDocData>

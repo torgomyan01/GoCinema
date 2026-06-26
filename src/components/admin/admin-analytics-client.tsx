@@ -46,18 +46,16 @@ export default function AdminAnalyticsClient({
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('hy-AM', {
-      style: 'currency',
-      currency: 'AMD',
-      minimumFractionDigits: 0,
-    }).format(amount);
+    const value = Math.round(Number(amount) || 0);
+    return `${value.toLocaleString('en-US')} ֏`;
   };
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('hy-AM', {
-      month: 'short',
-      day: 'numeric',
-    });
+  const formatDate = (date: string | Date) => {
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}.${month}.${year}`;
   };
 
   // Calculate ticket statistics from revenueByStatus
@@ -416,7 +414,7 @@ export default function AdminAnalyticsClient({
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {new Date(order.createdAt).toLocaleDateString('hy-AM')}
+                        {formatDate(order.createdAt)}
                       </td>
                     </tr>
                   );

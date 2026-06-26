@@ -1,0 +1,139 @@
+<ExportedData xmlns="http://www.taxservice.am/tp3/invoice/definitions">
+  <SignedData>
+    <Data>
+      <SignableData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Invoice" Version="1.0">
+        <User>{user|String}</User>
+        <Type>3</Type>
+        <GeneralInfo>
+          <ParentInvoiceNumber>{correctorNo|String}</ParentInvoiceNumber>
+          <EcrReceipt>{crmNo|String}</EcrReceipt>
+          <ParentInvoiceSubmitDate>{correctorWrittenOfAt|Date}</ParentInvoiceSubmitDate>
+          <InvoiceNumber>
+            <Number>{invoiceNumber|String}</Number>
+            <Series>{invoiceSeries|String}</Series>
+          </InvoiceNumber>
+          <AdjustmentDiffFlag>{correctionType|tax.model.CorrectionType|-1:DECREASING|1:INCREASING}</AdjustmentDiffFlag>
+          <SupplyDate>{deliveredAt|Date}</SupplyDate>
+          <Procedure>{behalfOf|tax.model.BehalfOf|2:TAXPAYER|3:SUPPLIER|4:PRINCIPAL|6:JOINT_CASE_MNG}</Procedure>
+          <DealInfo>
+            <DealDate>{dealtAt|Date}</DealDate>
+            <DealNumber>{dealNo|String}</DealNumber>
+          </DealInfo>
+          <AdditionalData>{additionalInfo|String}</AdditionalData>
+          <AdjustmentAccount>{isCorrector|Boolean}</AdjustmentAccount>
+        </GeneralInfo>
+        <SupplierInfo>
+          <!-- VATNumber is available only on the form "onBehalfOfSupplier", "onBehalfOfBeneficiary", "onBehalfOfJoint" -->
+          <VATNumber>{supplierVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{supplierTin|String}</TIN>
+            <Name>{supplierName|String}</Name>
+            <Address>{supplierAddress|String}</Address>
+            <BankAccount>
+              <BankName>{supplierBank|String}</BankName>
+              <BankAccountNumber>{supplierAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{supplierAdditionalInfo|String}</AdditionalData>
+            <!-- CredentialsNumber and ContractInfo Section are available only on the form "onBehalfOfJoint" / START-->
+            <CredentialsNumber>{poaNumber|String}</CredentialsNumber>
+            <ContractInfo>
+              <ContractDate>{jointDealtAt|Date}</ContractDate>
+              <ContractNumber>{jointDealNo|String}</ContractNumber>
+            </ContractInfo>
+            <!-- CredentialsNumber and ContractInfo Section are available only on the form "onBehalfOfJoint" / END-->
+          </Taxpayer>
+          <!-- SupplyLocation is available only on the form "onBehalfOfSupplier", "onBehalfOfBeneficiary", "onBehalfOfJoint" -->
+          <SupplyLocation>{sourceFullAddress|String}</SupplyLocation>
+        </SupplierInfo>
+        <!-- OnBehalfOfSupplierInfo section is available only on the form "onBehalfOfBeneficiary", "onBehalfOfJoint" / START -->
+        <OnBehalfOfSupplierInfo>
+          <VATNumber>{beneficiaryVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{beneficiaryTin|String}</TIN>
+            <Name>{beneficiaryName|String}</Name>
+            <Address>{beneficiaryAddress|String}</Address>
+            <BankAccount>
+              <BankName>{beneficiaryBank|String}</BankName>
+              <BankAccountNumber>{beneficiaryAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{beneficiaryAdditionalInfo|String}</AdditionalData>
+            <PrincipalTinNotRequired>{beneficiaryHasNoTin|Boolean}</PrincipalTinNotRequired>
+          </Taxpayer>
+        </OnBehalfOfSupplierInfo>
+        <!-- OnBehalfOfSupplierInfo section is available only on the form "onBehalfOfBeneficiary", "onBehalfOfJoint" / END -->
+        <BuyerInfo>
+          <VATNumber>{buyerVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{buyerTin|String}</TIN>
+            <Passport>{buyerIdentityNo|String}</Passport>
+            <PIDType>{buyerIdentityType|String}</PIDType>
+            <Name>{buyerName|String}</Name>
+            <Address>{buyerAddress|String}</Address>
+            <BankAccount>
+              <BankName>{buyerBank|String}</BankName>
+              <BankAccountNumber>{buyerAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{buyerAdditionalInfo|String}</AdditionalData>
+            <TinNotRequired>{buyerHasNoTin|Boolean}</TinNotRequired>
+            <IsNatural>{buyerIsNatural|Boolean}</IsNatural>
+            <PSNOrAbsence>{buyerSsn|String}</PSNOrAbsence>
+          </Taxpayer>
+          <Mediator>
+            <Name>{authPersonName|String}</Name>
+            <LicenseNumber>{authPersonPoaNo|String}</LicenseNumber>
+            <LicenseDate>{authPersonPoaIssuedAt|Date}</LicenseDate>
+          </Mediator>
+          <!-- TODO!!! The following two fields are missing in Domain -->
+          <!-- DeliveryMethod is available only on the form "onBehalfOfSupplier", "onBehalfOfBeneficiary", "onBehalfOfJoint" -->
+          <!--      <DeliveryMethod>{deliveryMethod|String}</DeliveryMethod>-->
+          <DeliveryLocation>{destinationFullAddress|String}</DeliveryLocation>
+          <IsCitizenArmenia>{citizenArmenia|Boolean}</IsCitizenArmenia>
+          <InsuringEmployer>{insuringEmployer|Boolean}</InsuringEmployer>
+          <SocialCostPerson>
+            <CostType>{socialCostType|String}</CostType>
+            <PSNOrAbsence>{socialCostReference|String}</PSNOrAbsence>
+            <FullName>{socialCostPersonFullName|String}</FullName>
+            <Identity>{socialCostPersonDocType|String}</Identity>
+            <SerialNumber>{socialCostPersonSerialNum|String}</SerialNumber>
+          </SocialCostPerson>
+        </BuyerInfo>
+        <GoodsInfo>
+          <Good>
+            <shownextif field="dummy_value" value="1"/>
+            <GoodId>{id|String}</GoodId>
+            <GoodParentId>{parentId|String}</GoodParentId>
+            <Description>{name|String}</Description>
+            <Unit>{unit|String}</Unit>
+            <Amount>{quantity|Number4}</Amount>
+            <PricePerUnit>{unitPrice|Number5}</PricePerUnit>
+            <Price>{totalValue|Number}</Price>
+            <Discount>{discount|Number4}</Discount>
+            <VATRate>{vatRate|tax.model.VatRate|0.0:NONE|20.0:VAT_20}</VATRate>
+            <VAT>{vatAmount|Number}</VAT>
+            <DealType>{dealType|String}</DealType>
+            <TotalPrice>{total|Number}</TotalPrice>
+          </Good>
+          <Total>
+            <Price>{totalValue|Number}</Price>
+            <VAT>{totalVatAmount|Number}</VAT>
+            <TotalPrice>{total|Number}</TotalPrice>
+          </Total>
+        </GoodsInfo>
+      </SignableData>
+    </Data>
+    <Signature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{supplierSignature|String}</SignatureValue>
+    </Signature>
+    <shownextif field="showbs" value="1"/>
+    <renamenext field="Signature" />
+    <bSignature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{buyerSignature|String}</SignatureValue>
+    </bSignature>
+    <InvoiceMetadata>
+      <SubmissionDate>{supplierSignedAt|DateTime}</SubmissionDate>
+      <CoSignDate>{buyerSignedAt|DateTime}</CoSignDate>
+    </InvoiceMetadata>
+  </SignedData>
+</ExportedData>

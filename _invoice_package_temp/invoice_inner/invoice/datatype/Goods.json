@@ -1,0 +1,304 @@
+{
+  "name": "Goods",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "status": {
+       "type": "Status",
+    },
+    "createdAt": {
+       "type": "Timestamp",
+    },
+    "deliveredAt": {
+       "type": "Timestamp",
+    },
+    "crmNo": {
+       "type": "Str",
+    },
+    "additionalInfo": {
+       "type": "Str",
+    },
+    "userName": {
+       "type": "Str",
+    },
+    "dealtAt": {
+       "type": "Timestamp",
+    },
+    "dealNo": {
+       "type": "Str",
+    },
+    "serialNo": {
+       "type": "Str",
+    },
+    "version": {
+       "type": "Int",
+    },
+    "behalfOf": {
+       "type": "BehalfOf",
+    },
+    "isCorrector": {
+       "type": "Bool",
+    },
+    "correctorNo": {
+       "type": "Str",
+    },
+    "correctorWrittenOfAt": {
+       "type": "Timestamp",
+    },
+    "correctionType": {
+       "type": "CorrectionType",
+    },
+    "supplierTin": {
+       "type": "Str",
+    },
+    "supplierVatTin": {
+       "type": "Str",
+    },
+    "supplierName": {
+       "type": "Str",
+    },
+    "supplierAddress": {
+       "type": "Str",
+    },
+    "supplierAdditionalInfo": {
+       "type": "Str",
+    },
+    "supplierBank": {
+       "type": "Str",
+    },
+    "supplierAccNo": {
+       "type": "Str",
+    },
+    "sourceCountryId": {
+       "refTo": "Country,"
+       "type": "Uuid",
+    },
+    "sourceRegionId": {
+       "refTo": "Region,"
+       "type": "Uuid",
+    },
+    "sourceCommunityId": {
+       "refTo": "Community,"
+       "type": "Uuid",
+    },
+    "sourceResidenceId": {
+       "refTo": "Residence,"
+       "type": "Uuid",
+    },
+    "sourceCountry": {
+       "type": "Str",
+    },
+    "sourceRegion": {
+       "type": "Str",
+    },
+    "sourceCommunity": {
+       "type": "Str",
+    },
+    "sourceResidence": {
+       "type": "Str",
+    },
+    "sourceStreet": {
+       "type": "Str",
+    },
+    "sourceHouse": {
+       "type": "Str",
+    },
+    "sourceApartment": {
+       "type": "Str",
+    },
+    "sourceOtherAddress": {
+       "type": "Str",
+    },
+    "sourceFullAddress": {
+       "type": "Str",
+    },
+    "sourceIsCar": {
+       "type": "Bool",
+    },
+    "sourceCarMake": {
+       "type": "Str",
+    },
+    "sourceCarPlateNumber": {
+       "type": "Str",
+    },
+    "poaNumber": {
+       "type": "Str",
+    },
+    "jointDealtAt": {
+       "type": "Timestamp",
+    },
+    "jointDealNo": {
+       "type": "Str",
+    },
+    "beneficiaryHasNoTin": {
+       "type": "Bool",
+    },
+    "beneficiaryTin": {
+       "type": "Str",
+    },
+    "beneficiaryVatTin": {
+       "type": "Str",
+    },
+    "beneficiaryName": {
+       "type": "Str",
+    },
+    "beneficiaryAddress": {
+       "type": "Str",
+    },
+    "beneficiaryAdditionalInfo": {
+       "type": "Str",
+    },
+    "beneficiaryBank": {
+       "type": "Str",
+    },
+    "beneficiaryAccNo": {
+       "type": "Str",
+    },
+    "buyerTin": {
+       "type": "Str",
+    },
+    "buyerVatTin": {
+       "type": "Str",
+    },
+    "buyerName": {
+       "type": "Str",
+    },
+    "buyerAddress": {
+       "type": "Str",
+    },
+    "buyerAdditionalInfo": {
+       "type": "Str",
+    },
+    "buyerBank": {
+       "type": "Str",
+    },
+    "buyerAccNo": {
+       "type": "Str",
+    },
+    "destinationCountryId": {
+       "refTo": "Country,"
+       "type": "Uuid",
+    },
+    "destinationRegionId": {
+       "refTo": "Region,"
+       "type": "Uuid",
+    },
+    "destinationCommunityId": {
+       "refTo": "Community,"
+       "type": "Uuid",
+    },
+    "destinationResidenceId": {
+       "refTo": "Residence,"
+       "type": "Uuid",
+    },
+    "destinationCountry": {
+       "type": "Str",
+    },
+    "destinationRegion": {
+       "type": "Str",
+    },
+    "destinationCommunity": {
+       "type": "Str",
+    },
+    "destinationResidence": {
+       "type": "Str",
+    },
+    "destinationStreet": {
+       "type": "Str",
+    },
+    "destinationHouse": {
+       "type": "Str",
+    },
+    "destinationApartment": {
+       "type": "Str",
+    },
+    "destinationOtherAddress": {
+       "type": "Str",
+    },
+    "destinationFullAddress": {
+       "type": "Str",
+    },
+    "deliveryMethod": {
+       "type": "Str",
+    },
+    "buyerSsn": {
+       "type": "Str",
+    },
+    "buyerIdentityType": {
+       "type": "Identity",
+    },
+    "buyerIdentityNo": {
+       "type": "Str",
+    },
+    "buyerHasNoTin": {
+       "type": "Bool",
+    },
+    "buyerIsNatural": {
+       "type": "Bool",
+    },
+    "authPersonName": {
+       "type": "Str",
+    },
+    "authPersonPoaNo": {
+       "type": "Str",
+    },
+    "authPersonPoaIssuedAt": {
+       "type": "Timestamp",
+    },
+    "totalValue": {
+       "type": "Money",
+    },
+    "totalVatAmount": {
+       "type": "Money",
+    },
+    "total": {
+       "type": "Money",
+    },
+    "totalIncEnvTax": {
+       "type": "Money",
+    },
+    "totalContainerValue": {
+       "type": "Money",
+    },
+    "isBatch": {
+       "type": "Bool",
+    },
+    "supplierSignId": {
+       "type": "Uuid",
+    },
+    "buyerSignId": {
+       "type": "Uuid",
+    },
+    "issuedAt": {
+       "type": "Timestamp",
+    },
+    "approvedAt": {
+       "type": "Timestamp",
+    },
+    "supplierCn": {
+       "type": "Str",
+    },
+    "buyerCn": {
+       "type": "Str",
+    },
+    "supplierUser": {
+       "type": "Str",
+    },
+    "buyerUser": {
+       "type": "Str",
+    },
+    "traceable": {
+       "type": "Bool",
+    },
+    "source": {
+       "type": "Source",
+    },
+    "finalUse": {
+       "type": "Bool",
+    },
+    "hasCodes": {
+       "type": "Bool",
+    }
+  }
+}

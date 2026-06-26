@@ -1,0 +1,960 @@
+openapi: "3.0.0"
+info:
+  version: "1.0.0"
+  title: "Invoicing"
+servers:
+  - url: "http://localhost:8080"
+    description: Local
+paths:
+  /dictionaries/classifier-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        notRefundable:
+                          type: boolean
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/classifier-full-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        notRefundable:
+                          type: boolean
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/item-classifier-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/item-classifier-full-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/item-classifier-list-by-ids:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/country-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        nameEn:
+                          type: string
+                        nameRu:
+                          type: string
+                        taxFreeVisible:
+                          type: boolean
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/country-full-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        nameEn:
+                          type: string
+                        nameRu:
+                          type: string
+                        taxFreeVisible:
+                          type: boolean
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/tax-free-country-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        code:
+                          type: string
+                        nameEn:
+                          type: string
+                        nameRu:
+                          type: string
+                        taxFreeVisible:
+                          type: boolean
+                        visibility:
+                          type: boolean
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/commodity-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        originalId:
+                          type: integer
+                          format: int32
+                        code:
+                          type: string
+                        name:
+                          type: string
+                          nullable: true
+                        nameRu:
+                          type: string
+                          nullable: true
+                        startDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        expireDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        commodityMeasureId:
+                          type: string
+                          format: uuid
+                          nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/commodity-by-id:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      originalId:
+                        type: integer
+                        format: int32
+                      code:
+                        type: string
+                      name:
+                        type: string
+                        nullable: true
+                      nameRu:
+                        type: string
+                        nullable: true
+                      startDate:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      expireDate:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      commodityMeasureId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/commodity-measure-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        originalId:
+                          type: integer
+                          format: int32
+                        code:
+                          type: string
+                          nullable: true
+                        name:
+                          type: string
+                          nullable: true
+                        nameRu:
+                          type: string
+                          nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/commodity-measure-by-id:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      originalId:
+                        type: integer
+                        format: int32
+                      code:
+                        type: string
+                        nullable: true
+                      name:
+                        type: string
+                        nullable: true
+                      nameRu:
+                        type: string
+                        nullable: true
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/taxpayer-list-by-activity:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    activity:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/taxpayer-activity-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        tin:
+                          type: string
+                        activity:
+                          type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/activity-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/previous-doc-check:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                    previousDocumentType:
+                      type: string
+                    productFEACNId:
+                      type: string
+                      format: uuid
+                    previousDocumentNumber:
+                      type: string
+                    seqNoByPreviousDoc:
+                      type: integer
+                      format: int64
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/reload-classifier-cache:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /dictionaries/reload-full-classifier-cache:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string

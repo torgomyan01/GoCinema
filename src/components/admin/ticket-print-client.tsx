@@ -21,6 +21,10 @@ interface PrintTicket {
   };
   items?: PrintProductItem[];
   total?: number;
+  payment?: {
+    method: string;
+    amountPaid: number | null;
+  } | null;
 }
 
 const CINEMA_NAME = 'GoCinema';
@@ -210,6 +214,65 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
                 {(ticket.total ?? ticket.price).toLocaleString()} ֏
               </span>
             </div>
+          </div>
+        )}
+
+        {ticket.payment && (
+          <div
+            style={{
+              textAlign: 'left',
+              fontSize: '9pt',
+              marginBottom: '3mm',
+              paddingBottom: '2mm',
+              borderBottom: '1px dashed #000',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '0.5mm',
+              }}
+            >
+              <span>Վճարման եղանակ</span>
+              <span style={{ fontWeight: 700 }}>
+                {ticket.payment.method === 'card' ? 'Քարտով' : 'Կանխիկ'}
+              </span>
+            </div>
+            {ticket.payment.method === 'cash' &&
+              ticket.payment.amountPaid != null && (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: '0.5mm',
+                    }}
+                  >
+                    <span>Ստացված կանխիկ</span>
+                    <span style={{ fontWeight: 700 }}>
+                      {ticket.payment.amountPaid.toLocaleString()} ֏
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontWeight: 800,
+                    }}
+                  >
+                    <span>Մանր</span>
+                    <span>
+                      {Math.max(
+                        ticket.payment.amountPaid -
+                          (ticket.total ?? ticket.price),
+                        0
+                      ).toLocaleString()}{' '}
+                      ֏
+                    </span>
+                  </div>
+                </>
+              )}
           </div>
         )}
 

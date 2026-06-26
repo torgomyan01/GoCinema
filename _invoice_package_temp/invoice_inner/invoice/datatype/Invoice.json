@@ -1,0 +1,182 @@
+{
+  "name": "Invoice",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "serialNo": {
+       "type": "Str",
+    },
+    "type": {
+       "type": "InvoiceType",
+    },
+    "sort": {
+       "type": "InvoiceSort",
+    },
+    "correctionState": {
+       "type": "CorrectionState",
+    },
+    "correctionType": {
+       "type": "CorrectionType",
+    },
+    "approvalState": {
+       "type": "ApprovalState",
+    },
+    "cancellationState": {
+       "type": "CancellationState",
+    },
+    "cancellationReason": {
+       "type": "Str",
+    },
+    "status": {
+       "type": "Status",
+    },
+    "buyerIs": {
+       "type": "BuyerIs",
+    },
+    "createdAt": {
+       "type": "Timestamp",
+    },
+    "dealtAt": {
+       "type": "Timestamp",
+    },
+    "issuedAt": {
+       "type": "Timestamp",
+    },
+    "approvedAt": {
+       "type": "Timestamp",
+    },
+    "deliveredAt": {
+       "type": "Timestamp",
+    },
+    "cancelledAt": {
+       "type": "Timestamp",
+    },
+    "cancellationResponseAt": {
+       "type": "Timestamp",
+    },
+    "invalidedAt": {
+       "type": "Timestamp",
+    },
+    "deletedAt": {
+       "type": "Timestamp",
+    },
+    "issuedWithErrorsAt": {
+       "type": "Timestamp",
+    },
+    "supplierTin": {
+       "type": "Str",
+    },
+    "supplierName": {
+       "type": "Str",
+    },
+    "buyerTin": {
+       "type": "Str",
+    },
+    "buyerName": {
+       "type": "Str",
+    },
+    "beneficiaryTin": {
+       "type": "Str",
+    },
+    "beneficiaryName": {
+       "type": "Str",
+    },
+    "socialCostReference": {
+       "type": "Str",
+    },
+    "socialCostType": {
+       "type": "SocialCostType",
+    },
+    "deliveryAddress": {
+       "type": "Str",
+    },
+    "destinationAddress": {
+       "type": "Str",
+    },
+    "additionalInfo": {
+       "type": "Str",
+    },
+    "excTax": {
+       "type": "Money",
+    },
+    "envTax": {
+       "type": "Money",
+    },
+    "totalValue": {
+       "type": "Money",
+    },
+    "totalVatAmount": {
+       "type": "Money",
+    },
+    "total": {
+       "type": "Money",
+    },
+    "totalContainerValue": {
+       "type": "Money",
+    },
+    "deletedNotified": {
+       "type": "Notified",
+    },
+    "invalidatedNotified": {
+       "type": "Notified",
+    },
+    "canceledNotified": {
+       "type": "Notified",
+    },
+    "canceledResponseNotified": {
+       "type": "Notified",
+    },
+    "benCanceledNotified": {
+       "type": "Notified",
+    },
+    "benInvalidatedNotified": {
+       "type": "Notified",
+    },
+    "benDeletedNotified": {
+       "type": "Notified",
+    },
+    "benIssuedNotified": {
+       "type": "Notified",
+    },
+    "userName": {
+       "type": "Str",
+    },
+    "supplierUser": {
+       "type": "Str",
+    },
+    "sourceCarData": {
+       "type": "Str",
+    },
+    "destinationCarData": {
+       "type": "Str",
+    },
+    "supplierTaxRegime": {
+       "type": "TaxRegime",
+    },
+    "supplierTaxRegimeStatus": {
+       "type": "TaxRegimeStatus",
+    },
+    "supplierTaxRegimeCause": {
+       "type": "TaxRegimeCause",
+    },
+    "supplierTaxRegimeStart": {
+       "type": "LocalDate",
+    },
+    "supplierTaxRegimeEnd": {
+       "type": "LocalDate",
+    },
+    "finalUse": {
+       "type": "Bool",
+    },
+    "subStatus": {
+       "type": "SubStatus",
+    },
+    "hasCodes": {
+       "type": "Bool",
+    },
+    "crmNo": {
+       "type": "Str",
+    }
+  }
+}

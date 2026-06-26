@@ -59,6 +59,12 @@ export default async function BoxOfficePrintPage({
     },
     items,
     total: t.price + productsTotal,
+    payment: t.payment
+      ? {
+          method: t.payment.method,
+          amountPaid: t.payment.amountPaid ?? null,
+        }
+      : null,
   };
 
   return <TicketPrintClient ticket={ticket} />;

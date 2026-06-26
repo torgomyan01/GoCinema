@@ -1,0 +1,20 @@
+{
+  "name": "ProductClassifier",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "name": {
+       "type": "Str",
+    },
+    "code": {
+       "type": "Str",
+    },
+    "notRefundable": {
+       "type": "Bool",
+    },
+    "visibility": {
+       "type": "Bool",
+    }
+  }
+}

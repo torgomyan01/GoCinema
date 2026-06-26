@@ -1,0 +1,155 @@
+<ExportedData xmlns="http://www.taxservice.am/tp3/invoice/definitions">
+  <SignedData>
+    <Data>
+      <SignableData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Invoice" Version="1.0">
+        <User>{user|String}</User>
+        <Type>{type|Number}</Type>
+        <Traceable>{traceable|Boolean}</Traceable>
+        <GeneralInfo>
+          <ParentInvoiceNumber>{correctorNo|String}</ParentInvoiceNumber>
+          <EcrReceipt>{crmNo|String}</EcrReceipt>
+          <ParentInvoiceSubmitDate>{correctorWrittenOfAt|Date}</ParentInvoiceSubmitDate>
+          <InvoiceNumber>
+            <Number>{invoiceNumber|String}</Number>
+            <Series>{invoiceSeries|String}</Series>
+          </InvoiceNumber>
+          <AdjustmentDiffFlag>{correctionType|tax.model.CorrectionType|-1:DECREASING|1:INCREASING}</AdjustmentDiffFlag>
+          <SupplyDate>{deliveredAt|Date}</SupplyDate>
+          <Procedure>{behalfOf|tax.model.BehalfOf|2:TAXPAYER|3:SUPPLIER|4:PRINCIPAL|6:JOINT_CASE_MNG}</Procedure>
+          <DealInfo>
+            <DealDate>{dealtAt|Date}</DealDate>
+            <DealNumber>{dealNo|String}</DealNumber>
+          </DealInfo>
+          <AdditionalData>{additionalInfo|String}</AdditionalData>
+          <AdjustmentAccount>{isCorrector|Boolean}</AdjustmentAccount>
+        </GeneralInfo>
+        <SupplierInfo>
+          <!-- VATNumber is available in the form onBehalfOfSupplier, onBehalfOfBeneficiary, onBehalfOfJoint -->
+          <VATNumber>{supplierVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{supplierTin|String}</TIN>
+            <Name>{supplierName|String}</Name>
+            <Address>{supplierAddress|String}</Address>
+            <BankAccount>
+              <BankName>{supplierBank|String}</BankName>
+              <BankAccountNumber>{supplierAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{supplierAdditionalInfo|String}</AdditionalData>
+            <!-- CredentialNumber is available in the form onBehalfOfBeneficiary, onBehalfOfJoint -->
+            <CredentialsNumber>{poaNumber|String}</CredentialsNumber>
+            <!-- ContractInfo section is available in the form  onBehalfOfJoint / START -->
+            <ContractInfo>
+              <ContractDate>{jointDealtAt|Date}</ContractDate>
+              <ContractNumber>{jointDealNo|String}</ContractNumber>
+            </ContractInfo>
+            <!-- ContractInfo section is available in the form  onBehalfOfJoint / END -->
+          </Taxpayer>
+          <!-- didn't find this info in the space, just copied from another file -->
+          <SupplyLocation>{sourceFullAddress|String}</SupplyLocation>
+          <SourceIsCar>{sourceIsCar|Boolean}</SourceIsCar>
+          <SourceCarInfo>
+            <Make>{sourceCarMake|String}</Make>
+            <PlateNumber>{sourceCarPlateNumber|String}</PlateNumber>
+          </SourceCarInfo>
+        </SupplierInfo>
+        <!-- OnBehalfOfSupplierInfo secion is available in the form onBehalfOfBeneficiary, onBehalfOfJoint / START -->
+        <OnBehalfOfSupplierInfo>
+          <VATNumber>{beneficiaryVatTin|String}</VATNumber>
+          <!--      <BuyerIsNatural>{buyerIsNatural|Boolean}</BuyerIsNatural>-->
+          <Taxpayer>
+            <TIN>{beneficiaryTin|String}</TIN>
+            <Name>{beneficiaryName|String}</Name>
+            <Address>{beneficiaryAddress|String}</Address>
+            <BankAccount>
+              <BankName>{beneficiaryBank|String}</BankName>
+              <BankAccountNumber>{beneficiaryAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{beneficiaryAdditionalInfo|String}</AdditionalData>
+            <PrincipalTinNotRequired>{beneficiaryHasNoTin|Boolean}</PrincipalTinNotRequired>
+          </Taxpayer>
+        </OnBehalfOfSupplierInfo>
+        <!-- OnBehalfOfSupplierInfo secion is available in the form onBehalfOfBeneficiary, onBehalfOfJoint / END -->
+        <BuyerInfo>
+          <VATNumber>{buyerVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{buyerTin|String}</TIN>
+            <Passport>{buyerIdentityNo|String}</Passport>
+            <PIDType>{buyerIdentityType|String}</PIDType>
+            <Name>{buyerName|String}</Name>
+            <Address>{buyerAddress|String}</Address>
+            <BankAccount>
+              <BankName>{buyerBank|String}</BankName>
+              <BankAccountNumber>{buyerAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <AdditionalData>{buyerAdditionalInfo|String}</AdditionalData>
+            <TinNotRequired>{buyerHasNoTin|Boolean}</TinNotRequired>
+            <IsNatural>{buyerIsNatural|Boolean}</IsNatural>
+            <PSNOrAbsence>{buyerSsn|String}</PSNOrAbsence>
+          </Taxpayer>
+          <Mediator>
+            <Name>{authPersonName|String}</Name>
+            <LicenseNumber>{authPersonPoaNo|String}</LicenseNumber>
+            <LicenseDate>{authPersonPoaIssuedAt|Date}</LicenseDate>
+          </Mediator>
+          <DeliveryMethod>{deliveryMethod|String}</DeliveryMethod>
+          <DeliveryLocation>{destinationFullAddress|String}</DeliveryLocation>
+        </BuyerInfo>
+        <GoodsInfo>
+          <Good>
+            <shownextif field="dummy_value" value="1"/>
+            <GoodId>{id|String}</GoodId>
+            <GoodParentId>{parentId|String}</GoodParentId>
+            <Description>{name|String}</Description>
+            <ClassifierCode>{classifierCode|String}</ClassifierCode>
+            <Unit>{unit|String}</Unit>
+            <!-- In case of EXCISE the volume definition in backend is 'volumeLiters', but in SPACE it is volume/quantity(wrong) -->
+            <Volume>{volumeLiters|Number3}</Volume>
+            <Amount>{quantity|Number4}</Amount>
+            <PricePerUnit>{unitPrice|Number5}</PricePerUnit>
+            <Price>{totalValue|Number}</Price>
+            <Discount>{discount|Number4}</Discount>
+            <TarePrice>{containerValue|Number}</TarePrice>
+            <ExciseRate>{excTaxRate|Number}</ExciseRate>
+            <Excise>{excTaxAmount|Number3}</Excise>
+            <VATRate>{vatRate|tax.model.VatRate|0.0:NONE|20.0:VAT_20}</VATRate>
+            <!-- didn't find in SPACE -->
+            <VAT>{vatAmount|Number}</VAT>
+            <DealType>{dealType|String}</DealType>
+            <EnvironmentalFee>{incEnvTax|Number}</EnvironmentalFee>
+            <TotalPrice>{total|Number}</TotalPrice>
+            <GoodTraceableInfo>
+              <PreviousDocumentNumber>{previousDocumentNumber|String}</PreviousDocumentNumber>
+              <PreviousDocumentType>{previousDocumentType|String}</PreviousDocumentType>
+              <SeqNoByPreviousDoc>{seqNoByPreviousDoc|String}</SeqNoByPreviousDoc>
+              <ProductFEACNCode>{productFEACNCode|String}</ProductFEACNCode>
+              <QuantityByFEACN>{quantityByFEACN|Number3}</QuantityByFEACN>
+              <UnitByFEACNCode>{unitByFEACNCode|String}</UnitByFEACNCode>
+            </GoodTraceableInfo>
+          </Good>
+          <Total>
+            <Price>{totalValue|Number}</Price>
+            <Excise>{totalExcTaxAmount|Number}</Excise>
+            <VAT>{totalVatAmount|Number}</VAT>
+            <TotalPrice>{total|Number}</TotalPrice>
+            <TotalEnvironmentalFee>{totalIncEnvTax|Number}</TotalEnvironmentalFee>
+            <TotalTarePrice>{totalContainerValue|Number}</TotalTarePrice>
+          </Total>
+        </GoodsInfo>
+      </SignableData>
+    </Data>
+    <Signature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{supplierSignature|String}</SignatureValue>
+    </Signature>
+    <shownextif field="showbs" value="1"/>
+    <renamenext field="Signature" />
+    <bSignature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{buyerSignature|String}</SignatureValue>
+    </bSignature>
+    <InvoiceMetadata>
+      <SubmissionDate>{supplierSignedAt|DateTime}</SubmissionDate>
+      <CoSignDate>{buyerSignedAt|DateTime}</CoSignDate>
+    </InvoiceMetadata>
+  </SignedData>
+</ExportedData>

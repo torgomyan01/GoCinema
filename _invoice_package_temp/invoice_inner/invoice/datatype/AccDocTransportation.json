@@ -1,0 +1,211 @@
+{
+  "name": "AccDocTransportation",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "status": {
+       "type": "Status",
+    },
+    "createdAt": {
+       "type": "Timestamp",
+    },
+    "transferredAt": {
+       "type": "Timestamp",
+    },
+    "additionalInfo": {
+       "type": "Str",
+    },
+    "userName": {
+       "type": "Str",
+    },
+    "dealtAt": {
+       "type": "Timestamp",
+    },
+    "dealNo": {
+       "type": "Str",
+    },
+    "serialNo": {
+       "type": "Str",
+    },
+    "version": {
+       "type": "Int",
+    },
+    "supplierTin": {
+       "type": "Str",
+    },
+    "supplierVatTin": {
+       "type": "Str",
+    },
+    "supplierName": {
+       "type": "Str",
+    },
+    "supplierAddress": {
+       "type": "Str",
+    },
+    "supplierAdditionalInfo": {
+       "type": "Str",
+    },
+    "supplierBank": {
+       "type": "Str",
+    },
+    "supplierAccNo": {
+       "type": "Str",
+    },
+    "deliveryMethod": {
+       "type": "Str",
+    },
+    "sourceCountryId": {
+       "refTo": "Country,"
+       "type": "Uuid",
+    },
+    "sourceRegionId": {
+       "refTo": "Region,"
+       "type": "Uuid",
+    },
+    "sourceCommunityId": {
+       "refTo": "Community,"
+       "type": "Uuid",
+    },
+    "sourceResidenceId": {
+       "refTo": "Residence,"
+       "type": "Uuid",
+    },
+    "sourceCountry": {
+       "type": "Str",
+    },
+    "sourceRegion": {
+       "type": "Str",
+    },
+    "sourceCommunity": {
+       "type": "Str",
+    },
+    "sourceResidence": {
+       "type": "Str",
+    },
+    "sourceStreet": {
+       "type": "Str",
+    },
+    "sourceHouse": {
+       "type": "Str",
+    },
+    "sourceApartment": {
+       "type": "Str",
+    },
+    "sourceOtherAddress": {
+       "type": "Str",
+    },
+    "sourceFullAddress": {
+       "type": "Str",
+    },
+    "sourceIsCar": {
+       "type": "Bool",
+    },
+    "sourceCarMake": {
+       "type": "Str",
+    },
+    "sourceCarPlateNumber": {
+       "type": "Str",
+    },
+    "commissionAgreement": {
+       "type": "Bool",
+    },
+    "buyerTin": {
+       "type": "Str",
+    },
+    "buyerVatTin": {
+       "type": "Str",
+    },
+    "buyerName": {
+       "type": "Str",
+    },
+    "buyerAddress": {
+       "type": "Str",
+    },
+    "buyerAdditionalInfo": {
+       "type": "Str",
+    },
+    "buyerBank": {
+       "type": "Str",
+    },
+    "buyerAccNo": {
+       "type": "Str",
+    },
+    "destinationCountryId": {
+       "refTo": "Country,"
+       "type": "Uuid",
+    },
+    "destinationRegionId": {
+       "refTo": "Region,"
+       "type": "Uuid",
+    },
+    "destinationCommunityId": {
+       "refTo": "Community,"
+       "type": "Uuid",
+    },
+    "destinationResidenceId": {
+       "refTo": "Residence,"
+       "type": "Uuid",
+    },
+    "destinationCountry": {
+       "type": "Str",
+    },
+    "destinationRegion": {
+       "type": "Str",
+    },
+    "destinationCommunity": {
+       "type": "Str",
+    },
+    "destinationResidence": {
+       "type": "Str",
+    },
+    "destinationStreet": {
+       "type": "Str",
+    },
+    "destinationHouse": {
+       "type": "Str",
+    },
+    "destinationApartment": {
+       "type": "Str",
+    },
+    "destinationOtherAddress": {
+       "type": "Str",
+    },
+    "destinationFullAddress": {
+       "type": "Str",
+    },
+    "destinationIsCar": {
+       "type": "Bool",
+    },
+    "destinationCarMake": {
+       "type": "Str",
+    },
+    "destinationCarPlateNumber": {
+       "type": "Str",
+    },
+    "totalValue": {
+       "type": "Money",
+    },
+    "isBatch": {
+       "type": "Bool",
+    },
+    "supplierSignId": {
+       "type": "Uuid",
+    },
+    "issuedAt": {
+       "type": "Timestamp",
+    },
+    "supplierCn": {
+       "type": "Str",
+    },
+    "supplierUser": {
+       "type": "Str",
+    },
+    "source": {
+       "type": "Source",
+    },
+    "hasCodes": {
+       "type": "Bool",
+    }
+  }
+}

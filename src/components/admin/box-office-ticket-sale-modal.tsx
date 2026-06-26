@@ -12,6 +12,9 @@ import {
   Ticket as TicketIcon,
   X,
 } from 'lucide-react';
+import PaymentPanel, {
+  type PaymentMethod,
+} from '@/components/admin/box-office-payment-panel';
 
 interface ProductItem {
   id: number;
@@ -35,7 +38,7 @@ interface TicketSaleModalProps {
   grandTotal: number;
   isCreating: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (payment: { method: PaymentMethod; amountPaid: number }) => void;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -68,10 +71,25 @@ export default function TicketSaleModal({
 }: TicketSaleModalProps) {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [method, setMethod] = useState<PaymentMethod>('cash');
+  const [cashReceived, setCashReceived] = useState<number | ''>('');
 
   const seatLabel = `${seat.row}${seat.number}${
     seat.seatType === 'vip' ? ' (VIP)' : ''
   }`;
+
+  const cashOk =
+    method === 'card' ||
+    (cashReceived !== '' && Number(cashReceived) >= grandTotal);
+  const canSubmit = !isCreating && cashOk;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({
+      method,
+      amountPaid: method === 'cash' ? Number(cashReceived) : grandTotal,
+    });
+  };
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -444,9 +462,22 @@ export default function TicketSaleModal({
                 </span>
               </div>
             </div>
+
+            <div className="mb-3">
+              <PaymentPanel
+                total={grandTotal}
+                method={method}
+                setMethod={setMethod}
+                cashReceived={cashReceived}
+                setCashReceived={setCashReceived}
+                accent="green"
+                disabled={isCreating}
+              />
+            </div>
+
             <button
-              onClick={onSubmit}
-              disabled={isCreating}
+              onClick={handleSubmit}
+              disabled={!canSubmit}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-6 py-4 text-base font-bold text-white shadow-sm transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isCreating ? (

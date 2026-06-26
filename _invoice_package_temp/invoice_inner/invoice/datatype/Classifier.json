@@ -1,0 +1,17 @@
+{
+  "name": "Classifier",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "name": {
+       "type": "Str",
+    },
+    "code": {
+       "type": "Str",
+    },
+    "visibility": {
+       "type": "Bool",
+    }
+  }
+}

@@ -1,0 +1,108 @@
+openapi: "3.0.0"
+info:
+  version: "1.0.0"
+  title: "Invoicing"
+servers:
+  - url: "http://localhost:8080"
+    description: Local
+paths:
+  /pek-police/validate-person:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    psn:
+                      type: string
+                    docType:
+                      type: string
+                    docNumber:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      value:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /pek-police/person-by-ssn:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ssn:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: false
+                    properties:
+                      ssn:
+                        type: string
+                      firstName:
+                        type: string
+                      lastName:
+                        type: string
+                      exitCode:
+                        type: string
+                  failure:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string

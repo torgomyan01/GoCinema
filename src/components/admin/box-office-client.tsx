@@ -250,7 +250,10 @@ export default function BoxOfficeClient() {
     );
   };
 
-  const handleCreateProductOrder = async () => {
+  const handleCreateProductOrder = async (payment: {
+    method: 'cash' | 'card';
+    amountPaid: number;
+  }) => {
     if (isCreatingOrder) return;
     const selections = Object.entries(productCart).map(([id, qty]) => ({
       productId: Number(id),
@@ -265,6 +268,8 @@ export default function BoxOfficeClient() {
     try {
       const result = await createBoxOfficeProductOrder({
         products: selections,
+        paymentMethod: payment.method,
+        amountPaid: payment.amountPaid,
       });
       if (!result.success || !result.order) {
         setError(result.error || 'Ապրանքների վաճառքը չստացվեց');
@@ -507,7 +512,10 @@ export default function BoxOfficeClient() {
     setCart({});
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (payment: {
+    method: 'cash' | 'card';
+    amountPaid: number;
+  }) => {
     if (!seatMap || !selectedSeat || isCreating) return;
     if (!Number.isFinite(price) || price < 0) {
       setError('Մուտքագրեք վավեր գին');
@@ -524,6 +532,8 @@ export default function BoxOfficeClient() {
           productId: Number(id),
           quantity: qty,
         })),
+        paymentMethod: payment.method,
+        amountPaid: payment.amountPaid,
       });
       if (!result.success || !result.ticket) {
         setError(result.error || 'Տոմս ստեղծելիս սխալ է տեղի ունեցել');

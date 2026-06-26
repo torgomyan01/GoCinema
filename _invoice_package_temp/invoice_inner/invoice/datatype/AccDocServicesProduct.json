@@ -1,0 +1,39 @@
+{
+  "name": "AccDocServicesProduct",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "invoiceId": {
+       "refTo": "AccDocServices,"
+       "type": "Uuid",
+    },
+    "seqNo": {
+       "type": "Int",
+    },
+    "name": {
+       "type": "Str",
+    },
+    "unit": {
+       "type": "Str",
+    },
+    "quantity": {
+       "type": "Money",
+    },
+    "unitPrice": {
+       "type": "Money",
+    },
+    "discount": {
+       "type": "Money",
+    },
+    "dealType": {
+       "type": "DealType",
+    },
+    "totalValue": {
+       "type": "Money",
+    },
+    "parentId": {
+       "type": "Uuid",
+    }
+  }
+}

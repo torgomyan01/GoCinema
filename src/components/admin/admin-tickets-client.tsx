@@ -11,11 +11,18 @@ import {
   Clock,
   Film,
   BarChart3,
+  List,
+  Armchair,
+  TrendingUp,
+  Clapperboard,
 } from 'lucide-react';
 import AdminLayout from './admin-layout';
 import AdminTicketCard from './ticket-card';
 import { getAllTicketsForAdmin } from '@/app/actions/tickets';
+import { getScreenings } from '@/app/actions/screenings';
 import { markTicketAsUsed } from '@/app/actions/scanner';
+
+type ViewMode = 'list' | 'screenings';
 
 type TicketStatus = 'all' | 'reserved' | 'paid' | 'used' | 'cancelled';
 
@@ -37,17 +44,29 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [markingIds, setMarkingIds] = useState<Set<number>>(new Set());
   const [selectedMovieId, setSelectedMovieId] = useState<'all' | string>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [screenings, setScreenings] = useState<any[]>([]);
 
   useEffect(() => {
-    const loadTickets = async () => {
+    const loadData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getAllTicketsForAdmin();
-        if (result.success && result.tickets) {
-          setTickets(result.tickets as any[]);
+        const [ticketsResult, screeningsResult] = await Promise.all([
+          getAllTicketsForAdmin(),
+          getScreenings(),
+        ]);
+
+        if (ticketsResult.success && ticketsResult.tickets) {
+          setTickets(ticketsResult.tickets as any[]);
         } else {
-          setError(result.error || 'Տոմսերը բեռնելիս սխալ է տեղի ունեցել');
+          setError(
+            ticketsResult.error || 'Տոմսերը բեռնելիս սխալ է տեղի ունեցել'
+          );
+        }
+
+        if (screeningsResult.success && screeningsResult.screenings) {
+          setScreenings(screeningsResult.screenings as any[]);
         }
       } catch (err) {
         console.error('[Admin Tickets] load error:', err);
@@ -57,7 +76,7 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
       }
     };
 
-    loadTickets();
+    loadData();
   }, []);
 
   const formatDate = (date: Date | string) => {
@@ -85,6 +104,15 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  // Local date key (avoids UTC off-by-one issues from toISOString)
+  const getLocalDateKey = (date: Date | string) => {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   };
 
   const getStatusBadge = (status: string) => {
@@ -280,7 +308,7 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
 
     movieTickets.forEach((t) => {
       const d = new Date(t.screening?.startTime || t.createdAt || new Date());
-      const key = d.toISOString().split('T')[0];
+      const key = getLocalDateKey(d);
       const existing = byDateMap.get(key);
       if (existing) {
         existing.count += 1;
@@ -309,9 +337,174 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
     return { movieTitle, total, paid, used, reserved, cancelled, revenue, byDate };
   }, [tickets, selectedMovieId]);
 
+  // Revenue per screening (price is on tickets, not on the screening list payload)
+  const revenueByScreening = useMemo(() => {
+    const map = new Map<number, number>();
+    tickets.forEach((t) => {
+      if (t.status !== 'paid' && t.status !== 'used') return;
+      const sid = t.screening?.id;
+      if (!sid) return;
+      map.set(sid, (map.get(sid) || 0) + (t.price || 0));
+    });
+    return map;
+  }, [tickets]);
+
+  // Per-movie, per-screening breakdown (sold / not sold / occupancy / revenue)
+  const screeningGroups = useMemo(() => {
+    let source = [...screenings];
+
+    if (selectedMovieId !== 'all') {
+      source = source.filter(
+        (s) => String(s.movie?.id || '') === selectedMovieId
+      );
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      source = source.filter(
+        (s) =>
+          (s.movie?.title || '').toLowerCase().includes(q) ||
+          (s.hall?.name || '').toLowerCase().includes(q)
+      );
+    }
+
+    type Row = {
+      id: number;
+      startTime: Date | string;
+      hallName: string;
+      capacity: number;
+      paid: number;
+      used: number;
+      reserved: number;
+      cancelled: number;
+      sold: number;
+      notSold: number;
+      revenue: number;
+      occupancy: number;
+    };
+
+    const makeTotals = () => ({
+      screenings: 0,
+      capacity: 0,
+      paid: 0,
+      used: 0,
+      reserved: 0,
+      cancelled: 0,
+      sold: 0,
+      notSold: 0,
+      revenue: 0,
+    });
+
+    const movieMap = new Map<
+      string,
+      {
+        movieId: string;
+        title: string;
+        image: string | null;
+        rows: Row[];
+        totals: ReturnType<typeof makeTotals>;
+      }
+    >();
+
+    source.forEach((s) => {
+      const movieId = String(s.movie?.id || '');
+      if (!movieId) return;
+
+      const capacity = s.hall?.capacity || 0;
+      let paid = 0;
+      let used = 0;
+      let reserved = 0;
+      let cancelled = 0;
+      (s.tickets || []).forEach((t: any) => {
+        if (t.status === 'paid') paid += 1;
+        else if (t.status === 'used') used += 1;
+        else if (t.status === 'reserved') reserved += 1;
+        else if (t.status === 'cancelled') cancelled += 1;
+      });
+
+      const sold = paid + used;
+      const occupied = sold + reserved;
+      const notSold = Math.max(capacity - occupied, 0);
+      const revenue = revenueByScreening.get(s.id) || 0;
+      const occupancy = capacity > 0 ? sold / capacity : 0;
+
+      const row: Row = {
+        id: s.id,
+        startTime: s.startTime,
+        hallName: s.hall?.name || '—',
+        capacity,
+        paid,
+        used,
+        reserved,
+        cancelled,
+        sold,
+        notSold,
+        revenue,
+        occupancy,
+      };
+
+      let group = movieMap.get(movieId);
+      if (!group) {
+        group = {
+          movieId,
+          title: s.movie?.title || 'Անհայտ ֆիլմ',
+          image: s.movie?.image || null,
+          rows: [],
+          totals: makeTotals(),
+        };
+        movieMap.set(movieId, group);
+      }
+
+      group.rows.push(row);
+      group.totals.screenings += 1;
+      group.totals.capacity += capacity;
+      group.totals.paid += paid;
+      group.totals.used += used;
+      group.totals.reserved += reserved;
+      group.totals.cancelled += cancelled;
+      group.totals.sold += sold;
+      group.totals.notSold += notSold;
+      group.totals.revenue += revenue;
+    });
+
+    const groups = Array.from(movieMap.values());
+    groups.forEach((g) =>
+      g.rows.sort(
+        (a, b) =>
+          new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      )
+    );
+    groups.sort((a, b) => b.totals.sold - a.totals.sold);
+    return groups;
+  }, [screenings, selectedMovieId, searchQuery, revenueByScreening]);
+
+  const screeningTotals = useMemo(() => {
+    return screeningGroups.reduce(
+      (acc, g) => {
+        acc.screenings += g.totals.screenings;
+        acc.capacity += g.totals.capacity;
+        acc.sold += g.totals.sold;
+        acc.notSold += g.totals.notSold;
+        acc.reserved += g.totals.reserved;
+        acc.cancelled += g.totals.cancelled;
+        acc.revenue += g.totals.revenue;
+        return acc;
+      },
+      {
+        screenings: 0,
+        capacity: 0,
+        sold: 0,
+        notSold: 0,
+        reserved: 0,
+        cancelled: 0,
+        revenue: 0,
+      }
+    );
+  }, [screeningGroups]);
+
   return (
     <AdminLayout user={user}>
-      <div className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 to-white">
+      <div className="flex-1 overflow-y-auto bg-linear-to-b from-slate-50 to-white">
         <div className="max-w-6xl mx-auto px-4 py-8">
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
@@ -350,6 +543,34 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
             </div>
           </div>
 
+          {/* View toggle */}
+          <div className="inline-flex items-center gap-1 p-1 mb-4 rounded-xl bg-white shadow-sm border border-gray-100">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-purple-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              Տոմսերի ցանկ
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('screenings')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'screenings'
+                  ? 'bg-purple-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              Ցուցադրությունների վերլուծություն
+            </button>
+          </div>
+
           {/* Filters */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 space-y-4">
             <div className="flex flex-col md:flex-row md:items-center gap-4">
@@ -357,43 +578,49 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Փնտրել ըստ ֆիլմի, օգտատիրոջ, հեռախոսահամարի կամ ID-ի..."
+                  placeholder={
+                    viewMode === 'screenings'
+                      ? 'Փնտրել ըստ ֆիլմի կամ դահլիճի...'
+                      : 'Փնտրել ըստ ֆիլմի, օգտատիրոջ, հեռախոսահամարի կամ ID-ի...'
+                  }
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
                 />
               </div>
-              <div className="flex flex-wrap.items-center gap-2">
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase">
-                  <Filter className="w-3 h-3" />
-                  Կարգավիճակ
-                </span>
-                {(
-                  [
-                    { key: 'all', label: 'Բոլորը' },
-                    { key: 'reserved', label: 'Ամրագրված' },
-                    { key: 'paid', label: 'Վճարված' },
-                    { key: 'used', label: 'Օգտագործված' },
-                    { key: 'cancelled', label: 'Չեղարկված' },
-                  ] as { key: TicketStatus; label: string }[]
-                ).map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setSelectedStatus(item.key)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                      selectedStatus === item.key
-                        ? 'bg-purple-600 text-white border-purple-600'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-purple-300'
-                    }`}
-                  >
-                    {item.label}{' '}
-                    <span className="ml-1 text-[10px] opacity-70">
-                      ({statusCounts[item.key]})
-                    </span>
-                  </button>
-                ))}
-              </div>
+              {viewMode === 'list' && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase">
+                    <Filter className="w-3 h-3" />
+                    Կարգավիճակ
+                  </span>
+                  {(
+                    [
+                      { key: 'all', label: 'Բոլորը' },
+                      { key: 'reserved', label: 'Ամրագրված' },
+                      { key: 'paid', label: 'Վճարված' },
+                      { key: 'used', label: 'Օգտագործված' },
+                      { key: 'cancelled', label: 'Չեղարկված' },
+                    ] as { key: TicketStatus; label: string }[]
+                  ).map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setSelectedStatus(item.key)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        selectedStatus === item.key
+                          ? 'bg-purple-600 text-white border-purple-600'
+                          : 'bg-white text-gray-700 border-gray-200 hover:border-purple-300'
+                      }`}
+                    >
+                      {item.label}{' '}
+                      <span className="ml-1 text-[10px] opacity-70">
+                        ({statusCounts[item.key]})
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center gap-3">
@@ -423,7 +650,7 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
           </div>
 
           {/* Movie analytics */}
-          {movieAnalytics && (
+          {viewMode === 'list' && movieAnalytics && (
             <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-gray-800">
@@ -452,7 +679,7 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
                       {movieAnalytics.used}
                     </span>
                   </div>
-                  <div className="flex justify_between">
+                  <div className="flex justify-between">
                     <span className="text-gray-500">Ամրագրված</span>
                     <span className="font-semibold text-yellow-600">
                       {movieAnalytics.reserved}
@@ -512,7 +739,7 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
           {isLoading ? (
             <div className="py-16 text-center">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4" />
-              <p className="text-gray-600">Տոմսերը բեռնվում են...</p>
+              <p className="text-gray-600">Տվյալները բեռնվում են...</p>
             </div>
           ) : error ? (
             <div className="py-16 text-center">
@@ -529,6 +756,256 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
                 Կրկին փորձել
               </button>
             </div>
+          ) : viewMode === 'screenings' ? (
+            screeningGroups.length === 0 ? (
+              <div className="py-16 text-center">
+                <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-6">
+                  <Clapperboard className="w-10 h-10 text-gray-400" />
+                </div>
+                <p className="text-xl font-bold text-gray-900 mb-2">
+                  Ցուցադրություններ չեն գտնվել
+                </p>
+                <p className="text-gray-600">
+                  Փորձեք փոխել ֆիլտրերը կամ որոնման հարցումը։
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Overall summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                  {[
+                    {
+                      label: 'Ցուցադրություններ',
+                      value: screeningTotals.screenings.toLocaleString('hy-AM'),
+                      color: 'text-gray-900',
+                    },
+                    {
+                      label: 'Ընդհանուր տեղեր',
+                      value: screeningTotals.capacity.toLocaleString('hy-AM'),
+                      color: 'text-gray-900',
+                    },
+                    {
+                      label: 'Վաճառված',
+                      value: screeningTotals.sold.toLocaleString('hy-AM'),
+                      color: 'text-green-600',
+                    },
+                    {
+                      label: 'Չվաճառված',
+                      value: screeningTotals.notSold.toLocaleString('hy-AM'),
+                      color: 'text-gray-500',
+                    },
+                    {
+                      label: 'Ամրագրված',
+                      value: screeningTotals.reserved.toLocaleString('hy-AM'),
+                      color: 'text-yellow-600',
+                    },
+                    {
+                      label: 'Չեղարկված',
+                      value: screeningTotals.cancelled.toLocaleString('hy-AM'),
+                      color: 'text-red-600',
+                    },
+                    {
+                      label: 'Շրջանառություն',
+                      value: `${screeningTotals.revenue.toLocaleString('hy-AM')} ֏`,
+                      color: 'text-green-700',
+                    },
+                  ].map((card) => (
+                    <div
+                      key={card.label}
+                      className="px-3 py-2 rounded-lg bg-white shadow-sm border border-gray-100"
+                    >
+                      <p className="text-[11px] text-gray-500">{card.label}</p>
+                      <p className={`text-lg font-semibold ${card.color}`}>
+                        {card.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Per-movie breakdown */}
+                {screeningGroups.map((group) => {
+                  const occ =
+                    group.totals.capacity > 0
+                      ? group.totals.sold / group.totals.capacity
+                      : 0;
+                  return (
+                    <div
+                      key={group.movieId}
+                      className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+                    >
+                      {/* Movie header */}
+                      <div className="flex items-center gap-4 p-4 border-b border-gray-100 bg-gray-50/60">
+                        {group.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={group.image}
+                            alt={group.title}
+                            className="w-12 h-16 object-cover rounded-md shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-12 h-16 rounded-md bg-gray-200 flex items-center justify-center">
+                            <Film className="w-5 h-5 text-gray-400" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base font-bold text-gray-900 truncate">
+                            {group.title}
+                          </h3>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-600">
+                            <span className="inline-flex items-center gap-1">
+                              <Clapperboard className="w-3 h-3" />
+                              {group.totals.screenings} ցուցադրություն
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-green-600 font-medium">
+                              <TicketIcon className="w-3 h-3" />
+                              {group.totals.sold} վաճառված
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-gray-500">
+                              <Armchair className="w-3 h-3" />
+                              {group.totals.notSold} չվաճառված
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-purple-600 font-medium">
+                              <TrendingUp className="w-3 h-3" />
+                              {Math.round(occ * 100)}% լրացվածություն
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[11px] text-gray-500">
+                            Շրջանառություն
+                          </p>
+                          <p className="text-base font-bold text-green-700">
+                            {group.totals.revenue.toLocaleString('hy-AM')} ֏
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Screenings table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs text-gray-500 uppercase bg-gray-50/40">
+                              <th className="px-4 py-2 font-medium">Ամսաթիվ</th>
+                              <th className="px-3 py-2 font-medium">Ժամ</th>
+                              <th className="px-3 py-2 font-medium">Դահլիճ</th>
+                              <th className="px-3 py-2 font-medium text-center">
+                                Տեղեր
+                              </th>
+                              <th className="px-3 py-2 font-medium text-center">
+                                Վաճառված
+                              </th>
+                              <th className="px-3 py-2 font-medium text-center">
+                                Չվաճառված
+                              </th>
+                              <th className="px-3 py-2 font-medium text-center">
+                                Ամրագր.
+                              </th>
+                              <th className="px-3 py-2 font-medium text-center">
+                                Չեղարկ.
+                              </th>
+                              <th className="px-3 py-2 font-medium text-center">
+                                Լրացվ.
+                              </th>
+                              <th className="px-4 py-2 font-medium text-right">
+                                Շրջանառություն
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {group.rows.map((row) => {
+                              const pct = Math.round(row.occupancy * 100);
+                              return (
+                                <tr
+                                  key={row.id}
+                                  className="hover:bg-gray-50/60"
+                                >
+                                  <td className="px-4 py-2.5 whitespace-nowrap text-gray-700">
+                                    {formatDate(row.startTime)}
+                                  </td>
+                                  <td className="px-3 py-2.5 whitespace-nowrap text-gray-600">
+                                    {formatTime(row.startTime)}
+                                  </td>
+                                  <td className="px-3 py-2.5 whitespace-nowrap text-gray-600">
+                                    {row.hallName}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center text-gray-900 font-medium">
+                                    {row.capacity}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center font-semibold text-green-600">
+                                    {row.sold}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center text-gray-500">
+                                    {row.notSold}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center text-yellow-600">
+                                    {row.reserved}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center text-red-600">
+                                    {row.cancelled}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <div className="flex items-center gap-2 justify-center">
+                                      <div className="w-14 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${
+                                            pct >= 80
+                                              ? 'bg-green-500'
+                                              : pct >= 40
+                                                ? 'bg-yellow-500'
+                                                : 'bg-purple-400'
+                                          }`}
+                                          style={{
+                                            width: `${Math.min(pct, 100)}%`,
+                                          }}
+                                        />
+                                      </div>
+                                      <span className="text-xs text-gray-600 w-9 text-right">
+                                        {pct}%
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-semibold text-green-700 whitespace-nowrap">
+                                    {row.revenue.toLocaleString('hy-AM')} ֏
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-50/70 font-semibold text-gray-800 text-xs">
+                              <td className="px-4 py-2.5" colSpan={3}>
+                                Ընդամենը՝ {group.totals.screenings} ցուցադրություն
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                {group.totals.capacity}
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-green-700">
+                                {group.totals.sold}
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-gray-500">
+                                {group.totals.notSold}
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-yellow-700">
+                                {group.totals.reserved}
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-red-700">
+                                {group.totals.cancelled}
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                {Math.round(occ * 100)}%
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-green-800 whitespace-nowrap">
+                                {group.totals.revenue.toLocaleString('hy-AM')} ֏
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
           ) : filteredTickets.length === 0 ? (
             <div className="py-16 text-center">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-6">

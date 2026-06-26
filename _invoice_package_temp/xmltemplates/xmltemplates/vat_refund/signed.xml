@@ -1,0 +1,87 @@
+<ExportedData xmlns="http://www.taxservice.am/tp3/invoice/definitions">
+  <SignedData>
+    <Data>
+      <SignableData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Invoice" Version="1.0">
+        <User>{user|String}</User>
+        <Type>1</Type>
+        <GeneralInfo>
+          <InvoiceNumber>
+            <Number>{invoiceNumber|String}</Number>
+            <Series>{invoiceSeries|String}</Series>
+          </InvoiceNumber>
+          <!-- This is a 'correctionType'. The form is not correctable -->
+          <SupplyDate>{deliveredAt|Date}</SupplyDate>
+          <Procedure>8</Procedure>
+          <DealInfo/>
+          <!--This ia a 'isCorrector'. The form is not correctable -->
+        </GeneralInfo>
+        <SupplierInfo>
+          <VATNumber>{supplierVatTin|String}</VATNumber>
+          <Taxpayer>
+            <TIN>{supplierTin|String}</TIN>
+            <Name>{supplierName|String}</Name>
+            <Address>{supplierAddress|String}</Address>
+            <AdditionalData>{supplierAdditionalInfo|String}</AdditionalData>
+          </Taxpayer>
+          <SupplyLocation>{sourceFullAddress|String}</SupplyLocation>
+        </SupplierInfo>
+        <BuyerInfo>
+          <Taxpayer>
+            <Passport>{buyerPassport|String}</Passport>
+            <Name>{buyerFullName|String}</Name>
+            <Country>{buyerCountry|String}</Country>
+            <Address>{buyerAddress|String}</Address>
+            <BankAccount>
+              <BankName>{buyerBank|String}</BankName>
+              <BankAccountNumber>{buyerAccNo|String}</BankAccountNumber>
+            </BankAccount>
+            <!-- value was false, so I put boolean. This field not exist in json. Seems always 'false' in xml" -->
+          </Taxpayer>
+          <BuyerEmail>{buyerEmail|String}</BuyerEmail>
+        </BuyerInfo>
+        <GoodsInfo>
+          <Good>
+            <shownextif field="dummy_value" value="1"/>
+            <GoodId>{id|String}</GoodId>
+            <Description>{name|String}</Description>
+            <Classification>{classifierID|Id}</Classification>
+            <Unit>{unit|String}</Unit>
+            <!-- Amount relates to Quantity => confirmed with Harut -->
+            <Amount>{quantity|Number4}</Amount>
+            <PricePerUnit>{unitPrice|Number5}</PricePerUnit>
+            <!-- Price :  field vatRefundProduct.totalValue-->
+            <Price>{totalValue|Number}</Price>
+            <Discount>{discount|Number4}</Discount>
+            <VATRate>{vatRate|tax.model.VatRate|0.0:NONE|20.0:VAT_20}</VATRate>
+            <!-- VAT amount of good :  field vatRefundProduct.vatAmount-->
+            <VAT>{vatAmount|Number}</VAT>
+            <!-- Price + VAT :  field vatRefundProduct.total-->
+            <TotalPrice>{total|Number}</TotalPrice>
+          </Good>
+          <Total>
+            <!-- Price :  field vatRefund.totalValue-->
+            <Price>{totalValue|Number}</Price>
+            <!-- VAT amount of all goods :  field vatRefund.totalVatAmount-->
+            <VAT>{totalVatAmount|Number}</VAT>
+            <!-- Price + VAT :  field vatRefund.total -->
+            <TotalPrice>{total|Number}</TotalPrice>
+          </Total>
+        </GoodsInfo>
+      </SignableData>
+    </Data>
+    <Signature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{supplierSignature|String}</SignatureValue>
+    </Signature>
+    <shownextif field="showbs" value="1"/>
+    <renamenext field="Signature" />
+    <bSignature>
+      <SignatureType>PKCS7</SignatureType>
+      <SignatureValue>{buyerSignature|String}</SignatureValue>
+    </bSignature>
+    <InvoiceMetadata>
+      <SubmissionDate>{supplierSignedAt|DateTime}</SubmissionDate>
+      <CoSignDate>{buyerSignedAt|DateTime}</CoSignDate>
+    </InvoiceMetadata>
+  </SignedData>
+</ExportedData>

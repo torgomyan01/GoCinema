@@ -1,0 +1,14 @@
+{
+  "name": "TaxpayerActivity",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "tin": {
+       "type": "Str",
+    },
+    "activity": {
+       "type": "ActivityType",
+    }
+  }
+}

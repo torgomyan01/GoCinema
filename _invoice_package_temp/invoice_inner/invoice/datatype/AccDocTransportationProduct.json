@@ -1,0 +1,34 @@
+{
+  "name": "AccDocTransportationProduct",
+  "fields": {
+    "id": {
+       "type": "Uuid",
+    },
+    "invoiceId": {
+       "refTo": "AccDocTransportation,"
+       "type": "Uuid",
+    },
+    "classifierId": {
+       "refTo": "Classifier,"
+       "type": "Uuid",
+    },
+    "seqNo": {
+       "type": "Int",
+    },
+    "name": {
+       "type": "Str",
+    },
+    "unit": {
+       "type": "Str",
+    },
+    "quantity": {
+       "type": "Money",
+    },
+    "unitPrice": {
+       "type": "Money",
+    },
+    "totalValue": {
+       "type": "Money",
+    }
+  }
+}

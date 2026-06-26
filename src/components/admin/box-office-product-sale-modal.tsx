@@ -13,6 +13,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import PaymentPanel, {
+  type PaymentMethod,
+} from '@/components/admin/box-office-payment-panel';
 
 interface ProductItem {
   id: number;
@@ -31,7 +34,7 @@ interface ProductSaleModalProps {
   count: number;
   isCreating: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (payment: { method: PaymentMethod; amountPaid: number }) => void;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -52,6 +55,20 @@ export default function ProductSaleModal({
 }: ProductSaleModalProps) {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [method, setMethod] = useState<PaymentMethod>('cash');
+  const [cashReceived, setCashReceived] = useState<number | ''>('');
+
+  const cashOk =
+    method === 'card' || (cashReceived !== '' && Number(cashReceived) >= total);
+  const canSubmit = !isCreating && count > 0 && cashOk;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({
+      method,
+      amountPaid: method === 'cash' ? Number(cashReceived) : total,
+    });
+  };
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -400,9 +417,24 @@ export default function ProductSaleModal({
                 {total.toLocaleString()} ֏
               </span>
             </div>
+
+            {count > 0 && (
+              <div className="mb-3">
+                <PaymentPanel
+                  total={total}
+                  method={method}
+                  setMethod={setMethod}
+                  cashReceived={cashReceived}
+                  setCashReceived={setCashReceived}
+                  accent="amber"
+                  disabled={isCreating}
+                />
+              </div>
+            )}
+
             <button
-              onClick={onSubmit}
-              disabled={isCreating || count === 0}
+              onClick={handleSubmit}
+              disabled={!canSubmit}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-6 py-4 text-base font-bold text-white shadow-sm transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isCreating ? (

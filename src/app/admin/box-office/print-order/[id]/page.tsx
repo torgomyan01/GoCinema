@@ -45,6 +45,8 @@ export default async function BoxOfficeOrderPrintPage({
       typeof o.createdAt === 'string' ? o.createdAt : o.createdAt.toISOString(),
     items,
     total: o.totalAmount,
+    paymentMethod: o.paymentMethod,
+    amountPaid: o.amountPaid ?? null,
   };
 
   return <OrderPrintClient order={order} />;

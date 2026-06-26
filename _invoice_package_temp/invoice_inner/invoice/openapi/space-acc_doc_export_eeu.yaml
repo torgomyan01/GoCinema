@@ -1,0 +1,1471 @@
+openapi: "3.0.0"
+info:
+  version: "1.0.0"
+  title: "Invoicing"
+servers:
+  - url: "http://localhost:8080"
+    description: Local
+paths:
+  /acc-doc-export-eeu/acc-doc-export-eeu-create-draft:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    deliveredAt:
+                      type: string
+                      format: date-time
+                    userName:
+                      type: string
+                      nullable: true
+                    dealtAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    dealNo:
+                      type: string
+                      nullable: true
+                    contractAdditionalInfo:
+                      type: string
+                      nullable: true
+                    contractAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    serialNo:
+                      type: string
+                      nullable: true
+                    version:
+                      type: integer
+                      format: int32
+                      nullable: true
+                    behalfOf:
+                      type: string
+                    supplierTin:
+                      type: string
+                    supplierVatTin:
+                      type: string
+                      nullable: true
+                    supplierName:
+                      type: string
+                      nullable: true
+                    supplierAddress:
+                      type: string
+                      nullable: true
+                    supplierAdditionalInfo:
+                      type: string
+                      nullable: true
+                    supplierBank:
+                      type: string
+                      nullable: true
+                    supplierAccNo:
+                      type: string
+                      nullable: true
+                    sourceCountryId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceRegionId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceCommunityId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceResidenceId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceCountry:
+                      type: string
+                      nullable: true
+                    sourceResidence:
+                      type: string
+                      nullable: true
+                    sourceStreet:
+                      type: string
+                      nullable: true
+                    sourceHouse:
+                      type: string
+                      nullable: true
+                    sourceApartment:
+                      type: string
+                      nullable: true
+                    sourceOtherAddress:
+                      type: string
+                      nullable: true
+                    sourceFullAddress:
+                      type: string
+                      nullable: true
+                    supplierNameRu:
+                      type: string
+                    supplierAddressRu:
+                      type: string
+                    supplierBankRu:
+                      type: string
+                      nullable: true
+                    supplierAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    sourceAddressRu:
+                      type: string
+                    buyerSsn:
+                      type: string
+                      nullable: true
+                    buyerIdentityType:
+                      type: string
+                      nullable: true
+                    buyerIdentityNo:
+                      type: string
+                      nullable: true
+                    buyerBank:
+                      type: string
+                      nullable: true
+                    buyerAccNo:
+                      type: string
+                      nullable: true
+                    buyerTin:
+                      type: string
+                      nullable: true
+                    buyerName:
+                      type: string
+                      nullable: true
+                    buyerAddress:
+                      type: string
+                      nullable: true
+                    buyerAdditionalInfo:
+                      type: string
+                      nullable: true
+                    buyerIsNatural:
+                      type: boolean
+                      nullable: true
+                    buyerNameRu:
+                      type: string
+                      nullable: true
+                    buyerFullName:
+                      type: string
+                      nullable: true
+                    buyerFullNameRu:
+                      type: string
+                      nullable: true
+                    buyerAddressRu:
+                      type: string
+                    buyerAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    buyerBankRu:
+                      type: string
+                      nullable: true
+                    buyerBankAdditionalInfo:
+                      type: string
+                      nullable: true
+                    buyerBankAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    buyerCountry:
+                      type: string
+                    deliveryMethod:
+                      type: string
+                    deliveryAdditionalInfo:
+                      type: string
+                      nullable: true
+                    deliveryAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    destinationAddress:
+                      type: string
+                    destinationAddressRu:
+                      type: string
+                    authPersonName:
+                      type: string
+                      nullable: true
+                    authPersonNameRu:
+                      type: string
+                      nullable: true
+                    authPersonPoaNo:
+                      type: string
+                      nullable: true
+                    authPersonPoaIssuedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    isBatch:
+                      type: boolean
+                      nullable: true
+                    supplierSignId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    buyerSignId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    issuedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    approvedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    supplierCn:
+                      type: string
+                      nullable: true
+                    buyerCn:
+                      type: string
+                      nullable: true
+                    supplierUser:
+                      type: string
+                      nullable: true
+                    buyerUser:
+                      type: string
+                      nullable: true
+                    totalValue:
+                      type: number
+                    source:
+                      type: string
+                    items:
+                      type: object
+                    tin:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-save-draft:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    deliveredAt:
+                      type: string
+                      format: date-time
+                    userName:
+                      type: string
+                      nullable: true
+                    dealtAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    dealNo:
+                      type: string
+                      nullable: true
+                    contractAdditionalInfo:
+                      type: string
+                      nullable: true
+                    contractAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    serialNo:
+                      type: string
+                      nullable: true
+                    version:
+                      type: integer
+                      format: int32
+                      nullable: true
+                    behalfOf:
+                      type: string
+                    supplierTin:
+                      type: string
+                    supplierVatTin:
+                      type: string
+                      nullable: true
+                    supplierName:
+                      type: string
+                      nullable: true
+                    supplierAddress:
+                      type: string
+                      nullable: true
+                    supplierAdditionalInfo:
+                      type: string
+                      nullable: true
+                    supplierBank:
+                      type: string
+                      nullable: true
+                    supplierAccNo:
+                      type: string
+                      nullable: true
+                    sourceCountryId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceRegionId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceCommunityId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceResidenceId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    sourceCountry:
+                      type: string
+                      nullable: true
+                    sourceStreet:
+                      type: string
+                      nullable: true
+                    sourceHouse:
+                      type: string
+                      nullable: true
+                    sourceApartment:
+                      type: string
+                      nullable: true
+                    sourceOtherAddress:
+                      type: string
+                      nullable: true
+                    sourceFullAddress:
+                      type: string
+                      nullable: true
+                    supplierNameRu:
+                      type: string
+                    supplierAddressRu:
+                      type: string
+                    supplierBankRu:
+                      type: string
+                      nullable: true
+                    supplierAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    sourceAddressRu:
+                      type: string
+                    buyerSsn:
+                      type: string
+                      nullable: true
+                    buyerIdentityType:
+                      type: string
+                      nullable: true
+                    buyerIdentityNo:
+                      type: string
+                      nullable: true
+                    buyerBank:
+                      type: string
+                      nullable: true
+                    buyerAccNo:
+                      type: string
+                      nullable: true
+                    buyerTin:
+                      type: string
+                      nullable: true
+                    buyerName:
+                      type: string
+                      nullable: true
+                    buyerAddress:
+                      type: string
+                      nullable: true
+                    buyerAdditionalInfo:
+                      type: string
+                      nullable: true
+                    buyerIsNatural:
+                      type: boolean
+                      nullable: true
+                    buyerNameRu:
+                      type: string
+                      nullable: true
+                    buyerFullName:
+                      type: string
+                      nullable: true
+                    buyerFullNameRu:
+                      type: string
+                      nullable: true
+                    buyerAddressRu:
+                      type: string
+                    buyerAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    buyerBankRu:
+                      type: string
+                      nullable: true
+                    buyerBankAdditionalInfo:
+                      type: string
+                      nullable: true
+                    buyerBankAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    buyerCountry:
+                      type: string
+                    deliveryMethod:
+                      type: string
+                    deliveryAdditionalInfo:
+                      type: string
+                      nullable: true
+                    deliveryAdditionalInfoRu:
+                      type: string
+                      nullable: true
+                    destinationAddress:
+                      type: string
+                    destinationAddressRu:
+                      type: string
+                    authPersonName:
+                      type: string
+                      nullable: true
+                    authPersonNameRu:
+                      type: string
+                      nullable: true
+                    authPersonPoaNo:
+                      type: string
+                      nullable: true
+                    authPersonPoaIssuedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    isBatch:
+                      type: boolean
+                      nullable: true
+                    supplierSignId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    buyerSignId:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    issuedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    approvedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    supplierCn:
+                      type: string
+                      nullable: true
+                    buyerCn:
+                      type: string
+                      nullable: true
+                    supplierUser:
+                      type: string
+                      nullable: true
+                    buyerUser:
+                      type: string
+                      nullable: true
+                    totalValue:
+                      type: number
+                    source:
+                      type: string
+                    items:
+                      type: object
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-remove-draft:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-product-create:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    invoiceId:
+                      type: string
+                      format: uuid
+                    seqNo:
+                      type: integer
+                      format: int32
+                    previousDocumentType:
+                      type: string
+                    previousDocumentNumber:
+                      type: string
+                    seqNoByPreviousDoc:
+                      type: string
+                    productFEACNId:
+                      type: string
+                      format: uuid
+                    nameRu:
+                      type: string
+                    unitByFEACNId:
+                      type: string
+                      format: uuid
+                    quantityByFEACN:
+                      type: number
+                      nullable: true
+                    name:
+                      type: string
+                    unit:
+                      type: string
+                    unitRu:
+                      type: string
+                    quantity:
+                      type: number
+                    unitPrice:
+                      type: number
+                    discount:
+                      type: number
+                      nullable: true
+                    totalValue:
+                      type: number
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-product-save:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    invoiceId:
+                      type: string
+                      format: uuid
+                    seqNo:
+                      type: integer
+                      format: int32
+                    previousDocumentType:
+                      type: string
+                    previousDocumentNumber:
+                      type: string
+                    seqNoByPreviousDoc:
+                      type: string
+                    productFEACNId:
+                      type: string
+                      format: uuid
+                    nameRu:
+                      type: string
+                    unitByFEACNId:
+                      type: string
+                      format: uuid
+                    quantityByFEACN:
+                      type: number
+                      nullable: true
+                    name:
+                      type: string
+                    unit:
+                      type: string
+                    unitRu:
+                      type: string
+                    quantity:
+                      type: number
+                    unitPrice:
+                      type: number
+                    discount:
+                      type: number
+                      nullable: true
+                    totalValue:
+                      type: number
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-product-remove:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-remove-draft-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-invalidate-issued:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    signature:
+                      type: string
+                    certificate:
+                      type: string
+                    serialNo:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    user:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-cancel-issued:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    signature:
+                      type: string
+                    certificate:
+                      type: string
+                    serialNo:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    user:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-cancel-issued-co-sign:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    userName:
+                      type: string
+                    password:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-invalidate-issued-co-sign:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    userName:
+                      type: string
+                    password:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    tin:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-cancel-issued-mid:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    phone:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+                    signType:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-invalidate-issued-mid:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    phone:
+                      type: string
+                    ssn:
+                      type: string
+                      nullable: true
+                    reason:
+                      type: string
+                    signType:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-xml-import:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    url:
+                      type: string
+                    tin:
+                      type: string
+                    userName:
+                      type: string
+                    isBatch:
+                      type: boolean
+                      nullable: true
+                    fromDispatcher:
+                      type: boolean
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-issue:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    serialNo:
+                      type: string
+                    requestId:
+                      type: string
+                      format: uuid
+                    signedAt:
+                      type: string
+                      format: date-time
+                    cn:
+                      type: string
+                    signer:
+                      type: string
+                    validationResult:
+                      type: object
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-approve:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    id:
+                      type: string
+                      format: uuid
+                    requestId:
+                      type: string
+                      format: uuid
+                    signedAt:
+                      type: string
+                      format: date-time
+                    cn:
+                      type: string
+                    signer:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-accept-cancellation:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-xml-batch-import:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    url:
+                      type: string
+                    tin:
+                      type: string
+                    requestId:
+                      type: string
+                      format: uuid
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-batch-invalidate:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    sn:
+                      type: string
+                    tin:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+  /acc-doc-export-eeu/acc-doc-export-eeu-create-draft-list:
+    post:
+      requestBody:
+        description: ''
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    clientTin:
+                      type: string
+                      nullable: true
+                    clientUser:
+                      type: string
+                      nullable: true
+                    ids:
+                      type: string
+                      format: uuid
+                    userName:
+                      type: string
+      responses:
+        "200":
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  payload:
+                    type: object
+                    nullable: true
+                  failure:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string

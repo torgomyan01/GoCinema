@@ -193,6 +193,7 @@ model Payment {
   userId        Int
   ticketId      Int       @unique
   amount        Float
+  amountPaid    Float?    // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը (մանրը հաշվելու համար)
   method        String    @db.VarChar(50) // card, bank_transfer, cash
   status        String    @default("pending") @db.VarChar(50) // pending, completed, failed, refunded
   transactionId String?   @db.VarChar(255)
@@ -236,12 +237,14 @@ model Product {
 // ============================================
 
 model Order {
-  id          Int         @id @default(autoincrement())
-  userId      Int
-  totalAmount Float
-  status      String      @default("pending") @db.VarChar(50) // pending, completed, cancelled
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  totalAmount   Float
+  status        String      @default("pending") @db.VarChar(50) // pending, completed, cancelled
+  paymentMethod String      @default("cash") @db.VarChar(50) // cash, card
+  amountPaid    Float?      // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]

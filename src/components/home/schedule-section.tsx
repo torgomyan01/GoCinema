@@ -96,13 +96,20 @@ export default function ScheduleSection() {
     loadScreenings();
   }, []);
 
+  const getLocalDateKey = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   // Group screenings by date
   const screeningsByDate = useMemo(() => {
     const grouped: Record<string, Screening[]> = {};
 
     screenings.forEach((screening) => {
       const date = new Date(screening.startTime);
-      const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      const dateKey = getLocalDateKey(date);
 
       if (!grouped[dateKey]) {
         grouped[dateKey] = [];
@@ -200,9 +207,7 @@ export default function ScheduleSection() {
     return checkDate < today;
   };
 
-  const getDateKey = (date: Date) => {
-    return date.toISOString().split('T')[0];
-  };
+  const getDateKey = getLocalDateKey;
 
   const shortWeekday = (date: Date) => {
     const weekdays = ['Կիր', 'Երկ', 'Երք', 'Չրք', 'Հնգ', 'Ուրբ', 'Շբթ'];

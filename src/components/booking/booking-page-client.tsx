@@ -387,6 +387,9 @@ export default function BookingPageClient({
       }
       grouped.get(seat.row)!.push(seat);
     });
+    for (const [, seats] of grouped) {
+      seats.sort((a, b) => b.number - a.number);
+    }
     return grouped;
   }, [screening]);
 

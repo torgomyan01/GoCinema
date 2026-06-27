@@ -15,6 +15,7 @@ import {
   QrCode,
   Banknote,
   FileBarChart,
+  Bell,
   LucideIcon,
 } from 'lucide-react';
 
@@ -89,6 +90,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/tickets',
     color: 'text-green-600',
     bgColor: 'bg-green-50',
+  },
+  {
+    title: 'Ծանուցումներ',
+    icon: Bell,
+    href: '/admin/notifications',
+    color: 'text-pink-600',
+    bgColor: 'bg-pink-50',
   },
 
   {

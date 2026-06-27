@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { isStaffRole } from '@/lib/roles';
 import { occupiedTicketWhere } from '@/lib/reservation';
 import { releaseExpiredReservations } from '@/app/actions/tickets';
+import { createNotification, formatAmd } from '@/lib/notifications';
 
 const WALK_IN_PHONE = '000000000';
 const WALK_IN_NAME = 'Դրամարկղ (walk-in)';
@@ -425,8 +426,20 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
       });
     });
 
+    const seatLabel = ticket?.seat
+      ? `${ticket.seat.row}${ticket.seat.number}`
+      : '';
+    const movieTitle = ticket?.screening?.movie?.title ?? 'ֆիլմ';
+    await createNotification({
+      type: 'box_office',
+      title: 'Դրամարկղի վաճառք (տոմս)',
+      message: `${movieTitle}${seatLabel ? `, տեղ ${seatLabel}` : ''} — ${formatAmd(grandTotal)} (${payment.method === 'card' ? 'քարտով' : 'կանխիկ'})`,
+      link: '/admin/tickets',
+    });
+
     revalidatePath('/admin/box-office');
     revalidatePath('/admin/tickets');
+    revalidatePath('/admin/notifications');
 
     return { success: true, ticket, total: grandTotal };
   } catch (error) {
@@ -541,7 +554,19 @@ export async function createBoxOfficeProductOrder(
       });
     });
 
+    const itemCount = selections.reduce(
+      (sum, sel) => sum + Math.floor(Number(sel.quantity)),
+      0
+    );
+    await createNotification({
+      type: 'box_office',
+      title: 'Դրամարկղի վաճառք (ապրանք)',
+      message: `${itemCount} ապրանք — ${formatAmd(total)} (${payment.method === 'card' ? 'քարտով' : 'կանխիկ'})`,
+      link: '/admin/box-office',
+    });
+
     revalidatePath('/admin/box-office');
+    revalidatePath('/admin/notifications');
 
     return { success: true, order, total };
   } catch (error) {
@@ -601,6 +626,7 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
         payment: true,
         seat: { select: { id: true, row: true, number: true } },
         order: { include: { orderItems: true } },
+        screening: { include: { movie: { select: { title: true } } } },
       },
     });
 
@@ -659,9 +685,21 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       }
     });
 
+    const cancelSeatLabel = ticket.seat
+      ? `${ticket.seat.row}${ticket.seat.number}`
+      : '';
+    const cancelMovieTitle = ticket.screening?.movie?.title ?? 'ֆիլմ';
+    await createNotification({
+      type: 'cancellation',
+      title: 'Տոմսի չեղարկում',
+      message: `Տոմս #${ticket.id} չեղարկվեց — ${cancelMovieTitle}${cancelSeatLabel ? `, տեղ ${cancelSeatLabel}` : ''}${ticket.payment ? ' (գումարը՝ վերադարձման)' : ''}`,
+      link: '/admin/tickets',
+    });
+
     revalidatePath('/admin/box-office');
     revalidatePath('/admin/tickets');
     revalidatePath('/admin/fiscal');
+    revalidatePath('/admin/notifications');
 
     return {
       success: true,

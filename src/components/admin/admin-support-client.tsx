@@ -20,6 +20,7 @@ import {
   getSupportRequestById,
   updateSupportRequest,
 } from '@/app/actions/support';
+import { notifySupportPendingChanged } from '@/components/admin/support-menu-badge';
 
 type SupportStatus = 'new' | 'in_progress' | 'resolved' | 'archived';
 
@@ -270,6 +271,7 @@ export default function AdminSupportClient({
       }
       await refreshSelectedRequest(requestId);
       void loadRequests();
+      notifySupportPendingChanged();
     } catch {
       setSelected((current) =>
         current && current.id === requestId

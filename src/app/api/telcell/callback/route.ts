@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { buildTelcellCallbackChecksum, fromBase64 } from '@/lib/telcell';
 import { generateQRCode } from '@/app/actions/tickets';
+import { createNotification, formatAmd } from '@/lib/notifications';
 
 function telcellCallbackLog(event: string, payload: Record<string, unknown>) {
   const log =
@@ -97,8 +98,11 @@ export async function POST(request: NextRequest) {
         tickets: {
           include: {
             payment: true,
+            screening: { include: { movie: { select: { title: true } } } },
+            seat: { select: { row: true, number: true } },
           },
         },
+        orderItems: { include: { product: { select: { name: true } } } },
       },
     });
 
@@ -179,8 +183,34 @@ export async function POST(request: NextRequest) {
         data: { status: 'completed' },
       });
 
+      // Ադմինի ծանուցում՝ նոր օնլայն վճարված տոմս(եր)
+      const ticketCount = order.tickets.length;
+      const movieTitles = Array.from(
+        new Set(
+          order.tickets
+            .map((t) => t.screening?.movie?.title)
+            .filter((title): title is string => Boolean(title))
+        )
+      );
+      const movieLabel =
+        movieTitles.length > 0 ? movieTitles.join(', ') : 'ֆիլմ';
+      const productCount = order.orderItems.reduce(
+        (sum, item) => sum + item.quantity,
+        0
+      );
+      const productNote =
+        productCount > 0 ? ` + ${productCount} ապրանք` : '';
+
+      await createNotification({
+        type: productCount > 0 ? 'online_product' : 'online_ticket',
+        title: 'Նոր օնլայն վճարում (Telcell)',
+        message: `Պատվեր #${order.id}: ${movieLabel} — ${ticketCount} տոմս${productNote}, ${formatAmd(order.totalAmount)}`,
+        link: '/admin/tickets',
+      });
+
       revalidatePath('/tickets');
       revalidatePath('/payment');
+      revalidatePath('/admin/notifications');
     } else if (status === 'REJECTED') {
       telcellCallbackLog('status_rejected', {
         orderId,

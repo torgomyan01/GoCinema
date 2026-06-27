@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isStaffRole } from '@/lib/roles';
+import { createNotification } from '@/lib/notifications';
 
 const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -243,8 +244,16 @@ export async function createSupportRequest(formData: FormData) {
     if (existing) {
       await appendCustomerMessage(existing.id, name, message, files);
 
+      await createNotification({
+        type: 'support',
+        title: 'Նոր աջակցության հաղորդագրություն',
+        message: `${name}: ${message.slice(0, 120)}`,
+        link: `/admin/support/${existing.id}`,
+      });
+
       revalidatePath('/admin/support');
       revalidatePath(`/admin/support/${existing.id}`);
+      revalidatePath('/admin/notifications');
 
       return {
         success: true,
@@ -276,7 +285,15 @@ export async function createSupportRequest(formData: FormData) {
 
     await saveAttachments(request.id, files.slice(0, 5));
 
+    await createNotification({
+      type: 'support',
+      title: 'Նոր աջակցության հարցում',
+      message: `${name} (${resolvedSubject}): ${message.slice(0, 120)}`,
+      link: `/admin/support/${request.id}`,
+    });
+
     revalidatePath('/admin/support');
+    revalidatePath('/admin/notifications');
 
     return { success: true, requestId: request.id, reused: false };
   } catch (error: any) {
@@ -285,6 +302,37 @@ export async function createSupportRequest(formData: FormData) {
       success: false,
       error: error?.message || 'Հարցումը ուղարկելիս սխալ է տեղի ունեցել',
     };
+  }
+}
+
+/** Չատեր, որտեղ վերջին հաղորդագրությունը հաճախորդից է — staff-ը դեռ չի պատասխանել */
+export async function getPendingSupportReplyCount() {
+  try {
+    const session = await getServerSession(authOptions);
+    const sessionUser = session?.user as { id?: string; role?: string } | undefined;
+    if (!sessionUser?.id || !isStaffRole(sessionUser.role)) {
+      return { success: false, count: 0 };
+    }
+
+    const requests = await prisma.supportRequest.findMany({
+      where: { status: { notIn: ['resolved', 'archived'] } },
+      select: {
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { senderType: true },
+        },
+      },
+    });
+
+    const count = requests.filter(
+      (r) => r.messages[0]?.senderType === 'customer'
+    ).length;
+
+    return { success: true, count };
+  } catch (error) {
+    console.error('[Pending Support Count] Error:', error);
+    return { success: false, count: 0 };
   }
 }
 

@@ -17,6 +17,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { SITE_URL } from '@/utils/consts';
 import { adminMenuItems } from '@/config/admin-menu';
 import { isAdminRole } from '@/lib/roles';
+import NotificationBell from '@/components/admin/notification-bell';
+import SupportMenuBadge from '@/components/admin/support-menu-badge';
 
 interface AdminLayoutProps {
   user: {
@@ -131,7 +133,10 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
                           }`}
                         >
                           <item.icon className="w-5 h-5 shrink-0" />
-                          <span className="text-sm">{item.title}</span>
+                          <span className="text-sm flex-1">{item.title}</span>
+                          {item.href === '/admin/support' && (
+                            <SupportMenuBadge />
+                          )}
                         </Link>
                       </li>
                     );
@@ -184,6 +189,7 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
               )}
             </div>
             <div className="flex items-center gap-4">
+              {isAdminRole(user.role) && <NotificationBell />}
               <Link
                 href={SITE_URL.HOME}
                 className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"

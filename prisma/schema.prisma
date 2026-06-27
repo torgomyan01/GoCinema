@@ -396,6 +396,24 @@ model SupportAttachment {
 }
 
 // ============================================
+// Notifications (Admin)
+// ============================================
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  type      String   @db.VarChar(50) // online_ticket, online_product, box_office, cancellation, support
+  title     String   @db.VarChar(255)
+  message   String   @db.Text
+  link      String?  @db.VarChar(500)
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================
 // Premieres
 // ============================================
 

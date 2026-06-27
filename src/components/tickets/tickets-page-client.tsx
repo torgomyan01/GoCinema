@@ -103,10 +103,28 @@ export default function TicketsPageClient() {
   }, [session, sessionStatus, router]);
 
   const filteredTickets = useMemo(() => {
-    if (selectedStatus === 'all') {
-      return tickets;
-    }
-    return tickets.filter((ticket) => ticket.status === selectedStatus);
+    const statusOrder: Record<Ticket['status'], number> = {
+      reserved: 0, // վճարման սպասում
+      paid: 1,
+      used: 2,
+      cancelled: 3,
+    };
+
+    let list =
+      selectedStatus === 'all'
+        ? [...tickets]
+        : tickets.filter((ticket) => ticket.status === selectedStatus);
+
+    list.sort((a, b) => {
+      const byStatus = statusOrder[a.status] - statusOrder[b.status];
+      if (byStatus !== 0) return byStatus;
+      // Նույն կարգավիճակում՝ ավելի նոր ցուցադրությունները վերևում
+      const dateA = new Date(a.screening.startTime).getTime();
+      const dateB = new Date(b.screening.startTime).getTime();
+      return dateB - dateA;
+    });
+
+    return list;
   }, [tickets, selectedStatus]);
 
   const statusCounts = useMemo(() => {

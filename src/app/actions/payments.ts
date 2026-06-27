@@ -18,6 +18,7 @@ import {
   isVPostPaymentDeclined,
   summarizeTransactionForLog,
 } from '@/lib/vpost';
+import { createNotification, formatAmd } from '@/lib/notifications';
 
 function paymentServerLog(event: string, payload: Record<string, unknown>) {
   const log =
@@ -578,6 +579,9 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
             },
           },
         },
+        orderItems: {
+          select: { quantity: true },
+        },
       },
     });
 
@@ -660,6 +664,34 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       revalidatePath('/tickets');
       revalidatePath('/payment');
       revalidatePath('/checkout');
+
+      // Ադմինի ծանուցում՝ նոր օնլայն վճարված տոմս(եր)
+      const paidTicketCount = order.tickets.length - conflicts.length;
+      if (paidTicketCount > 0) {
+        const movieTitles = Array.from(
+          new Set(
+            order.tickets
+              .map((t) => t.screening?.movie?.title)
+              .filter((title): title is string => Boolean(title))
+          )
+        );
+        const movieLabel =
+          movieTitles.length > 0 ? movieTitles.join(', ') : 'ֆիլմ';
+        const productCount = order.orderItems.reduce(
+          (sum, item) => sum + item.quantity,
+          0
+        );
+        const productNote =
+          productCount > 0 ? ` + ${productCount} ապրանք` : '';
+
+        await createNotification({
+          type: productCount > 0 ? 'online_product' : 'online_ticket',
+          title: 'Նոր օնլայն վճարում (քարտով)',
+          message: `Պատվեր #${order.id}: ${movieLabel} — ${paidTicketCount} տոմս${productNote}, ${formatAmd(order.totalAmount)}`,
+          link: '/admin/tickets',
+        });
+        revalidatePath('/admin/notifications');
+      }
 
       if (conflicts.length > 0) {
         const seatLabels = conflicts

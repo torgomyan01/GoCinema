@@ -68,13 +68,27 @@ function coerceTxItem(raw: unknown): VPostTransactionListItem | null {
 }
 
 function extractTransactionsList(data: unknown): VPostTransactionListItem[] {
-  if (!data || typeof data !== 'object') return [];
+  if (!data) return [];
+  if (Array.isArray(data)) {
+    return data
+      .map(coerceTxItem)
+      .filter((x): x is VPostTransactionListItem => x != null);
+  }
+  if (typeof data !== 'object') return [];
   const d = data as Record<string, unknown>;
-  const rawList = d.list ?? (d.data as Record<string, unknown> | undefined)?.list;
-  if (!Array.isArray(rawList)) return [];
-  return rawList
-    .map(coerceTxItem)
-    .filter((x): x is VPostTransactionListItem => x != null);
+  const rawList =
+    d.list ??
+    d.transactions ??
+    d.items ??
+    (d.data as Record<string, unknown> | undefined)?.list;
+  if (Array.isArray(rawList)) {
+    return rawList
+      .map(coerceTxItem)
+      .filter((x): x is VPostTransactionListItem => x != null);
+  }
+  // Մեկ transaction օբյեկտ
+  const single = coerceTxItem(data);
+  return single ? [single] : [];
 }
 
 function parseTxDate(tx: VPostTransactionListItem): number {
@@ -414,29 +428,108 @@ export async function getVPostTransactionsByOrder(orderID: number) {
   );
 }
 
+/** Փորձում է partner order ID-ով, ապա ITF order ID-ով (fallback) */
+export async function fetchVPostTransactionsForOrder(
+  partnerOrderId: number,
+  alternateItfOrderId?: number
+): Promise<{
+  envelope: Awaited<ReturnType<typeof getVPostTransactionsByOrder>>;
+  list: VPostTransactionListItem[];
+  usedOrderId: number;
+}> {
+  const primary = await getVPostTransactionsByOrder(partnerOrderId);
+  let list = getNormalizedTransactionsFromVPostEnvelope(primary);
+  let usedOrderId = partnerOrderId;
+
+  if (
+    list.length === 0 &&
+    alternateItfOrderId &&
+    Number.isFinite(alternateItfOrderId) &&
+    alternateItfOrderId !== partnerOrderId
+  ) {
+    const alt = await getVPostTransactionsByOrder(alternateItfOrderId);
+    const altList = getNormalizedTransactionsFromVPostEnvelope(alt);
+    if (altList.length > 0) {
+      return { envelope: alt, list: altList, usedOrderId: alternateItfOrderId };
+    }
+    if (alt.status && !primary.status) {
+      return { envelope: alt, list: altList, usedOrderId: alternateItfOrderId };
+    }
+  }
+
+  return { envelope: primary, list, usedOrderId };
+}
+
+function normalizeResponseObject(
+  resp: unknown
+): Record<string, unknown> | undefined {
+  if (!resp) return undefined;
+  if (typeof resp === 'string') {
+    try {
+      const parsed = JSON.parse(resp) as unknown;
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof resp === 'object') return resp as Record<string, unknown>;
+  return undefined;
+}
+
+function isApprovedResponseCode(code: unknown): boolean {
+  const rc = String(code ?? '').trim().toLowerCase();
+  return (
+    rc === '00' ||
+    rc === '0' ||
+    rc === '000' ||
+    rc === 'approved' ||
+    rc === 'success' ||
+    rc === 'ok'
+  );
+}
+
 export function isVPostPaymentApproved(
   tx?: VPostTransactionListItem
 ): boolean {
   if (!tx) return false;
 
-  const resp = tx.response;
-  const responseCode = readResponseField(resp, ['ResponseCode', 'responseCode']);
+  const resp = normalizeResponseObject(tx.response);
+  const responseCode = readResponseField(resp, [
+    'ResponseCode',
+    'responseCode',
+    'code',
+    'resultCode',
+  ]);
   const paymentState = String(
-    readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
-  );
+    readResponseField(resp, ['PaymentState', 'paymentState', 'state']) ?? ''
+  ).toLowerCase();
   const orderStatus = String(
-    readResponseField(resp, ['OrderStatus', 'orderStatus']) ?? ''
-  );
+    readResponseField(resp, ['OrderStatus', 'orderStatus', 'status']) ?? ''
+  ).toLowerCase();
   const internalStatus = tx.order?.status;
 
-  const rcOk = String(responseCode ?? '').trim() === '00';
-
-  return (
-    rcOk ||
+  const psOk =
     paymentState === 'payment_approved' ||
     paymentState === 'payment_deposited' ||
+    paymentState === 'approved' ||
+    paymentState === 'success' ||
+    paymentState === 'completed' ||
+    paymentState === 'deposited';
+
+  const osOk =
     orderStatus === '1' ||
     orderStatus === '2' ||
+    orderStatus === 'paid' ||
+    orderStatus === 'approved' ||
+    orderStatus === 'completed' ||
+    orderStatus === 'success';
+
+  return (
+    isApprovedResponseCode(responseCode) ||
+    psOk ||
+    osOk ||
     internalStatus === 1 ||
     internalStatus === 2
   );

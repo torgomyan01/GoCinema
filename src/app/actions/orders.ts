@@ -345,6 +345,7 @@ export async function getOrderById(id: number) {
               },
             },
             seat: true,
+            payment: true,
           },
         },
       },

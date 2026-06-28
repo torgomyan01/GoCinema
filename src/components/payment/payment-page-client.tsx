@@ -113,7 +113,8 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   >('bank_transfer');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [hasSyncedVpostReturn, setHasSyncedVpostReturn] = useState(false);
+  const [isAwaitingVpost, setIsAwaitingVpost] = useState(false);
+  const [vpostStatusNote, setVpostStatusNote] = useState<string | null>(null);
   const [isAwaitingTelcell, setIsAwaitingTelcell] = useState(false);
   const [telcellStatusNote, setTelcellStatusNote] = useState<string | null>(
     null
@@ -169,89 +170,88 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     }
   }, [session, router, isLoading]);
 
+  // Քարտով վճարումից հետո ավտոմատ sync (եթե vPost return էջից չի անցել)
   useEffect(() => {
-    const syncReturnStatus = async () => {
-      if (!order || !session?.user || hasSyncedVpostReturn) return;
-      if (searchParams.get('gateway') !== 'vpost') return;
-      // Հին backURL: ?gateway=vpost&return=1 — vPost երբեմն կցում է return=1?orderId=…
-      const ret = searchParams.get('return');
-      if (ret !== '1' && !ret?.startsWith('1?')) return;
+    if (!order || !session?.user || isSuccess || isAwaitingTelcell) return;
 
-      setHasSyncedVpostReturn(true);
-      setIsProcessing(true);
-      setError(null);
+    const hasPendingCard = order.tickets.some(
+      (t) =>
+        t.status === 'reserved' &&
+        t.payment?.method === 'card' &&
+        t.payment?.status === 'pending'
+    );
+    if (!hasPendingCard) return;
+
+    const userId = Number(
+      (session.user as { id?: string | number }).id
+    );
+
+    let cancelled = false;
+    setIsAwaitingVpost(true);
+    setVpostStatusNote('Ստուգում ենք քարտային վճարման կարգավիճակը…');
+
+    const poll = async (attempt = 0) => {
+      if (cancelled || attempt >= 20) {
+        if (!cancelled) {
+          setIsAwaitingVpost(false);
+          setVpostStatusNote(
+            'Վճարումը դեռ հաստատված չէ։ Եթե արդեն վճարել եք, սեղմեք «Կրկին ստուգել»։'
+          );
+        }
+        return;
+      }
 
       try {
-        const userId =
-          typeof (session.user as any).id === 'string'
-            ? parseInt((session.user as any).id, 10)
-            : (session.user as any).id;
+        const syncResult = await syncVPostOrderStatus({
+          userId,
+          orderId: order.id,
+        });
 
-        // Gateway status can arrive with a small delay after redirect.
-        // Retry a few times to reliably finalize paid tickets.
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-          const syncResult = await syncVPostOrderStatus({
-            userId,
-            orderId: order.id,
-          });
-
-          if (!syncResult.success) {
-            setError(
-              syncResult.error || 'Վճարման կարգավիճակը ստուգելիս սխալ եղավ'
-            );
-            return;
+        if (syncResult.success && syncResult.state === 'paid') {
+          const refreshed = await getOrderById(order.id);
+          if (refreshed.success && refreshed.order) {
+            const nextOrder = refreshed.order as Order;
+            setOrder(nextOrder);
+            const qrMap = new Map<number, string>();
+            nextOrder.tickets.forEach((t) => {
+              if (t.qrCode) qrMap.set(t.id, t.qrCode);
+            });
+            setQrCodes(qrMap);
+            setIsSuccess(true);
+            setIsAwaitingVpost(false);
+            setVpostStatusNote(null);
           }
-
-          if (syncResult.state === 'paid') {
-            const refreshed = await getOrderById(order.id);
-            if (refreshed.success && refreshed.order) {
-              const nextOrder = refreshed.order as Order;
-              setOrder(nextOrder);
-              const qrMap = new Map<number, string>();
-              nextOrder.tickets.forEach((t) => {
-                if (t.qrCode) qrMap.set(t.id, t.qrCode);
-              });
-              setQrCodes(qrMap);
-              setIsSuccess(true);
-            }
-            router.replace(SITE_URL.PAYMENT(order.id));
-            return;
-          }
-
-          if (syncResult.state === 'failed') {
-            setError(syncResult.message || 'Վճարումը մերժվել է');
-            return;
-          }
-
-          if (syncResult.state === 'seat_taken') {
-            // Տեղն այս ընթացքում զբաղվել է ուրիշի կողմից
-            const refreshed = await getOrderById(order.id);
-            if (refreshed.success && refreshed.order) {
-              setOrder(refreshed.order as Order);
-            }
-            setError(
-              syncResult.message ||
-                'Ընտրված տեղն այլևս հասանելի չէ։ Խնդրում ենք ընտրել այլ տեղ։'
-            );
-            return;
-          }
-
-          if (attempt < 5) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-          }
+          return;
         }
 
-        setError('Վճարումը դեռ չի հաստատվել։ Մի փոքր հետո կրկին փորձեք։');
+        const latest = await getOrderById(order.id);
+        if (latest.success && latest.order) {
+          const nextOrder = latest.order as Order;
+          const allPaid = nextOrder.tickets.every(
+            (t) => t.status === 'paid' || t.status === 'used'
+          );
+          if (allPaid) {
+            setOrder(nextOrder);
+            setIsSuccess(true);
+            setIsAwaitingVpost(false);
+            setVpostStatusNote(null);
+            return;
+          }
+        }
       } catch (err) {
-        console.error('Error syncing vPost status:', err);
-        setError('Վճարման կարգավիճակը ստուգելիս սխալ եղավ');
-      } finally {
-        setIsProcessing(false);
+        console.error('Error polling vPost status:', err);
       }
+
+      setTimeout(() => poll(attempt + 1), 3000);
     };
 
-    syncReturnStatus();
-  }, [order, session, searchParams, hasSyncedVpostReturn, router]);
+    void poll();
+
+    return () => {
+      cancelled = true;
+      setIsAwaitingVpost(false);
+    };
+  }, [order, session, isSuccess, isAwaitingTelcell]);
 
   useEffect(() => {
     if (!order) return;
@@ -1217,7 +1217,12 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
               <button
                 onClick={handlePayment}
-                disabled={!paymentMethod || isProcessing || isHoldExpired}
+                disabled={
+                  !paymentMethod ||
+                  isProcessing ||
+                  isHoldExpired ||
+                  isAwaitingVpost
+                }
                 className={`w-full px-6 py-3 rounded-lg font-semibold transition-all ${
                   paymentMethod && !isProcessing && !isHoldExpired
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
@@ -1238,6 +1243,77 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                 >
                   Ընտրել նոր տեղեր
                 </Link>
+              )}
+
+              {(isAwaitingVpost || vpostStatusNote) && (
+                <div className="mt-4 p-3 rounded-lg border border-purple-200 bg-purple-50">
+                  <p className="text-xs text-purple-800 leading-relaxed">
+                    {vpostStatusNote ||
+                      'Ստուգում ենք քարտային վճարման կարգավիճակը…'}
+                  </p>
+                  {!isAwaitingVpost && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!session?.user || !order) return;
+                        setIsAwaitingVpost(true);
+                        setVpostStatusNote(
+                          'Ստուգում ենք քարտային վճարման կարգավիճակը…'
+                        );
+                        try {
+                          const userId = Number(
+                            (session.user as { id?: string | number }).id
+                          );
+                          const syncResult = await syncVPostOrderStatus({
+                            userId,
+                            orderId: order.id,
+                          });
+                          if (
+                            syncResult.success &&
+                            syncResult.state === 'paid'
+                          ) {
+                            const latest = await getOrderById(order.id);
+                            if (latest.success && latest.order) {
+                              const nextOrder = latest.order as Order;
+                              setOrder(nextOrder);
+                              setIsSuccess(true);
+                              setVpostStatusNote(null);
+                            }
+                            return;
+                          }
+                          const latest = await getOrderById(order.id);
+                          if (latest.success && latest.order) {
+                            setOrder(latest.order as Order);
+                            const allPaid = (
+                              latest.order as Order
+                            ).tickets.every(
+                              (t) =>
+                                t.status === 'paid' || t.status === 'used'
+                            );
+                            if (allPaid) {
+                              setIsSuccess(true);
+                              setVpostStatusNote(null);
+                              return;
+                            }
+                          }
+                          setVpostStatusNote(
+                            syncResult.message ||
+                              'Վճարումը դեռ հաստատված չէ։ Սպասեք մի քանի վայրկյան և կրկին փորձեք։'
+                          );
+                        } catch {
+                          setVpostStatusNote(
+                            'Կարգավիճակը թարմացնել չհաջողվեց, փորձեք նորից։'
+                          );
+                        } finally {
+                          setIsAwaitingVpost(false);
+                        }
+                      }}
+                      className="mt-2 text-xs font-semibold text-purple-700 hover:text-purple-800 hover:underline"
+                    >
+                      Կրկին ստուգել
+                    </button>
+                  )}
+                </div>
               )}
 
               {(isAwaitingTelcell || telcellStatusNote) && (

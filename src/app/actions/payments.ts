@@ -11,7 +11,7 @@ import {
 import {
   createVPostOrder,
   createVPostCustomer,
-  getVPostTransactionsByOrder,
+  fetchVPostTransactionsForOrder,
   getNormalizedTransactionsFromVPostEnvelope,
   hasVPostConfig,
   isVPostPaymentApproved,
@@ -161,6 +161,28 @@ export interface CreateTelcellInvoiceForOrderData {
 export interface CreateVPostOrderForOrderData {
   userId: number;
   orderId: number;
+}
+
+function isOrderFullyPaid(tickets: Array<{ status: string }>): boolean {
+  return (
+    tickets.length > 0 &&
+    tickets.every((t) => t.status === 'paid' || t.status === 'used')
+  );
+}
+
+function parseStoredItfOrderId(
+  tickets: Array<{ payment?: { transactionId?: string | null } | null }>
+): number | undefined {
+  for (const ticket of tickets) {
+    const raw = ticket.payment?.transactionId?.trim();
+    if (!raw) continue;
+    const match = raw.match(/^ITF-(\d+)$/i) || raw.match(/^(\d+)$/);
+    if (match) {
+      const id = parseInt(match[1], 10);
+      if (Number.isFinite(id) && id > 0) return id;
+    }
+  }
+  return undefined;
 }
 
 async function upsertPendingPaymentsForOrder(
@@ -521,6 +543,14 @@ export async function createVPostOrderForOrder(
       partnerOrderId: vpostResponse.data?.partnerOrderId,
     });
 
+    const itfOrderId = vpostResponse.data?.itfOrderId;
+    if (itfOrderId) {
+      await prisma.payment.updateMany({
+        where: { ticketId: { in: unpaidTickets.map((t) => t.id) } },
+        data: { transactionId: `ITF-${itfOrderId}` },
+      });
+    }
+
     return {
       success: true,
       redirectURL: vpostResponse.data.redirectURL,
@@ -599,11 +629,24 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       };
     }
 
-    const txResponse = await getVPostTransactionsByOrder(order.id);
-    const txList = getNormalizedTransactionsFromVPostEnvelope(txResponse);
+    // DB-ում արդեն հաստատված է (callback/նախորդ sync)
+    if (isOrderFullyPaid(order.tickets) || order.status === 'completed') {
+      paymentServerLog('vpost_sync_already_paid', { orderId: order.id });
+      return {
+        success: true,
+        state: 'paid' as const,
+        message: 'Վճարումը արդեն հաստատված է',
+      };
+    }
+
+    const itfOrderId = parseStoredItfOrderId(order.tickets);
+    const { envelope: txResponse, list: txList, usedOrderId } =
+      await fetchVPostTransactionsForOrder(order.id, itfOrderId);
 
     paymentServerLog('vpost_sync_raw', {
       orderId: order.id,
+      usedOrderId,
+      itfOrderId,
       envelopeStatus: txResponse.status,
       message: txResponse.message,
       listLength: txList.length,

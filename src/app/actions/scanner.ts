@@ -17,163 +17,132 @@ async function requireStaff() {
   return user;
 }
 
+const ORDER_INCLUDE = {
+  user: {
+    select: { id: true, name: true, phone: true, email: true },
+  },
+  tickets: {
+    include: {
+      screening: {
+        include: {
+          movie: {
+            select: { id: true, title: true, image: true, duration: true },
+          },
+          hall: { select: { id: true, name: true, capacity: true } },
+        },
+      },
+      seat: {
+        select: { id: true, row: true, number: true, seatType: true },
+      },
+      orderItems: {
+        include: {
+          product: {
+            select: { id: true, name: true, price: true, category: true },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+const TICKET_INCLUDE = {
+  user: { select: { id: true, name: true, phone: true, email: true } },
+  screening: {
+    include: {
+      movie: {
+        select: { id: true, title: true, image: true, duration: true },
+      },
+      hall: { select: { id: true, name: true, capacity: true } },
+    },
+  },
+  seat: { select: { id: true, row: true, number: true, seatType: true } },
+  order: {
+    include: {
+      orderItems: {
+        include: {
+          product: {
+            select: { id: true, name: true, price: true, category: true },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Նորմալիզացնում է սկանավորված/մուտքագրված տվյալը։
+ * Բարկոդ-սկաները հաճախ ավելացնում է whitespace/նոր տող, կամ QR-ը կարող է լինել
+ * share-հղում (`.../ticket/share?code=TICKET-12`)։ Հանում ենք ORDER-N / TICKET-N
+ * կաղապարը ցանկացած ֆորմատից։
+ */
+function normalizeScanInput(raw: string): {
+  type: 'order' | 'ticket' | null;
+  id: number | null;
+} {
+  if (!raw) return { type: null, id: null };
+  const text = decodeURIComponent(raw.trim()).toUpperCase();
+
+  const orderMatch = text.match(/ORDER[-\s_]?(\d+)/);
+  if (orderMatch) return { type: 'order', id: parseInt(orderMatch[1], 10) };
+
+  const ticketMatch = text.match(/TICKET[-\s_]?(\d+)/);
+  if (ticketMatch) return { type: 'ticket', id: parseInt(ticketMatch[1], 10) };
+
+  // Միայն թիվ (օր.՝ «123») — դիտարկում ենք որպես պատվերի համար
+  const bareNumber = text.match(/^#?(\d+)$/);
+  if (bareNumber) return { type: 'order', id: parseInt(bareNumber[1], 10) };
+
+  return { type: null, id: null };
+}
+
+async function fetchOrderData(orderId: number) {
+  return prisma.order.findUnique({
+    where: { id: orderId },
+    include: ORDER_INCLUDE,
+  });
+}
+
 export async function getOrderOrTicketByQR(qrData: string) {
   try {
-    // Parse QR code data: ORDER-{id} or TICKET-{id}
-    const orderMatch = qrData.match(/^ORDER-(\d+)$/);
-    const ticketMatch = qrData.match(/^TICKET-(\d+)$/);
+    const { type, id } = normalizeScanInput(qrData);
 
-    if (orderMatch) {
-      const orderId = parseInt(orderMatch[1], 10);
-      const order = await prisma.order.findUnique({
-        where: { id: orderId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-              email: true,
-            },
-          },
-          tickets: {
-            include: {
-              screening: {
-                include: {
-                  movie: {
-                    select: {
-                      id: true,
-                      title: true,
-                      image: true,
-                      duration: true,
-                    },
-                  },
-                  hall: {
-                    select: {
-                      id: true,
-                      name: true,
-                      capacity: true,
-                    },
-                  },
-                },
-              },
-              seat: {
-                select: {
-                  id: true,
-                  row: true,
-                  number: true,
-                  seatType: true,
-                },
-              },
-              orderItems: {
-                include: {
-                  product: {
-                    select: {
-                      id: true,
-                      name: true,
-                      price: true,
-                      category: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!order) {
-        return {
-          success: false,
-          error: 'Պատվերը չի գտնվել',
-          data: null,
-        };
-      }
-
-      return {
-        success: true,
-        type: 'order',
-        data: order,
-      };
-    } else if (ticketMatch) {
-      const ticketId = parseInt(ticketMatch[1], 10);
-      const ticket = await prisma.ticket.findUnique({
-        where: { id: ticketId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-              email: true,
-            },
-          },
-          screening: {
-            include: {
-              movie: {
-                select: {
-                  id: true,
-                  title: true,
-                  image: true,
-                  duration: true,
-                },
-              },
-              hall: {
-                select: {
-                  id: true,
-                  name: true,
-                  capacity: true,
-                },
-              },
-            },
-          },
-          seat: {
-            select: {
-              id: true,
-              row: true,
-              number: true,
-              seatType: true,
-            },
-          },
-          order: {
-            include: {
-              orderItems: {
-                include: {
-                  product: {
-                    select: {
-                      id: true,
-                      name: true,
-                      price: true,
-                      category: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!ticket) {
-        return {
-          success: false,
-          error: 'Տոմսը չի գտնվել',
-          data: null,
-        };
-      }
-
-      return {
-        success: true,
-        type: 'ticket',
-        data: ticket,
-      };
-    } else {
+    if (!type || id === null || isNaN(id)) {
       return {
         success: false,
         error: 'Անվավեր QR կոդ',
         data: null,
       };
     }
+
+    if (type === 'order') {
+      const order = await fetchOrderData(id);
+      if (!order) {
+        return { success: false, error: 'Պատվերը չի գտնվել', data: null };
+      }
+      return { success: true, type: 'order', data: order };
+    }
+
+    // type === 'ticket'
+    const ticket = await prisma.ticket.findUnique({
+      where: { id },
+      include: TICKET_INCLUDE,
+    });
+
+    if (!ticket) {
+      return { success: false, error: 'Տոմսը չի գտնվել', data: null };
+    }
+
+    // Եթե տոմսը պատկանում է պատվերի՝ վերադարձնում ենք ամբողջ պատվերը, որպեսզի
+    // TICKET-{id} և ORDER-{id} սկանավորումը տան նույն արդյունքը (բոլոր տոմսերը,
+    // վճարման պանելը ամրագրումների համար, «նշել որպես օգտագործված» և այլն)։
+    if (ticket.orderId) {
+      const order = await fetchOrderData(ticket.orderId);
+      if (order) {
+        return { success: true, type: 'order', data: order };
+      }
+    }
+
+    return { success: true, type: 'ticket', data: ticket };
   } catch (error: any) {
     console.error('[Get Order/Ticket By QR] Error:', error);
     return {
@@ -300,15 +269,26 @@ export async function findReservations(query: string) {
       return { success: false, error: 'Մուտքագրեք որոնման տվյալ', results: [] };
     }
 
-    const orderIdMatch =
-      q.match(/^(?:ORDER-)?(\d+)$/i) || q.match(/^#(\d+)$/);
     const where: any = {
       paymentMethod: COUNTER_PAYMENT_METHOD,
       tickets: { some: { status: 'reserved' } },
     };
 
-    if (orderIdMatch) {
-      where.id = parseInt(orderIdMatch[1], 10);
+    // ORDER-N / TICKET-N / մաքուր թիվ → ըստ պատվերի, հակառակ դեպքում՝ ըստ
+    // հեռախոսի կամ անվան
+    const upper = q.toUpperCase();
+    const ticketMatch = upper.match(/TICKET[-\s_]?(\d+)/);
+    const orderMatch =
+      upper.match(/ORDER[-\s_]?(\d+)/) || q.match(/^#?(\d+)$/);
+
+    if (ticketMatch) {
+      const ticket = await prisma.ticket.findUnique({
+        where: { id: parseInt(ticketMatch[1], 10) },
+        select: { orderId: true },
+      });
+      where.id = ticket?.orderId ?? -1;
+    } else if (orderMatch) {
+      where.id = parseInt(orderMatch[1], 10);
     } else {
       const phoneDigits = q.replace(/\D/g, '');
       where.user = {

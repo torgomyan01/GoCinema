@@ -48,6 +48,7 @@ interface TicketCardProps {
     createdAt: Date | string;
     order?: {
       id: number;
+      paymentMethod?: string | null;
       orderItems: Array<{
         id: number;
         quantity: number;
@@ -73,9 +74,14 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
   >(null);
   const qrCodeRef = useRef<HTMLDivElement>(null);
 
-  // Ամրագրման «hold» հետհաշվարկ (10 րոպե տոմսի ստեղծման պահից)
+  // Դրամարկղ-ամրագրում՝ վճարվում է մուտքի մոտ, ոչ թե օնլայն 10 րոպեում
+  const isCounterReservation = ticket.order?.paymentMethod === 'counter';
+  const screeningStarted =
+    new Date(ticket.screening.startTime).getTime() <= Date.now();
+
+  // Ամրագրման «hold» հետհաշվարկ (10 րոպե տոմսի ստեղծման պահից) — միայն online
   useEffect(() => {
-    if (ticket.status !== 'reserved') {
+    if (ticket.status !== 'reserved' || isCounterReservation) {
       setReservationSecondsLeft(null);
       return;
     }
@@ -88,7 +94,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [ticket.status, ticket.createdAt]);
+  }, [ticket.status, ticket.createdAt, isCounterReservation]);
 
   const reservationExpired =
     reservationSecondsLeft !== null && reservationSecondsLeft <= 0;
@@ -258,6 +264,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                     </span>
                   )}
                   {ticket.status === 'reserved' &&
+                    !isCounterReservation &&
                     reservationSecondsLeft !== null &&
                     !reservationExpired && (
                       <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
@@ -268,12 +275,32 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                         </span>
                       </span>
                     )}
-                  {ticket.status === 'reserved' && reservationExpired && (
-                    <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      Ամրագրման ժամկետը լրացել է
-                    </span>
-                  )}
+                  {ticket.status === 'reserved' &&
+                    !isCounterReservation &&
+                    reservationExpired && (
+                      <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Ամրագրման ժամկետը լրացել է
+                      </span>
+                    )}
+                  {ticket.status === 'reserved' &&
+                    isCounterReservation &&
+                    !screeningStarted && (
+                      <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Վճարեք մուտքի մոտ մինչև {formatTime(
+                          ticket.screening.startTime
+                        )}
+                      </span>
+                    )}
+                  {ticket.status === 'reserved' &&
+                    isCounterReservation &&
+                    screeningStarted && (
+                      <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Ամրագրման ժամկետը լրացել է
+                      </span>
+                    )}
                   <span className="ml-auto text-[11px] text-gray-400 uppercase tracking-[0.25em]">
                     Cinema Ticket
                   </span>
@@ -398,6 +425,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                     </>
                   )}
                   {ticket.status === 'reserved' &&
+                    !isCounterReservation &&
                     ticket.order &&
                     !reservationExpired && (
                       <Link
@@ -409,14 +437,44 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                           : 'Վճարել'}
                       </Link>
                     )}
-                  {ticket.status === 'reserved' && reservationExpired && (
-                    <Link
-                      href={SITE_URL.SCHEDULE}
-                      className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-all text-center shadow-sm"
-                    >
-                      Ընտրել նոր տեղեր
-                    </Link>
-                  )}
+                  {ticket.status === 'reserved' &&
+                    !isCounterReservation &&
+                    reservationExpired && (
+                      <Link
+                        href={SITE_URL.SCHEDULE}
+                        className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-all text-center shadow-sm"
+                      >
+                        Ընտրել նոր տեղեր
+                      </Link>
+                    )}
+                  {/* Դրամարկղ-ամրագրում՝ ցույց տուր QR-ը մուտքի մոտ */}
+                  {ticket.status === 'reserved' &&
+                    isCounterReservation &&
+                    !screeningStarted && (
+                      <>
+                        <button
+                          onClick={() => setShowQRModal(true)}
+                          className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-semibold hover:from-amber-600 hover:to-orange-600 transition-all flex items-center justify-center gap-2 shadow-sm"
+                        >
+                          <QrCode className="w-4 h-4" />
+                          Ցույց տալ QR (վճարում մուտքի մոտ)
+                        </button>
+                        <p className="text-xs text-gray-500 text-right md:max-w-48">
+                          Ցույց տվեք այս QR-ը դրամարկղում՝ վճարելու համար մինչև
+                          ցուցադրության սկիզբը։
+                        </p>
+                      </>
+                    )}
+                  {ticket.status === 'reserved' &&
+                    isCounterReservation &&
+                    screeningStarted && (
+                      <Link
+                        href={SITE_URL.SCHEDULE}
+                        className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-all text-center shadow-sm"
+                      >
+                        Ընտրել նոր տեղեր
+                      </Link>
+                    )}
                   {ticket.status === 'paid' && isUpcoming && (
                     <Link
                       href={SITE_URL.SCREENING_DETAIL(ticket.screening.id)}

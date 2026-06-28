@@ -31,6 +31,8 @@ export async function getAllUsers() {
         role: true,
         phoneVerified: true,
         emailVerified: true,
+        isBlocked: true,
+        blockedAt: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -66,6 +68,8 @@ export async function getUserById(id: number) {
         role: true,
         phoneVerified: true,
         emailVerified: true,
+        isBlocked: true,
+        blockedAt: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -238,6 +242,84 @@ export async function deleteUser(id: number) {
     return {
       success: false,
       error: 'Օգտատերը ջնջելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** Արգելափակում/ապաարգելափակում է օգտատիրոջը անվճար ամրագրումից։ */
+export async function setUserBlocked(id: number, blocked: boolean) {
+  try {
+    await prisma.user.update({
+      where: { id },
+      data: {
+        isBlocked: blocked,
+        blockedAt: blocked ? new Date() : null,
+      },
+    });
+
+    revalidatePath('/admin/users');
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Set User Blocked] Error:', error);
+    return {
+      success: false,
+      error: 'Օգտատիրոջ կարգավիճակը փոխելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/**
+ * Վերադարձնում է «ամրագրել են, բայց չեն եկել» (no-show) օգտատերերին՝
+ * ըստ չեղարկված դրամարկղ-ամրագրումների (noShow = true) քանակի։
+ */
+export async function getNoShowReport() {
+  try {
+    const grouped = await prisma.ticket.groupBy({
+      by: ['userId'],
+      where: { noShow: true },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    });
+
+    if (grouped.length === 0) {
+      return { success: true, users: [] };
+    }
+
+    const userIds = grouped.map((g) => g.userId);
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        isBlocked: true,
+        blockedAt: true,
+      },
+    });
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const report = grouped
+      .map((g) => {
+        const u = userMap.get(g.userId);
+        if (!u) return null;
+        return {
+          ...u,
+          noShowCount: g._count._all,
+          lastNoShowAt: g._max.updatedAt,
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .sort((a, b) => b.noShowCount - a.noShowCount);
+
+    return { success: true, users: report };
+  } catch (error: any) {
+    console.error('[Get No-Show Report] Error:', error);
+    return {
+      success: false,
+      error: 'No-show հաշվետվությունը բեռնելիս սխալ է տեղի ունեցել',
+      users: [],
     };
   }
 }

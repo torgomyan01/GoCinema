@@ -4,23 +4,57 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { occupiedTicketWhere, reservationCutoff } from '@/lib/reservation';
+import {
+  occupiedTicketWhere,
+  expiredReservationWhere,
+  onlineHoldUntil,
+  COUNTER_PAYMENT_METHOD,
+} from '@/lib/reservation';
 
 /**
- * Ազատում է լրացած (չվճարված 10 րոպեից ավելի) ամրագրումները՝ դրանք
- * cancelled դարձնելով։ Կանչվում է տեղերի հասանելիությունը ստուգելուց առաջ։
+ * Ազատում է լրացած ամրագրումները՝ դրանք cancelled դարձնելով։
+ *  - Online ամրագրումներ՝ holdUntil-ից (≈10ր) հետո։
+ *  - Դրամարկղ-ամրագրումներ (order.paymentMethod = "counter")՝ ցուցադրության
+ *    սկզբից հետո (holdUntil = startTime). դրանք նշվում են որպես `noShow`,
+ *    որպեսզի ադմինը կարողանա տեսնել «ամրագրել է, բայց չի եկել» օգտատերերին։
+ * Կանչվում է տեղերի հասանելիությունը ստուգելուց առաջ։
  */
 export async function releaseExpiredReservations(screeningId?: number) {
   try {
-    const result = await prisma.ticket.updateMany({
+    const expired = await prisma.ticket.findMany({
       where: {
-        status: 'reserved',
-        createdAt: { lt: reservationCutoff() },
+        ...expiredReservationWhere(),
         ...(screeningId ? { screeningId } : {}),
       },
-      data: { status: 'cancelled' },
+      select: {
+        id: true,
+        order: { select: { paymentMethod: true } },
+      },
     });
-    return result.count;
+
+    if (expired.length === 0) return 0;
+
+    const counterIds = expired
+      .filter((t) => t.order?.paymentMethod === COUNTER_PAYMENT_METHOD)
+      .map((t) => t.id);
+    const otherIds = expired
+      .filter((t) => t.order?.paymentMethod !== COUNTER_PAYMENT_METHOD)
+      .map((t) => t.id);
+
+    if (counterIds.length > 0) {
+      await prisma.ticket.updateMany({
+        where: { id: { in: counterIds } },
+        data: { status: 'cancelled', noShow: true },
+      });
+    }
+    if (otherIds.length > 0) {
+      await prisma.ticket.updateMany({
+        where: { id: { in: otherIds } },
+        data: { status: 'cancelled' },
+      });
+    }
+
+    return expired.length;
   } catch (error) {
     console.error('[Release Expired Reservations] Error:', error);
     return 0;
@@ -233,6 +267,7 @@ export async function createTicket(data: CreateTicketData) {
         seatId: data.seatId,
         price: data.price,
         status: 'reserved',
+        holdUntil: onlineHoldUntil(),
       },
       include: {
         screening: {
@@ -293,6 +328,7 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
       };
     }
 
+    const holdUntil = onlineHoldUntil();
     const tickets = await prisma.ticket.createMany({
       data: data.seats.map((seat) => ({
         userId: data.userId,
@@ -300,6 +336,7 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
         seatId: seat.seatId,
         price: seat.price,
         status: 'reserved',
+        holdUntil,
       })),
     });
 

@@ -41,6 +41,7 @@ interface Ticket {
   };
   order?: {
     id: number;
+    paymentMethod?: string | null;
     orderItems: Array<{
       id: number;
       quantity: number;
@@ -62,6 +63,16 @@ export default function TicketsPageClient() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showReservedNotice, setShowReservedNotice] = useState(false);
+
+  useEffect(() => {
+    if (
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('reserved') === '1'
+    ) {
+      setShowReservedNotice(true);
+    }
+  }, []);
 
   useEffect(() => {
     // Redirect if not authenticated
@@ -192,6 +203,33 @@ export default function TicketsPageClient() {
             Դիտեք ձեր բոլոր ամրագրված և գնված տոմսերը
           </p>
         </motion.div>
+
+        {/* Reserved (pay at counter) notice */}
+        {showReservedNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3"
+          >
+            <TicketIcon className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800">
+              <p className="font-semibold mb-0.5">
+                Տոմսը ամրագրված է։ Վճարումը՝ մուտքի մոտ։
+              </p>
+              <p>
+                Ցույց տվեք ձեր QR կոդը դրամարկղում և վճարեք մինչև ցուցադրության
+                սկիզբը։ Չվճարված ամրագրումը կչեղարկվի ցուցադրության մեկնարկից
+                հետո։
+              </p>
+            </div>
+            <button
+              onClick={() => setShowReservedNotice(false)}
+              className="ml-auto text-amber-500 hover:text-amber-700"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
 
         {/* Filter */}
         <TicketsFilter

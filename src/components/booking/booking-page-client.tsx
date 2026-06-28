@@ -15,6 +15,7 @@ import {
   Search,
   ChevronUp,
   ChevronDown,
+  AlertCircle,
 } from 'lucide-react';
 
 /** Cinema seat icon – back + seat cushion */
@@ -50,6 +51,7 @@ import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
 import { getScreeningById } from '@/app/actions/screenings';
 import { createOrder } from '@/app/actions/orders';
+import { createCounterReservation } from '@/app/actions/reservations';
 import { getProducts } from '@/app/actions/products';
 
 interface BookingPageClientProps {
@@ -105,6 +107,7 @@ export default function BookingPageClient({
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isReserving, setIsReserving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [currentSeatId, setCurrentSeatId] = useState<number | null>(null);
@@ -374,6 +377,56 @@ export default function BookingPageClient({
       setError('Պատվեր ստեղծելիս սխալ է տեղի ունեցել');
     } finally {
       setIsCreatingOrder(false);
+    }
+  };
+
+  // Ամրագրել՝ վճարել մուտքի մոտ (հետվճարային)
+  const handleReserveAtCounter = async () => {
+    if (!session?.user || !screening || selectedSeats.length === 0) {
+      if (!session?.user) {
+        router.push('/account');
+      }
+      return;
+    }
+
+    setIsReserving(true);
+    setError(null);
+
+    try {
+      const productsArr: Array<{
+        productId: number;
+        quantity: number;
+        seatId: number;
+      }> = [];
+      seatProducts.forEach((productMap, seatId) => {
+        productMap.forEach((quantity, productId) => {
+          productsArr.push({ productId, quantity, seatId });
+        });
+      });
+
+      const result = await createCounterReservation({
+        screeningId: screening.id,
+        seatIds: selectedSeats,
+        products: productsArr,
+      });
+
+      if (result.success) {
+        router.push(`${SITE_URL.TICKETS}?reserved=1`);
+      } else {
+        setError(result.error || 'Ամրագրում ստեղծելիս սխալ է տեղի ունեցել');
+        const refreshed = await getScreeningById(screening.id);
+        if (refreshed.success && refreshed.screening) {
+          const updated = refreshed.screening as unknown as Screening;
+          setScreening(updated);
+          const occupied = new Set(updated.tickets.map((t) => t.seat.id));
+          setSelectedSeats((prev) => prev.filter((id) => !occupied.has(id)));
+        }
+      }
+    } catch (err) {
+      console.error('Error reserving at counter:', err);
+      setError('Ամրագրում ստեղծելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsReserving(false);
     }
   };
 
@@ -697,15 +750,36 @@ export default function BookingPageClient({
 
                   <button
                     onClick={handleContinueToCheckout}
-                    disabled={isCreatingOrder || !session?.user}
+                    disabled={isCreatingOrder || isReserving || !session?.user}
                     className={`w-full py-3 rounded-xl font-semibold text-white transition-all shadow-md ${
-                      isCreatingOrder || !session?.user
+                      isCreatingOrder || isReserving || !session?.user
                         ? 'bg-gray-300 cursor-not-allowed'
                         : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 hover:shadow-lg'
                     }`}
                   >
-                    {isCreatingOrder ? 'Ստեղծվում է...' : 'Շարունակել →'}
+                    {isCreatingOrder ? 'Ստեղծվում է...' : 'Վճարել օնլայն →'}
                   </button>
+
+                  <button
+                    onClick={handleReserveAtCounter}
+                    disabled={isCreatingOrder || isReserving || !session?.user}
+                    className={`mt-2 w-full py-2.5 rounded-xl font-semibold text-sm transition-all border ${
+                      isCreatingOrder || isReserving || !session?.user
+                        ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                        : 'border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100'
+                    }`}
+                  >
+                    {isReserving
+                      ? 'Ամրագրվում է...'
+                      : 'Ամրագրել, վճարել մուտքի մոտ'}
+                  </button>
+
+                  {error && (
+                    <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{error}</span>
+                    </div>
+                  )}
                   <p className="mt-2 text-xs text-gray-400 text-center leading-relaxed">
                     Ամրագրելով՝ ընդունում եք{' '}
                     <Link
@@ -835,6 +909,14 @@ export default function BookingPageClient({
           )}
         </AnimatePresence>
 
+        {/* Error banner */}
+        {error && (
+          <div className="bg-red-50 border-t border-red-200 px-4 py-2.5 text-sm text-red-700 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* Bottom action bar */}
         <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 safe-area-bottom">
           {selectedSeats.length > 0 ? (
@@ -867,22 +949,39 @@ export default function BookingPageClient({
                 </div>
               </button>
 
-              {/* Continue button */}
-              <button
-                onClick={handleContinueToCheckout}
-                disabled={isCreatingOrder || !session?.user}
-                className={`shrink-0 px-6 py-3 rounded-xl font-semibold text-white text-sm transition-all ${
-                  isCreatingOrder || !session?.user
-                    ? 'bg-gray-300 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-purple-600 to-pink-600 active:scale-95 shadow-lg shadow-purple-500/30'
-                }`}
-              >
-                {isCreatingOrder ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  'Շարունակել →'
-                )}
-              </button>
+              {/* Action buttons */}
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <button
+                  onClick={handleContinueToCheckout}
+                  disabled={isCreatingOrder || isReserving || !session?.user}
+                  className={`px-5 py-2.5 rounded-xl font-semibold text-white text-sm transition-all ${
+                    isCreatingOrder || isReserving || !session?.user
+                      ? 'bg-gray-300 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-purple-600 to-pink-600 active:scale-95 shadow-lg shadow-purple-500/30'
+                  }`}
+                >
+                  {isCreatingOrder ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                  ) : (
+                    'Վճարել օնլայն →'
+                  )}
+                </button>
+                <button
+                  onClick={handleReserveAtCounter}
+                  disabled={isCreatingOrder || isReserving || !session?.user}
+                  className={`px-5 py-2 rounded-xl font-semibold text-sm transition-all border ${
+                    isCreatingOrder || isReserving || !session?.user
+                      ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                      : 'border-purple-300 text-purple-700 bg-purple-50 active:scale-95 hover:bg-purple-100'
+                  }`}
+                >
+                  {isReserving ? (
+                    <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mx-auto" />
+                  ) : (
+                    'Ամրագրել, վճարել մուտքի մոտ'
+                  )}
+                </button>
+              </div>
             </>
           ) : (
             <div className="flex items-center gap-3 w-full">

@@ -24,14 +24,32 @@ import {
   ArrowRight,
   Info,
 } from 'lucide-react';
+import { Search, Banknote } from 'lucide-react';
 import QRScanner from './qr-scanner';
 import TicketCard from './ticket-card';
+import PaymentPanel, { type PaymentMethod } from './box-office-payment-panel';
 import {
   getOrderOrTicketByQR,
   markTicketAsUsed,
   markAllTicketsInOrderAsUsed,
+  findReservations,
+  payReservationAtCounter,
 } from '@/app/actions/scanner';
 import Image from 'next/image';
+
+interface ReservationSearchResult {
+  orderId: number;
+  qrCode: string;
+  userName: string | null;
+  userPhone: string | null;
+  isBlocked: boolean;
+  movieTitle: string | null;
+  startTime: string | Date | null;
+  seatCount: number;
+  reservedCount: number;
+  totalAmount: number;
+  status: string;
+}
 
 interface AdminScannerClientProps {
   user: {
@@ -60,6 +78,20 @@ const STORAGE_KEY = 'admin_scanner_windows';
 export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const [windows, setWindows] = useState<ScannerWindow[]>([]);
   const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
+
+  // Ամրագրումների որոնում (հեռախոս / պատվերի համար)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<ReservationSearchResult[]>(
+    []
+  );
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Դրամարկղ-վճարման վիճակ (ակտիվ պատուհանի համար)
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('cash');
+  const [payCash, setPayCash] = useState<number | ''>('');
+  const [isPaying, setIsPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
 
   // Load windows from localStorage on mount
   useEffect(() => {
@@ -111,6 +143,95 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(serializableWindows));
     }
   }, [windows]);
+
+  // Ակտիվ պատուհանը փոխվելիս զրոյացնում ենք վճարման դաշտերը
+  useEffect(() => {
+    setPayMethod('cash');
+    setPayCash('');
+    setPayError(null);
+  }, [activeWindowId]);
+
+  const handleSearch = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setIsSearching(true);
+    setSearchError(null);
+    setSearchResults([]);
+    try {
+      const result = await findReservations(q);
+      if (result.success) {
+        setSearchResults(result.results as ReservationSearchResult[]);
+        if (result.results.length === 0) {
+          setSearchError('Ամրագրումներ չեն գտնվել');
+        }
+      } else {
+        setSearchError(result.error || 'Որոնելիս սխալ է տեղի ունեցել');
+      }
+    } catch (err) {
+      console.error('Error searching reservations:', err);
+      setSearchError('Որոնելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectResult = (result: ReservationSearchResult) => {
+    if (!activeWindowId) return;
+    setSearchResults([]);
+    setSearchQuery('');
+    setSearchError(null);
+    handleScanSuccess(activeWindowId, result.qrCode);
+  };
+
+  const handlePayReservation = async (windowId: string, total: number) => {
+    const win = windows.find((w) => w.id === windowId);
+    if (!win || !win.scannedData) return;
+    const orderId =
+      win.scannedData.type === 'order'
+        ? win.scannedData.data.id
+        : win.scannedData.data.order?.id;
+    if (!orderId) {
+      setPayError('Պատվերը չի գտնվել');
+      return;
+    }
+
+    if (payMethod === 'cash') {
+      const received = payCash === '' ? NaN : Number(payCash);
+      if (!Number.isFinite(received) || received < total) {
+        setPayError('Ստացված կանխիկ գումարը չի կարող պակաս լինել ընդհանուրից');
+        return;
+      }
+    }
+
+    setIsPaying(true);
+    setPayError(null);
+    try {
+      const result = await payReservationAtCounter({
+        orderId,
+        method: payMethod,
+        amountPaid: payMethod === 'cash' ? Number(payCash) : undefined,
+      });
+      if (result.success) {
+        setPayCash('');
+        setPayMethod('cash');
+        await handleScanSuccess(windowId, `ORDER-${orderId}`);
+        alert(
+          `${result.message}${
+            payMethod === 'cash' && result.change
+              ? ` • Մանր՝ ${result.change.toLocaleString()} ֏`
+              : ''
+          }`
+        );
+      } else {
+        setPayError(result.error || 'Վճարումը մշակելիս սխալ է տեղի ունեցել');
+      }
+    } catch (err) {
+      console.error('Error paying reservation:', err);
+      setPayError('Վճարումը մշակելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsPaying(false);
+    }
+  };
 
   const createNewWindow = () => {
     const newWindow: ScannerWindow = {
@@ -494,6 +615,78 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
               }
               onError={(err) => updateWindow(activeWindow.id, { error: err })}
             />
+
+            {/* Ամրագրման որոնում (առանց QR-ի) */}
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Չվճարված ամրագրում (առանց QR)
+              </p>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSearch();
+                    }}
+                    placeholder="Հեռախոս կամ պատվերի համար (#)"
+                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+                <button
+                  onClick={handleSearch}
+                  disabled={isSearching || !searchQuery.trim()}
+                  className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-medium text-sm hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSearching ? '...' : 'Որոնել'}
+                </button>
+              </div>
+
+              {searchError && (
+                <p className="mt-2 text-sm text-gray-500">{searchError}</p>
+              )}
+
+              {searchResults.length > 0 && (
+                <div className="mt-3 space-y-2 max-h-72 overflow-y-auto">
+                  {searchResults.map((r) => (
+                    <button
+                      key={r.orderId}
+                      onClick={() => handleSelectResult(r)}
+                      className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-900 text-sm">
+                          Պատվեր #{r.orderId}
+                        </span>
+                        <span className="text-sm font-bold text-green-600">
+                          {r.totalAmount.toLocaleString('hy-AM')} ֏
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {r.userName || 'Անանուն'}
+                        {r.userPhone ? ` • ${formatPhone(r.userPhone)}` : ''}
+                        {r.isBlocked && (
+                          <span className="ml-1 text-red-600 font-medium">
+                            (արգելափակված)
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {r.movieTitle || 'ֆիլմ'}
+                        {r.startTime
+                          ? ` • ${formatDate(r.startTime)} ${formatTime(r.startTime)}`
+                          : ''}
+                      </div>
+                      <div className="text-xs text-purple-600 mt-0.5 font-medium">
+                        {r.reservedCount} չվճարված / {r.seatCount} աթոռ
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {activeWindow.isLoading && (
               <div className="mt-4 text-center">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
@@ -731,6 +924,79 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                     )}
                   </div>
                 </div>
+
+                {/* Դրամարկղ-վճարում՝ չվճարված ամրագրման համար */}
+                {(() => {
+                  const reserved = activeWindow.scannedData.data.tickets.filter(
+                    (t: any) => t.status === 'reserved'
+                  );
+                  if (reserved.length === 0) return null;
+                  const ticketsTotal = reserved.reduce(
+                    (sum: number, t: any) => sum + (t.price || 0),
+                    0
+                  );
+                  const productsTotal =
+                    activeWindow.scannedData.data.tickets.reduce(
+                      (sum: number, t: any) =>
+                        sum +
+                        (t.orderItems?.reduce(
+                          (s: number, item: any) =>
+                            s + item.price * item.quantity,
+                          0
+                        ) || 0),
+                      0
+                    );
+                  const grandTotal = ticketsTotal + productsTotal;
+                  return (
+                    <div className="rounded-xl border-2 border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <Banknote className="w-5 h-5 text-amber-600" />
+                          Վճարում դրամարկղում
+                        </h4>
+                        <span className="text-lg font-bold text-amber-700">
+                          {grandTotal.toLocaleString('hy-AM')} ֏
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {reserved.length} չվճարված տոմս
+                        {productsTotal > 0 ? ' + ապրանքներ' : ''}
+                      </p>
+                      <PaymentPanel
+                        total={grandTotal}
+                        method={payMethod}
+                        setMethod={setPayMethod}
+                        cashReceived={payCash}
+                        setCashReceived={setPayCash}
+                        accent="amber"
+                        disabled={isPaying}
+                      />
+                      {payError && (
+                        <p className="text-sm text-red-600">{payError}</p>
+                      )}
+                      <button
+                        onClick={() =>
+                          handlePayReservation(activeWindow.id, grandTotal)
+                        }
+                        disabled={isPaying}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-semibold hover:from-amber-600 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                      >
+                        {isPaying ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Մշակվում է...
+                          </>
+                        ) : (
+                          <>
+                            <Banknote className="w-5 h-5" />
+                            Ստանալ վճարումը ({grandTotal.toLocaleString('hy-AM')}{' '}
+                            ֏)
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Action Button */}
                 {activeWindow.scannedData.data.tickets.some(
@@ -981,6 +1247,23 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                         </span>
                       </div>
                     </div>
+                  )}
+
+                {/* Չվճարված ամրագրում՝ ուղղորդում դեպի պատվերը */}
+                {activeWindow.scannedData.data.status === 'reserved' &&
+                  activeWindow.scannedData.data.order?.id && (
+                    <button
+                      onClick={() =>
+                        handleScanSuccess(
+                          activeWindow.id,
+                          `ORDER-${activeWindow.scannedData.data.order.id}`
+                        )
+                      }
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-semibold hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg"
+                    >
+                      <Banknote className="w-5 h-5" />
+                      Բացել պատվերը վճարման համար
+                    </button>
                   )}
 
                 {/* Action Button */}

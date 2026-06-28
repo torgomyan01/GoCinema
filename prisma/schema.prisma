@@ -22,6 +22,8 @@ model User {
   phoneVerified    Boolean   @default(false)
   avatar           String?   @db.VarChar(500)
   telegramChatId   String?   @db.VarChar(100) // Telegram chat ID for OTP delivery
+  isBlocked        Boolean   @default(false) // արգելափակված է անվճար ամրագրումից (no-show-ի պատճառով)
+  blockedAt        DateTime? // երբ է արգելափակվել
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -170,6 +172,8 @@ model Ticket {
   price       Float
   status      String    @default("reserved") @db.VarChar(50) // reserved, paid, used, cancelled
   qrCode      String?   @db.VarChar(500)
+  holdUntil   DateTime? // ամրագրման ժամկետի վերջը. online՝ +10ր, դրամարկղ-ամրագրում՝ ցուցադրության սկիզբը
+  noShow      Boolean   @default(false) // դրամարկղ-ամրագրում, որը լրացել է առանց վճարման (չի եկել)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -185,6 +189,7 @@ model Ticket {
   @@index([screeningId])
   @@index([status])
   @@index([orderId])
+  @@index([noShow])
   @@map("tickets")
 }
 
@@ -241,7 +246,7 @@ model Order {
   userId        Int
   totalAmount   Float
   status        String      @default("pending") @db.VarChar(50) // pending, completed, cancelled
-  paymentMethod String      @default("cash") @db.VarChar(50) // cash, card
+  paymentMethod String      @default("cash") @db.VarChar(50) // cash, card, counter (օնլայն ամրագրում՝ դրամարկղում վճարելու համար)
   amountPaid    Float?      // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt

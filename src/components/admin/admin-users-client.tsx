@@ -20,6 +20,10 @@ import {
   EyeOff,
   CheckCircle,
   XCircle,
+  Ban,
+  ShieldCheck,
+  UserX,
+  Clock,
 } from 'lucide-react';
 import {
   getAllUsers,
@@ -27,6 +31,8 @@ import {
   updateUser,
   changeUserPassword,
   deleteUser,
+  setUserBlocked,
+  getNoShowReport,
 } from '@/app/actions/users';
 import {
   ALL_ROLES,
@@ -60,12 +66,25 @@ interface UserType {
   role: string;
   phoneVerified: boolean;
   emailVerified: boolean;
+  isBlocked: boolean;
+  blockedAt?: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   _count: {
     tickets: number;
     orders: number;
   };
+}
+
+interface NoShowUser {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  isBlocked: boolean;
+  blockedAt?: Date | string | null;
+  noShowCount: number;
+  lastNoShowAt?: Date | string | null;
 }
 
 export default function AdminUsersClient({
@@ -81,6 +100,10 @@ export default function AdminUsersClient({
   const [error, setError] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'all' | 'noshow'>('all');
+  const [noShowUsers, setNoShowUsers] = useState<NoShowUser[]>([]);
+  const [isLoadingNoShow, setIsLoadingNoShow] = useState(false);
+  const [blockingId, setBlockingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -98,6 +121,53 @@ export default function AdminUsersClient({
   useEffect(() => {
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (viewMode === 'noshow') {
+      loadNoShow();
+    }
+  }, [viewMode]);
+
+  const loadNoShow = async () => {
+    setIsLoadingNoShow(true);
+    try {
+      const result = await getNoShowReport();
+      if (result.success && result.users) {
+        setNoShowUsers(result.users as NoShowUser[]);
+      }
+    } catch (err) {
+      console.error('Error loading no-show report:', err);
+    } finally {
+      setIsLoadingNoShow(false);
+    }
+  };
+
+  const handleToggleBlock = async (userId: number, block: boolean) => {
+    if (block) {
+      if (
+        !confirm(
+          'Արգելափակե՞լ այս օգտատիրոջը։ Նա այլևս չի կարողանա անվճար ամրագրել (բայց կկարողանա օնլայն վճարել)։'
+        )
+      ) {
+        return;
+      }
+    }
+    setBlockingId(userId);
+    try {
+      const result = await setUserBlocked(userId, block);
+      if (result.success) {
+        await loadUsers();
+        if (viewMode === 'noshow') await loadNoShow();
+      } else {
+        alert(result.error || 'Սխալ է տեղի ունեցել');
+      }
+    } catch (err) {
+      console.error('Error toggling block:', err);
+      alert('Սխալ է տեղի ունեցել');
+    } finally {
+      setBlockingId(null);
+    }
+  };
 
   useEffect(() => {
     filterUsers();
@@ -293,7 +363,7 @@ export default function AdminUsersClient({
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <div className="p-2 bg-orange-100 rounded-lg">
@@ -303,8 +373,35 @@ export default function AdminUsersClient({
           </h1>
           <p className="text-gray-600 mt-1">Կառավարեք բոլոր օգտատերերին</p>
         </div>
+
+        {/* View toggle */}
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 self-start">
+          <button
+            onClick={() => setViewMode('all')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'all'
+                ? 'bg-white text-purple-700 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Բոլոր օգտատերերը
+          </button>
+          <button
+            onClick={() => setViewMode('noshow')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'noshow'
+                ? 'bg-white text-red-700 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <UserX className="w-4 h-4" />
+            Ամրագրել են, չեն եկել
+          </button>
+        </div>
       </div>
 
+      {viewMode === 'all' && (
+        <>
       {/* Filters */}
       <div className="mb-6 flex flex-col md:flex-row gap-4">
         {/* Search */}
@@ -389,8 +486,14 @@ export default function AdminUsersClient({
                 {filteredUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
                         {u.name || 'Անանուն'}
+                        {u.isBlocked && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700">
+                            <Ban className="w-3 h-3" />
+                            Արգելափակված
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-gray-500">ID: {u.id}</div>
                     </td>
@@ -452,6 +555,25 @@ export default function AdminUsersClient({
                         >
                           <Edit className="w-4 h-4" />
                         </button>
+                        {u.isBlocked ? (
+                          <button
+                            onClick={() => handleToggleBlock(u.id, false)}
+                            disabled={blockingId === u.id}
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Ապաարգելափակել"
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleBlock(u.id, true)}
+                            disabled={blockingId === u.id}
+                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Արգելափակել անվճար ամրագրումից"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
                         {parseInt(currentUser.id) !== u.id && (
                           <button
                             onClick={() => handleDelete(u.id)}
@@ -469,6 +591,133 @@ export default function AdminUsersClient({
             </table>
           </div>
         </div>
+      )}
+        </>
+      )}
+
+      {/* No-show view */}
+      {viewMode === 'noshow' && (
+        <>
+          <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-start gap-2">
+            <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              Այս ցանկում օգտատերերն են, ովքեր անվճար ամրագրել են տոմս, բայց չեն
+              վճարել մինչև ցուցադրության սկիզբը (չեն եկել)։ Կարող եք արգելափակել
+              նրանց՝ անվճար ամրագրումը կասեցնելու համար։
+            </span>
+          </div>
+
+          {isLoadingNoShow ? (
+            <div className="text-center py-20">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+              <p className="mt-4 text-gray-600">Բեռնվում է...</p>
+            </div>
+          ) : noShowUsers.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
+              <UserX className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg">No-show օգտատերեր չկան</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Օգտատեր
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Կոնտակտ
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Չեկած ամրագրումներ
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Վերջին անգամ
+                      </th>
+                      <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Գործողություններ
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {noShowUsers.map((u) => (
+                      <tr
+                        key={u.id}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                            {u.name || 'Անանուն'}
+                            {u.isBlocked && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700">
+                                <Ban className="w-3 h-3" />
+                                Արգելափակված
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            ID: {u.id}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900 space-y-1">
+                            {u.phone && (
+                              <div className="flex items-center gap-1">
+                                <Phone className="w-4 h-4 text-gray-400" />
+                                {formatPhone(u.phone)}
+                              </div>
+                            )}
+                            {u.email && (
+                              <div className="flex items-center gap-1">
+                                <Mail className="w-4 h-4 text-gray-400" />
+                                {u.email}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center justify-center min-w-8 px-2.5 py-1 rounded-full text-sm font-bold bg-red-100 text-red-700">
+                            {u.noShowCount}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-600 flex items-center gap-1">
+                            <Calendar className="w-4 h-4" />
+                            {u.lastNoShowAt
+                              ? formatDate(u.lastNoShowAt)
+                              : '-'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {u.isBlocked ? (
+                            <button
+                              onClick={() => handleToggleBlock(u.id, false)}
+                              disabled={blockingId === u.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 text-green-700 bg-green-50 hover:bg-green-100 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                            >
+                              <ShieldCheck className="w-4 h-4" />
+                              Ապաարգելափակել
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleBlock(u.id, true)}
+                              disabled={blockingId === u.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                            >
+                              <Ban className="w-4 h-4" />
+                              Արգելափակել
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Edit Modal */}

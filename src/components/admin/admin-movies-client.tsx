@@ -6,7 +6,8 @@ import {
   Film,
   Plus,
   Edit,
-  Trash2,
+  Archive,
+  ArchiveRestore,
   X,
   Calendar,
   Clock,
@@ -25,7 +26,8 @@ import {
   getMovies,
   createMovie,
   updateMovie,
-  deleteMovie,
+  archiveMovie,
+  restoreMovie,
 } from '@/app/actions/movies';
 import { AGE_RATING_OPTIONS, ageRatingClasses } from '@/lib/age-rating';
 
@@ -62,6 +64,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
   const [isLoading, setIsLoading] = useState(true);
 
   // Available genres
@@ -118,9 +121,59 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
     loadMovies();
   }, []);
 
-  const filteredMovies = movies.filter((movie) =>
-    movie.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredMovies = movies.filter((movie) => {
+    const matchesSearch = movie.title
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+    const isArchived = movie.isActive === false;
+    if (viewMode === 'archived') return matchesSearch && isArchived;
+    return matchesSearch && !isArchived;
+  });
+
+  const activeCount = movies.filter((m) => m.isActive !== false).length;
+  const archivedCount = movies.filter((m) => m.isActive === false).length;
+
+  const handleArchiveMovie = async (id: number) => {
+    if (
+      !confirm(
+        'Արխիվացնե՞լ այս ֆիլմը։\n\nԿայքում այլևս չի երևա, բայց տոմսերի և վճարումների պատմությունը կպահպանվի։'
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = await archiveMovie(id);
+      if (result.success) {
+        setMovies(
+          movies.map((m) => (m.id === id ? { ...m, isActive: false } : m))
+        );
+      } else {
+        alert(result.error || 'Ֆիլմ արխիվացնելիս սխալ է տեղի ունեցել');
+      }
+    } catch (error) {
+      console.error('Error archiving movie:', error);
+      alert('Ֆիլմ արխիվացնելիս սխալ է տեղի ունեցել');
+    }
+  };
+
+  const handleRestoreMovie = async (id: number) => {
+    if (!confirm('Վերականգնե՞լ այս ֆիլմը կայքում ցուցադրելու համար։')) {
+      return;
+    }
+    try {
+      const result = await restoreMovie(id);
+      if (result.success) {
+        setMovies(
+          movies.map((m) => (m.id === id ? { ...m, isActive: true } : m))
+        );
+      } else {
+        alert(result.error || 'Ֆիլմ վերականգնելիս սխալ է տեղի ունեցել');
+      }
+    } catch (error) {
+      console.error('Error restoring movie:', error);
+      alert('Ֆիլմ վերականգնելիս սխալ է տեղի ունեցել');
+    }
+  };
 
   const handleAddMovie = () => {
     setFormData({
@@ -153,22 +206,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       trailerUrl: movie.trailerUrl || '',
     });
     setIsEditModalOpen(true);
-  };
-
-  const handleDeleteMovie = async (id: number) => {
-    if (confirm('Դուք համոզված եք, որ ցանկանում եք ջնջել այս ֆիլմը?')) {
-      try {
-        const result = await deleteMovie(id);
-        if (result.success) {
-          setMovies(movies.filter((m) => m.id !== id));
-        } else {
-          alert(result.error || 'Ֆիլմը ջնջելիս սխալ է տեղի ունեցել');
-        }
-      } catch (error) {
-        console.error('Error deleting movie:', error);
-        alert('Ֆիլմը ջնջելիս սխալ է տեղի ունեցել');
-      }
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -291,8 +328,32 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
 
         {/* Content */}
         <div className="p-6">
-          {/* Search */}
-          <div className="mb-6">
+          {/* View toggle + Search */}
+          <div className="mb-6 space-y-4">
+            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white shadow-sm border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setViewMode('active')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'active'
+                    ? 'bg-purple-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Ակտիվ ({activeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('archived')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'archived'
+                    ? 'bg-purple-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Արխիվ ({archivedCount})
+              </button>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -315,9 +376,13 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
             <div className="text-center py-12">
               <Film className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 text-lg mb-2">
-                {searchQuery ? 'Ֆիլմ չի գտնվել' : 'Ֆիլմեր չկան'}
+                {searchQuery
+                  ? 'Ֆիլմ չի գտնվել'
+                  : viewMode === 'archived'
+                    ? 'Արխիվացված ֆիլմեր չկան'
+                    : 'Ակտիվ ֆիլմեր չկան'}
               </p>
-              {!searchQuery && (
+              {!searchQuery && viewMode === 'active' && (
                 <button
                   onClick={handleAddMovie}
                   className="text-purple-600 hover:text-purple-700 font-medium"
@@ -334,10 +399,17 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
+                  className={`bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow ${
+                    movie.isActive === false ? 'opacity-80' : ''
+                  }`}
                 >
                   {/* Movie Image */}
                   <div className="relative w-full h-64 bg-gray-200">
+                    {movie.isActive === false && (
+                      <span className="absolute top-3 left-3 z-10 px-2 py-1 rounded-full text-xs font-semibold bg-gray-900/80 text-white">
+                        Արխիվ
+                      </span>
+                    )}
                     <Image
                       src={
                         movie.image ||
@@ -404,12 +476,25 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                           <Edit className="w-4 h-4" />
                           Խմբագրել
                         </button>
-                        <button
-                          onClick={() => handleDeleteMovie(movie.id)}
-                          className="px-3 py-2 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {viewMode === 'active' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleArchiveMovie(movie.id)}
+                            title="Արխիվացնել"
+                            className="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg font-medium hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreMovie(movie.id)}
+                            title="Վերականգնել"
+                            className="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg font-medium hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <ArchiveRestore className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

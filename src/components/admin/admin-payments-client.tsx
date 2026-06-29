@@ -187,14 +187,8 @@ export default function AdminPaymentsClient({
     }
   };
 
-  const canCapture = (state: string) =>
-    state === 'payment_approved' ||
-    state === 'payment_autoauthorized' ||
-    state === 'payment_started' ||
-    state === 'unknown';
-
-  const canRefund = (state: string) =>
-    state !== 'payment_refunded' && state !== 'payment_void';
+  const isFrozenTransaction = (state: string) =>
+    state === 'payment_approved' || state === 'payment_autoauthorized';
 
   const formatDateTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
@@ -521,7 +515,9 @@ export default function AdminPaymentsClient({
                   const orderId =
                     row.actionOrderId ?? row.partnerOrderId ?? row.itfOrderId;
                   const captureKey = orderId ? `${orderId}-capture` : row.key;
-                  const refundKey = orderId ? `${orderId}-refund` : `${row.key}-r`;
+                  const refundKey = orderId
+                    ? `${orderId}-refund`
+                    : `${row.key}-r`;
                   const isCapturing = actionKey === captureKey;
                   const isRefunding = actionKey === refundKey;
                   const movies = row.localOrder?.movieTitles?.length
@@ -624,45 +620,38 @@ export default function AdminPaymentsClient({
                         </div>
                       </div>
 
-                      {/* Գործողություններ — միշտ տեսանելի */}
-                      <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-100">
-                        <button
-                          type="button"
-                          onClick={() => handleRefundVPost(row)}
-                          disabled={isRefunding || isCapturing || !orderId}
-                          title={
-                            !canRefund(row.paymentState)
-                              ? 'vPost /order/cancel — կարգավիճակը հնարավոր չի լինի վերադարձել'
-                              : 'vPost /order/cancel — ազատել սառեցված գումարը'
-                          }
-                          className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-red-300 bg-red-50 text-red-800 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isRefunding ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <RotateCcw className="w-4 h-4" />
-                          )}
-                          Վերադարձնել գումարը
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCaptureVPost(row)}
-                          disabled={isCapturing || isRefunding || !orderId}
-                          title={
-                            !canCapture(row.paymentState)
-                              ? 'vPost /order/confirm-payment — արդեն գանձված կամ հնարավոր չէ'
-                              : 'vPost /order/confirm-payment — գանձել սառեցված գումարը'
-                          }
-                          className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-emerald-400 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isCapturing ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Banknote className="w-4 h-4" />
-                          )}
-                          Գանձել գումարը
-                        </button>
-                      </div>
+                      {isFrozenTransaction(row.paymentState) && orderId && (
+                        <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-100">
+                          <button
+                            type="button"
+                            onClick={() => handleRefundVPost(row)}
+                            disabled={isRefunding || isCapturing}
+                            title="vPost /order/cancel — ազատել սառեցված գումարը"
+                            className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-red-300 bg-red-50 text-red-800 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isRefunding ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-4 h-4" />
+                            )}
+                            Վերադարձնել գումարը
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCaptureVPost(row)}
+                            disabled={isCapturing || isRefunding}
+                            title="vPost /order/confirm-payment — գանձել սառեցված գումարը"
+                            className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-emerald-400 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isCapturing ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Banknote className="w-4 h-4" />
+                            )}
+                            Գանձել գումարը
+                          </button>
+                        </div>
+                      )}
 
                       {vpost && (
                         <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs">

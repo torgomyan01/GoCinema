@@ -2,7 +2,6 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { deleteUploadedFile } from '@/lib/delete-upload';
 
 export interface CreateMovieData {
   title: string;
@@ -271,61 +270,78 @@ export async function updateMovie(data: UpdateMovieData) {
   }
 }
 
-export async function deleteMovie(id: number) {
+export async function archiveMovie(id: number) {
   try {
     const movie = await prisma.movie.findUnique({
       where: { id },
-      select: { image: true },
+      select: { id: true, isActive: true },
     });
 
     if (!movie) {
       return { success: false, error: 'Ֆիլմը չի գտնվել' };
     }
 
-    // Ստուգում ենք՝ ֆիլմը ունի՞ տոմսեր/վճարման պատմություն
-    const ticketCount = await prisma.ticket.count({
-      where: { screening: { movieId: id } },
-    });
-
-    if (ticketCount > 0) {
-      // Soft delete — պահում ենք ֆիլմը (ու վճարման պատմությունը), միայն
-      // ապաակտիվացնում ենք, որ չերևա հանրային/ակտիվ ցանկերում
-      await prisma.movie.update({
-        where: { id },
-        data: { isActive: false },
-      });
-
-      revalidatePath('/admin/movies');
-      revalidatePath('/movies');
-
-      return {
-        success: true,
-        softDeleted: true,
-        message:
-          'Ֆիլմը ապաակտիվացվեց (կան տոմսեր/վճարումներ՝ պատմությունը պահպանվում է)',
-      };
+    if (movie.isActive === false) {
+      return { success: true, message: 'Ֆիլմն արդեն արխիվացված է' };
     }
 
-    // Hard delete — եթե տոմսեր չկան
-    await prisma.movie.delete({
+    await prisma.movie.update({
       where: { id },
+      data: { isActive: false },
     });
-
-    // Delete the image file from disk after successful DB delete
-    await deleteUploadedFile(movie.image);
 
     revalidatePath('/admin/movies');
     revalidatePath('/movies');
+    revalidatePath('/schedule');
+    revalidatePath('/admin/payments');
 
     return {
       success: true,
-      message: 'Ֆիլմը հաջողությամբ ջնջվեց',
+      message: 'Ֆիլմը արխիվացվեց — այլևս չի երևա կայքում',
     };
   } catch (error: any) {
-    console.error('[Delete Movie] Error:', error);
+    console.error('[Archive Movie] Error:', error);
     return {
       success: false,
-      error: 'Ֆիլմ ջնջելիս սխալ է տեղի ունեցել',
+      error: 'Ֆիլմ արխիվացնելիս սխալ է տեղի ունեցել',
     };
   }
+}
+
+export async function restoreMovie(id: number) {
+  try {
+    const movie = await prisma.movie.findUnique({
+      where: { id },
+      select: { id: true, isActive: true },
+    });
+
+    if (!movie) {
+      return { success: false, error: 'Ֆիլմը չի գտնվել' };
+    }
+
+    await prisma.movie.update({
+      where: { id },
+      data: { isActive: true },
+    });
+
+    revalidatePath('/admin/movies');
+    revalidatePath('/movies');
+    revalidatePath('/schedule');
+
+    return {
+      success: true,
+      message: 'Ֆիլմը վերականգնվեց — կրկին երևում է կայքում',
+    };
+  } catch (error: any) {
+    console.error('[Restore Movie] Error:', error);
+    return {
+      success: false,
+      error: 'Ֆիլմ վերականգնելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** @deprecated Օգտագործեք archiveMovie — ֆիլմերը չեն ջնջվում, միայն արխիվացվում */
+export async function deleteMovie(id: number) {
+  return archiveMovie(id);
 }

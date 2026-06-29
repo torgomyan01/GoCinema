@@ -141,6 +141,7 @@ export default function AdminPaymentsClient({
         customerId: row.customerId,
         amount: row.amount,
       });
+
       if (!result.success) {
         setError(result.error || 'Գանձումը ձախողվեց');
         return;
@@ -174,6 +175,7 @@ export default function AdminPaymentsClient({
         orderId,
         amount: row.amount,
       });
+
       if (!result.success) {
         setError(result.error || 'Վերադարձը ձախողվեց');
         return;

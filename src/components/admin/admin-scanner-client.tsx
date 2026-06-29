@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   QrCode,
   CheckCircle,
@@ -27,13 +27,16 @@ import {
 import { Search, Banknote } from 'lucide-react';
 import QRScanner from './qr-scanner';
 import TicketCard from './ticket-card';
+import ProductSaleModal from './box-office-product-sale-modal';
 import PaymentPanel, { type PaymentMethod } from './box-office-payment-panel';
+import { getBoxOfficeProducts } from '@/app/actions/box-office';
 import {
   getOrderOrTicketByQR,
   markTicketAsUsed,
   markAllTicketsInOrderAsUsed,
   findReservations,
   payReservationAtCounter,
+  addScannerEntryProducts,
 } from '@/app/actions/scanner';
 import Image from 'next/image';
 
@@ -93,6 +96,24 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const [isPaying, setIsPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
+  // Մուտքի կետում ապրանքների վաճառք
+  const [scannerProducts, setScannerProducts] = useState<
+    {
+      id: number;
+      name: string;
+      price: number;
+      category: string;
+      image?: string | null;
+      stock: number;
+    }[]
+  >([]);
+  const [productModalTicketId, setProductModalTicketId] = useState<
+    number | null
+  >(null);
+  const [productCart, setProductCart] = useState<Record<number, number>>({});
+  const [isAddingProducts, setIsAddingProducts] = useState(false);
+  const [productError, setProductError] = useState<string | null>(null);
+
   // Load windows from localStorage on mount
   useEffect(() => {
     const savedWindows = localStorage.getItem(STORAGE_KEY);
@@ -150,6 +171,24 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     setPayCash('');
     setPayError(null);
   }, [activeWindowId]);
+
+  useEffect(() => {
+    void (async () => {
+      const result = await getBoxOfficeProducts();
+      if (result.success) {
+        setScannerProducts(
+          result.products as {
+            id: number;
+            name: string;
+            price: number;
+            category: string;
+            image?: string | null;
+            stock: number;
+          }[]
+        );
+      }
+    })();
+  }, []);
 
   const handleSearch = async () => {
     const q = searchQuery.trim();
@@ -536,6 +575,96 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
 
   const activeWindow = windows.find((w) => w.id === activeWindowId);
 
+  const productModalTicket = useMemo(() => {
+    if (productModalTicketId === null || !activeWindow?.scannedData) return null;
+    const { type, data } = activeWindow.scannedData;
+    if (type === 'order') {
+      return (
+        data.tickets?.find(
+          (t: { id: number }) => t.id === productModalTicketId
+        ) ?? null
+      );
+    }
+    if (data.id === productModalTicketId) return data;
+    return null;
+  }, [productModalTicketId, activeWindow?.scannedData]);
+
+  const productCartTotal = useMemo(
+    () =>
+      Object.entries(productCart).reduce((sum, [id, qty]) => {
+        const product = scannerProducts.find((p) => p.id === Number(id));
+        return product ? sum + product.price * qty : sum;
+      }, 0),
+    [productCart, scannerProducts]
+  );
+
+  const productCartCount = useMemo(
+    () => Object.values(productCart).reduce((sum, qty) => sum + qty, 0),
+    [productCart]
+  );
+
+  const openProductModal = (ticketId: number) => {
+    setProductCart({});
+    setProductError(null);
+    setProductModalTicketId(ticketId);
+  };
+
+  const closeProductModal = () => {
+    setProductModalTicketId(null);
+    setProductCart({});
+    setProductError(null);
+  };
+
+  const setProductQty = (productId: number, qty: number) => {
+    setProductCart((prev) => {
+      const next = { ...prev };
+      if (qty <= 0) {
+        delete next[productId];
+      } else {
+        next[productId] = qty;
+      }
+      return next;
+    });
+  };
+
+  const handleSubmitScannerProducts = async (payment: {
+    method: PaymentMethod;
+    amountPaid: number;
+  }) => {
+    if (!productModalTicketId || !activeWindow?.qrCode) return;
+    setIsAddingProducts(true);
+    setProductError(null);
+    try {
+      const selections = Object.entries(productCart).map(([id, qty]) => ({
+        productId: Number(id),
+        quantity: qty,
+      }));
+      const result = await addScannerEntryProducts({
+        ticketId: productModalTicketId,
+        products: selections,
+        paymentMethod: payment.method,
+        amountPaid: payment.amountPaid,
+      });
+      if (result.success) {
+        closeProductModal();
+        await handleScanSuccess(activeWindow.id, activeWindow.qrCode);
+      } else {
+        setProductError(result.error || 'Սխալ');
+      }
+    } catch {
+      setProductError('Ապրանքները ավելացնելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsAddingProducts(false);
+    }
+  };
+
+  const getProductItemBadge = (item: { fulfilledAt?: string | Date | null }) => {
+    if (item.fulfilledAt) {
+      return { label: 'Տրված է', className: 'bg-green-100 text-green-800' };
+    }
+    return { label: 'Գնել է · Վճարված է', className: 'bg-blue-100 text-blue-800' };
+  };
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -919,6 +1048,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                           isChecked={
                             activeWindow.checkedTickets?.has(ticket.id) || false
                           }
+                          onAddProducts={openProductModal}
                         />
                       )
                     )}
@@ -1193,61 +1323,94 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                 )}
 
                 {/* Products */}
-                {activeWindow.scannedData.data.order?.orderItems &&
-                  activeWindow.scannedData.data.order.orderItems.length > 0 && (
+                {(() => {
+                  const ticketData = activeWindow.scannedData.data;
+                  const ticketProducts =
+                    ticketData.orderItems ??
+                    ticketData.order?.orderItems?.filter(
+                      (item: { ticketId?: number | null }) =>
+                        item.ticketId === ticketData.id || item.ticketId == null
+                    ) ??
+                    [];
+                  const canAdd =
+                    ticketData.status === 'paid' &&
+                    activeWindow.scannedData.type === 'ticket';
+
+                  if (ticketProducts.length === 0 && !canAdd) return null;
+
+                  return (
                     <div className="p-4 border border-gray-200 rounded-lg">
-                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                        <ShoppingCart className="w-5 h-5 text-purple-600" />
-                        Արտադրանքներ (
-                        {activeWindow.scannedData.data.order.orderItems.length})
-                      </h4>
-                      <div className="space-y-2 mb-3">
-                        {activeWindow.scannedData.data.order.orderItems.map(
-                          (item: any) => (
-                            <div
-                              key={item.id}
-                              className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded"
-                            >
-                              <div className="flex-1">
-                                <span className="text-gray-900 font-medium">
-                                  {item.product.name}
-                                </span>
-                                <span className="text-gray-500 ml-2">
-                                  x{item.quantity}
-                                </span>
-                                {item.product.category && (
-                                  <span className="text-xs text-gray-400 ml-2">
-                                    ({item.product.category})
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-gray-700 font-medium">
-                                {(item.price * item.quantity).toLocaleString(
-                                  'hy-AM'
-                                )}{' '}
-                                ֏
-                              </span>
-                            </div>
-                          )
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <ShoppingCart className="w-5 h-5 text-purple-600" />
+                          Ապրանքներ ({ticketProducts.length})
+                        </h4>
+                        {canAdd && (
+                          <button
+                            type="button"
+                            onClick={() => openProductModal(Number(ticketData.id))}
+                            className="flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Ավելացնել
+                          </button>
                         )}
                       </div>
-                      <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-900">
-                          Ընդհանուր:
-                        </span>
-                        <span className="text-lg font-bold text-green-600">
-                          {activeWindow.scannedData.data.order.orderItems
-                            .reduce(
-                              (sum: number, item: any) =>
-                                sum + item.price * item.quantity,
-                              0
-                            )
-                            .toLocaleString('hy-AM')}{' '}
-                          ֏
-                        </span>
-                      </div>
+                      {ticketProducts.length > 0 ? (
+                        <>
+                          <div className="space-y-2 mb-3">
+                            {ticketProducts.map((item: any) => {
+                              const badge = getProductItemBadge(item);
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded gap-2"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="text-gray-900 font-medium truncate">
+                                      {item.product.name}
+                                    </span>
+                                    <span className="text-gray-500 shrink-0">
+                                      x{item.quantity}
+                                    </span>
+                                    <span
+                                      className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.className}`}
+                                    >
+                                      {badge.label}
+                                    </span>
+                                  </div>
+                                  <span className="text-gray-700 font-medium shrink-0">
+                                    {(item.price * item.quantity).toLocaleString(
+                                      'hy-AM'
+                                    )}{' '}
+                                    ֏
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-900">
+                              Ընդհանուր:
+                            </span>
+                            <span className="text-lg font-bold text-green-600">
+                              {ticketProducts
+                                .reduce(
+                                  (sum: number, item: any) =>
+                                    sum + item.price * item.quantity,
+                                  0
+                                )
+                                .toLocaleString('hy-AM')}{' '}
+                              ֏
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-400">Ապրանքներ չկան</p>
+                      )}
                     </div>
-                  )}
+                  );
+                })()}
 
                 {/* Չվճարված ամրագրում՝ ուղղորդում դեպի պատվերը */}
                 {activeWindow.scannedData.data.status === 'reserved' &&
@@ -1298,6 +1461,30 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           </div>
         </div>
       ) : null}
+
+      {productModalTicketId !== null && (
+        <ProductSaleModal
+          products={scannerProducts}
+          cart={productCart}
+          setQty={setProductQty}
+          total={productCartTotal}
+          count={productCartCount}
+          isCreating={isAddingProducts}
+          onClose={closeProductModal}
+          onSubmit={handleSubmitScannerProducts}
+          title="Մուտքի կետ՝ ապրանքներ"
+          subtitle={
+            productModalTicket
+              ? `Տեղ ${productModalTicket.seat?.row ?? ''}${productModalTicket.seat?.number ?? ''} — պաշարը հանվում է մուտքի ժամանակ`
+              : 'Մուտքի կետ'
+          }
+        />
+      )}
+      {productError && productModalTicketId !== null && (
+        <div className="fixed bottom-4 left-1/2 z-[60] -translate-x-1/2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
+          {productError}
+        </div>
+      )}
     </div>
   );
 }

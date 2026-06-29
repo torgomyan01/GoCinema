@@ -261,12 +261,13 @@ model Order {
 }
 
 model OrderItem {
-  id        Int     @id @default(autoincrement())
-  orderId   Int
-  ticketId  Int?    // Optional: if null, product belongs to order; if set, product belongs to specific ticket
-  productId Int
-  quantity  Int     @default(1)
-  price     Float   // Price at time of order
+  id          Int       @id @default(autoincrement())
+  orderId     Int
+  ticketId    Int?    // Optional: if null, product belongs to order; if set, product belongs to specific ticket
+  productId   Int
+  quantity    Int     @default(1)
+  price       Float   // Price at time of order
+  fulfilledAt DateTime? // մուտքի ժամանակ պահեստից հանվել է
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   ticket  Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -275,6 +276,7 @@ model OrderItem {
   @@index([orderId])
   @@index([ticketId])
   @@index([productId])
+  @@index([fulfilledAt])
   @@map("order_items")
 }
 

@@ -382,6 +382,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
               productId: sel.productId,
               quantity: Math.floor(Number(sel.quantity)),
               price: product.price,
+              fulfilledAt: new Date(),
             };
           }),
         });
@@ -532,6 +533,7 @@ export async function createBoxOfficeProductOrder(
             productId: sel.productId,
             quantity: Math.floor(Number(sel.quantity)),
             price: product.price,
+            fulfilledAt: new Date(),
           };
         }),
       });

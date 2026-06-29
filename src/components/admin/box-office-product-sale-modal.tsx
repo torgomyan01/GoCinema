@@ -35,6 +35,8 @@ interface ProductSaleModalProps {
   isCreating: boolean;
   onClose: () => void;
   onSubmit: (payment: { method: PaymentMethod; amountPaid: number }) => void;
+  title?: string;
+  subtitle?: string;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -52,6 +54,8 @@ export default function ProductSaleModal({
   isCreating,
   onClose,
   onSubmit,
+  title = 'Ապրանքների վաճառք',
+  subtitle = 'Կանխիկ վաճառք՝ առանց տոմսի',
 }: ProductSaleModalProps) {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -121,11 +125,9 @@ export default function ProductSaleModal({
           </div>
           <div>
             <h2 className="text-lg font-bold leading-tight sm:text-xl">
-              Ապրանքների վաճառք
+              {title}
             </h2>
-            <p className="text-xs text-amber-50 sm:text-sm">
-              Կանխիկ վաճառք՝ առանց տոմսի
-            </p>
+            <p className="text-xs text-amber-50 sm:text-sm">{subtitle}</p>
           </div>
         </div>
         <button

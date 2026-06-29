@@ -8,8 +8,7 @@ import {
   MapPin,
   DollarSign,
   ShoppingCart,
-  CheckCircle2,
-  Circle,
+  Plus,
 } from 'lucide-react';
 
 interface TicketCardProps {
@@ -20,6 +19,23 @@ interface TicketCardProps {
   getSeatTypeLabel: (seatType: string) => string;
   onCheckedChange?: (ticketId: string, checked: boolean) => void;
   isChecked?: boolean;
+  onAddProducts?: (ticketId: number) => void;
+  orderStatus?: string;
+}
+
+function getProductItemBadge(item: {
+  fulfilledAt?: string | Date | null;
+}) {
+  if (item.fulfilledAt) {
+    return {
+      label: 'Տրված է',
+      className: 'bg-green-100 text-green-800',
+    };
+  }
+  return {
+    label: 'Գնել է · Վճարված է',
+    className: 'bg-blue-100 text-blue-800',
+  };
 }
 
 export default function TicketCard({
@@ -30,12 +46,14 @@ export default function TicketCard({
   getSeatTypeLabel,
   onCheckedChange,
   isChecked = false,
+  onAddProducts,
 }: TicketCardProps) {
   const statusBadge = getStatusBadge(ticket.status);
   const [checked, setChecked] = useState(isChecked);
   const isUsed = ticket.status === 'used';
+  const canAddProducts =
+    ticket.status === 'paid' && !isUsed && Boolean(onAddProducts);
 
-  // Sync local state with prop changes
   useEffect(() => {
     setChecked(isChecked);
   }, [isChecked]);
@@ -54,7 +72,6 @@ export default function TicketCard({
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
-            {/* Checkbox */}
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -116,27 +133,54 @@ export default function TicketCard({
           {statusBadge.label}
         </span>
       </div>
-      {ticket.orderItems && ticket.orderItems.length > 0 && (
+
+      {(ticket.orderItems?.length > 0 || canAddProducts) && (
         <div className="mt-3 pt-3 border-t border-gray-200">
-          <div className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
-            <ShoppingCart className="w-3 h-3" />
-            Արտադրանքներ:
-          </div>
-          <div className="space-y-1">
-            {ticket.orderItems.map((item: any, idx: number) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between text-sm"
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-medium text-gray-700 flex items-center gap-1">
+              <ShoppingCart className="w-3 h-3" />
+              Ապրանքներ:
+            </div>
+            {canAddProducts && (
+              <button
+                type="button"
+                onClick={() => onAddProducts?.(Number(ticket.id))}
+                className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
               >
-                <span className="text-gray-700">
-                  {item.product.name} x{item.quantity}
-                </span>
-                <span className="text-gray-600 font-medium">
-                  {(item.price * item.quantity).toLocaleString('hy-AM')} ֏
-                </span>
-              </div>
-            ))}
+                <Plus className="w-3.5 h-3.5" />
+                Ավելացնել
+              </button>
+            )}
           </div>
+          {ticket.orderItems?.length > 0 ? (
+            <div className="space-y-1.5">
+              {ticket.orderItems.map((item: any) => {
+                const badge = getProductItemBadge(item);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between text-sm gap-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-gray-700 truncate">
+                        {item.product.name} x{item.quantity}
+                      </span>
+                      <span
+                        className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.className}`}
+                      >
+                        {badge.label}
+                      </span>
+                    </div>
+                    <span className="text-gray-600 font-medium shrink-0">
+                      {(item.price * item.quantity).toLocaleString('hy-AM')} ֏
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">Ապրանքներ չկան</p>
+          )}
         </div>
       )}
     </div>

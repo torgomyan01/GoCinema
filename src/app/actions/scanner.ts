@@ -7,6 +7,19 @@ import { authOptions } from '@/lib/auth';
 import { isStaffRole } from '@/lib/roles';
 import { COUNTER_PAYMENT_METHOD } from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
+import type { Prisma } from '@prisma/client';
+
+type TxClient = Omit<
+  Prisma.TransactionClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
+
+export interface ScannerProductSelection {
+  productId: number;
+  quantity: number;
+}
+
+type ScannerPaymentMethod = 'cash' | 'card';
 
 async function requireStaff() {
   const session = await getServerSession(authOptions);
@@ -56,6 +69,13 @@ const TICKET_INCLUDE = {
     },
   },
   seat: { select: { id: true, row: true, number: true, seatType: true } },
+  orderItems: {
+    include: {
+      product: {
+        select: { id: true, name: true, price: true, category: true },
+      },
+    },
+  },
   order: {
     include: {
       orderItems: {
@@ -68,6 +88,59 @@ const TICKET_INCLUDE = {
     },
   },
 } as const;
+
+function resolveScannerPayment(
+  method: unknown,
+  amountPaid: unknown,
+  total: number
+):
+  | { ok: true; method: ScannerPaymentMethod; amountPaid: number | null }
+  | { ok: false; error: string } {
+  const paymentMethod: ScannerPaymentMethod = method === 'card' ? 'card' : 'cash';
+
+  if (paymentMethod === 'card') {
+    return { ok: true, method: 'card', amountPaid: total };
+  }
+
+  const received = Number(amountPaid);
+  if (!Number.isFinite(received) || received < total) {
+    return {
+      ok: false,
+      error: 'Ստացված կանխիկ գումարը չի կարող պակաս լինել ընդհանուր գումարից',
+    };
+  }
+  return { ok: true, method: 'cash', amountPaid: received };
+}
+
+async function fulfillTicketProducts(tx: TxClient, ticketId: number) {
+  const items = await tx.orderItem.findMany({
+    where: { ticketId, fulfilledAt: null },
+    include: { product: { select: { id: true, name: true, stock: true } } },
+  });
+
+  for (const item of items) {
+    const qty = item.quantity;
+    const decremented = await tx.product.updateMany({
+      where: { id: item.productId, stock: { gte: qty } },
+      data: { stock: { decrement: qty } },
+    });
+    if (decremented.count === 0) {
+      throw new Error(`STOCK_INSUFFICIENT:${item.product.name}`);
+    }
+    await tx.orderItem.update({
+      where: { id: item.id },
+      data: { fulfilledAt: new Date() },
+    });
+  }
+}
+
+function mapStockError(error: unknown): string | null {
+  if (error instanceof Error && error.message.startsWith('STOCK_INSUFFICIENT:')) {
+    const name = error.message.slice('STOCK_INSUFFICIENT:'.length);
+    return `«${name}» ապրանքի պաշարը բավարար չէ մուտքի համար`;
+  }
+  return null;
+}
 
 /**
  * Նորմալիզացնում է սկանավորված/մուտքագրված տվյալը։
@@ -180,9 +253,12 @@ export async function markTicketAsUsed(ticketId: number) {
       };
     }
 
-    await prisma.ticket.update({
-      where: { id: ticketId },
-      data: { status: 'used' },
+    await prisma.$transaction(async (tx) => {
+      await fulfillTicketProducts(tx, ticketId);
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: { status: 'used' },
+      });
     });
 
     revalidatePath('/admin/scanner');
@@ -192,7 +268,11 @@ export async function markTicketAsUsed(ticketId: number) {
       success: true,
       message: 'Տոմսը հաջողությամբ նշվեց որպես օգտագործված',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const stockError = mapStockError(error);
+    if (stockError) {
+      return { success: false, error: stockError };
+    }
     console.error('[Mark Ticket As Used] Error:', error);
     return {
       success: false,
@@ -226,14 +306,17 @@ export async function markAllTicketsInOrderAsUsed(orderId: number) {
       };
     }
 
-    await prisma.ticket.updateMany({
-      where: {
-        id: {
-          in: paidTickets.map((t) => t.id),
+    await prisma.$transaction(async (tx) => {
+      for (const t of paidTickets) {
+        await fulfillTicketProducts(tx, t.id);
+      }
+      await tx.ticket.updateMany({
+        where: {
+          id: { in: paidTickets.map((t) => t.id) },
+          status: 'paid',
         },
-        status: 'paid',
-      },
-      data: { status: 'used' },
+        data: { status: 'used' },
+      });
     });
 
     revalidatePath('/admin/scanner');
@@ -243,7 +326,11 @@ export async function markAllTicketsInOrderAsUsed(orderId: number) {
       success: true,
       message: `${paidTickets.length} տոմս հաջողությամբ նշվեց որպես օգտագործված`,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const stockError = mapStockError(error);
+    if (stockError) {
+      return { success: false, error: stockError };
+    }
     console.error('[Mark All Tickets As Used] Error:', error);
     return {
       success: false,
@@ -485,6 +572,149 @@ export async function payReservationAtCounter(input: {
     return {
       success: false,
       error: 'Վճարումը մշակելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** Մուտքի կետում՝ տոմսին կապված ապրանքների վաճառք (պաշարը հանվում է մուտքի ժամանակ) */
+export async function addScannerEntryProducts(data: {
+  ticketId: number;
+  products: ScannerProductSelection[];
+  paymentMethod?: ScannerPaymentMethod;
+  amountPaid?: number;
+}) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const ticketId = Number(data.ticketId);
+    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+      return { success: false, error: 'Անվավեր տոմս' };
+    }
+
+    const selections = (data.products ?? []).filter(
+      (p) => p && p.productId > 0 && Number(p.quantity) > 0
+    );
+    if (selections.length === 0) {
+      return { success: false, error: 'Ընտրեք առնվազն մեկ ապրանք' };
+    }
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        order: { select: { id: true, status: true, totalAmount: true } },
+        seat: { select: { row: true, number: true } },
+        screening: { include: { movie: { select: { title: true } } } },
+      },
+    });
+
+    if (!ticket) {
+      return { success: false, error: 'Տոմսը չի գտնվել' };
+    }
+    if (ticket.status === 'used') {
+      return { success: false, error: 'Տոմսը արդեն մուտք է գործել' };
+    }
+    if (ticket.status !== 'paid') {
+      return { success: false, error: 'Տոմսը պետք է լինի վճարված' };
+    }
+
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
+      select: { id: true, name: true, price: true },
+    });
+
+    let productsTotal = 0;
+    for (const sel of selections) {
+      const product = dbProducts.find((p) => p.id === sel.productId);
+      if (!product) {
+        return { success: false, error: 'Ընտրված ապրանքը հասանելի չէ' };
+      }
+      const qty = Math.floor(Number(sel.quantity));
+      if (qty <= 0) {
+        return { success: false, error: 'Անվավեր քանակ' };
+      }
+      productsTotal += product.price * qty;
+    }
+
+    const payment = resolveScannerPayment(
+      data.paymentMethod,
+      data.amountPaid,
+      productsTotal
+    );
+    if (!payment.ok) {
+      return { success: false, error: payment.error };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      let orderId = ticket.orderId;
+
+      if (!orderId) {
+        const order = await tx.order.create({
+          data: {
+            userId: ticket.userId,
+            totalAmount: productsTotal,
+            status: 'completed',
+            paymentMethod: payment.method,
+            amountPaid: payment.amountPaid,
+          },
+        });
+        orderId = order.id;
+        await tx.ticket.update({
+          where: { id: ticketId },
+          data: { orderId },
+        });
+      } else {
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            totalAmount: { increment: productsTotal },
+            status: 'completed',
+          },
+        });
+      }
+
+      await tx.orderItem.createMany({
+        data: selections.map((sel) => {
+          const product = dbProducts.find((p) => p.id === sel.productId)!;
+          return {
+            orderId,
+            ticketId,
+            productId: sel.productId,
+            quantity: Math.floor(Number(sel.quantity)),
+            price: product.price,
+          };
+        }),
+      });
+    });
+
+    const seatLabel = ticket.seat
+      ? `${ticket.seat.row}${ticket.seat.number}`
+      : '';
+    const movieTitle = ticket.screening?.movie?.title ?? 'ֆիլմ';
+
+    await createNotification({
+      type: 'box_office',
+      title: 'Մուտքի կետ՝ ապրանքների վաճառք',
+      message: `${movieTitle}${seatLabel ? `, տեղ ${seatLabel}` : ''} — ${formatAmd(productsTotal)} (${payment.method === 'card' ? 'քարտով' : 'կանխիկ'})`,
+      link: '/admin/scanner',
+    });
+
+    revalidatePath('/admin/scanner');
+    revalidatePath('/admin/tickets');
+    revalidatePath('/admin/notifications');
+
+    return {
+      success: true,
+      total: productsTotal,
+      message: 'Ապրանքները ավելացվեցին տոմսին',
+    };
+  } catch (error: unknown) {
+    console.error('[Add Scanner Entry Products] Error:', error);
+    return {
+      success: false,
+      error: 'Ապրանքները ավելացնելիս սխալ է տեղի ունեցել',
     };
   }
 }

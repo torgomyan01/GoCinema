@@ -12,13 +12,28 @@ import {
   createVPostOrder,
   createVPostCustomer,
   fetchVPostTransactionsForOrder,
+  confirmVPostPayment,
+  cancelVPostPayment,
   getNormalizedTransactionsFromVPostEnvelope,
   hasVPostConfig,
   isVPostPaymentApproved,
   isVPostPaymentDeclined,
+  isVPostPaymentNeedsConfirmation,
+  buildVPostProviderInfoFromTransaction,
+  mergeVPostProviderInfo,
+  isApprovedResponseCode,
   summarizeTransactionForLog,
+  fetchAllVPostTransactions,
+  formatVPostDateParam,
+  getVPostTransactionPartnerOrderId,
+  getVPostActionOrderId,
+  getVPostTransactionStatus,
+  type VPostProviderInfo,
 } from '@/lib/vpost';
 import { createNotification, formatAmd } from '@/lib/notifications';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { isAdminRole } from '@/lib/roles';
 
 function paymentServerLog(event: string, payload: Record<string, unknown>) {
   const log =
@@ -640,7 +655,7 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
     }
 
     const itfOrderId = parseStoredItfOrderId(order.tickets);
-    const { envelope: txResponse, list: txList, usedOrderId } =
+    let { envelope: txResponse, list: txList, usedOrderId } =
       await fetchVPostTransactionsForOrder(order.id, itfOrderId);
 
     paymentServerLog('vpost_sync_raw', {
@@ -652,6 +667,60 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       listLength: txList.length,
       items: txList.map(summarizeTransactionForLog),
     });
+
+    // Երկու փուլով վճարում — հաստատում (confirm-payment) անհրաժեշտ է
+    const txNeedingConfirm = txList.find(isVPostPaymentNeedsConfirmation);
+    if (txNeedingConfirm) {
+      paymentServerLog('vpost_confirm_attempt', {
+        orderId: order.id,
+        customerId: order.userId,
+        amount: order.totalAmount,
+      });
+      const confirmResult = await confirmVPostPayment({
+        orderID: order.id,
+        customerID: String(order.userId),
+        amount: order.totalAmount,
+      });
+      paymentServerLog('vpost_confirm_result', {
+        orderId: order.id,
+        status: confirmResult.status,
+        message: confirmResult.message,
+        responseCode: confirmResult.data?.responseCode,
+        itfOrderId: confirmResult.data?.itfOrderId,
+        partnerOrderId: confirmResult.data?.partnerOrderId,
+      });
+
+      if (confirmResult.status) {
+        const refreshed = await fetchVPostTransactionsForOrder(
+          order.id,
+          itfOrderId
+        );
+        txResponse = refreshed.envelope;
+        txList = refreshed.list;
+        usedOrderId = refreshed.usedOrderId;
+      } else if (
+        confirmResult.data?.responseCode === '00' ||
+        isApprovedResponseCode(confirmResult.data?.responseCode)
+      ) {
+        // Պատասխանը հաջող է, բայց envelope.status=false — շարունակում ենք
+        txList = [
+          {
+            order: {
+              id: confirmResult.data?.itfOrderId
+                ? parseInt(String(confirmResult.data.itfOrderId), 10)
+                : order.id,
+              partnerOrderId: order.id,
+              status: 2,
+            },
+            response: {
+              ResponseCode: confirmResult.data?.responseCode,
+              PaymentState: 'payment_deposited',
+              OrderStatus: '2',
+            },
+          },
+        ];
+      }
+    }
 
     if (!txResponse.status) {
       const msg = (txResponse.message || '').toLowerCase();
@@ -1075,6 +1144,439 @@ export async function getPaymentByTicketId(ticketId: number) {
     return {
       success: false,
       error: 'Վճարումը բեռնելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/**
+ * Բոլոր վճարումները ադմինի համար՝ բոլոր կարգավիճակներով (pending, completed,
+ * failed, refunded), ֆիլմի անունով ու ցուցադրությամբ։ Քարտային վճարումների
+ * համար ավելացնում է vPost-ից ստացված տվյալները (transactions/list)։
+ */
+export async function getAllPayments() {
+  try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
+    if (!isAdminRole(role)) {
+      return {
+        success: false,
+        error: 'Իրավասությունը բավարար չէ',
+        payments: [],
+      };
+    }
+
+    const payments = await prisma.payment.findMany({
+      include: {
+        user: {
+          select: { id: true, name: true, phone: true, email: true },
+        },
+        ticket: {
+          select: {
+            id: true,
+            status: true,
+            price: true,
+            orderId: true,
+            screening: {
+              select: {
+                id: true,
+                startTime: true,
+                endTime: true,
+                movie: {
+                  select: { id: true, title: true, isActive: true },
+                },
+                hall: { select: { id: true, name: true } },
+              },
+            },
+            seat: { select: { row: true, number: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { success: true, payments };
+  } catch (error: any) {
+    console.error('[Get All Payments] Error:', error);
+    return {
+      success: false,
+      error: 'Վճարումները բեռնելիս սխալ է տեղի ունեցել',
+      payments: [],
+    };
+  }
+}
+
+export type AdminVPostTransactionRow = {
+  key: string;
+  partnerOrderId?: number;
+  actionOrderId?: number;
+  itfOrderId?: number;
+  customerId?: number;
+  amount: number;
+  fee?: number;
+  totalAmount?: number;
+  paymentState: string;
+  responseCode?: string;
+  cardNumber?: string;
+  clientName?: string;
+  description?: string;
+  createdAt?: string;
+  humandate?: string;
+  vpost: VPostProviderInfo | null;
+  inDatabase: boolean;
+  localOrder?: {
+    id: number;
+    status: string;
+    user?: { id: number; name: string | null; phone: string | null };
+    movieTitles: string[];
+    screeningLabel?: string;
+    hallName?: string;
+    seats: string[];
+  } | null;
+};
+
+/**
+ * vPost-ից բոլոր քարտային գործարքները (անկախ մեր բազայից) —
+ * ջնջված/կորչած տեղային վճարումները այստեղ երևում են, եթե vPost-ում կան։
+ */
+export async function getAllVPostTransactionsForAdmin(options?: {
+  days?: number | 'all';
+}) {
+  try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
+    if (!isAdminRole(role)) {
+      return {
+        success: false,
+        error: 'Իրավասությունը բավարար չէ',
+        transactions: [] as AdminVPostTransactionRow[],
+      };
+    }
+
+    if (!hasVPostConfig()) {
+      return {
+        success: false,
+        error: 'Քարտային վճարման կարգավորումները բացակայում են (.env)',
+        transactions: [] as AdminVPostTransactionRow[],
+      };
+    }
+
+    let startDate: string | undefined;
+    let endDate: string | undefined;
+    const days = options?.days ?? 365;
+
+    if (days !== 'all') {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - days);
+      startDate = formatVPostDateParam(start);
+      endDate = formatVPostDateParam(end);
+    }
+
+    const { transactions, paginate } = await fetchAllVPostTransactions({
+      startDate,
+      endDate,
+    });
+
+    const partnerOrderIds = Array.from(
+      new Set(
+        transactions
+          .map((tx) => getVPostActionOrderId(tx))
+          .filter((id): id is number => id != null)
+      )
+    );
+
+    const localOrders =
+      partnerOrderIds.length > 0
+        ? await prisma.order.findMany({
+            where: { id: { in: partnerOrderIds } },
+            select: {
+              id: true,
+              status: true,
+              user: {
+                select: { id: true, name: true, phone: true },
+              },
+              tickets: {
+                select: {
+                  seat: { select: { row: true, number: true } },
+                  screening: {
+                    select: {
+                      startTime: true,
+                      hall: { select: { name: true } },
+                      movie: { select: { title: true, isActive: true } },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : [];
+
+    const orderMap = new Map(localOrders.map((o) => [o.id, o]));
+
+    const rows: AdminVPostTransactionRow[] = transactions.map((tx, index) => {
+      const partnerOrderId = getVPostTransactionPartnerOrderId(tx);
+      const actionOrderId = getVPostActionOrderId(tx);
+      const local = partnerOrderId ? orderMap.get(partnerOrderId) : undefined;
+      const vpostInfo = buildVPostProviderInfoFromTransaction(tx);
+      const resp = tx.response ?? {};
+      const responseCodeRaw =
+        vpostInfo?.responseCode ??
+        String(
+          (resp as Record<string, unknown>).ResponseCode ??
+            (resp as Record<string, unknown>).responseCode ??
+            ''
+        );
+      const responseCode = responseCodeRaw || undefined;
+      const clientName = String(
+        (resp as Record<string, unknown>).ClientName ?? ''
+      );
+
+      const movieTitles = local
+        ? Array.from(
+            new Set(
+              local.tickets
+                .map((t) => t.screening?.movie?.title)
+                .filter((t): t is string => Boolean(t))
+            )
+          )
+        : [];
+
+      const firstScreening = local?.tickets[0]?.screening;
+      const screeningLabel = firstScreening?.startTime
+        ? new Date(firstScreening.startTime).toLocaleString('hy-AM')
+        : undefined;
+
+      return {
+        key: `${tx.order?.id ?? 'x'}-${partnerOrderId ?? 'p'}-${tx.createdAt ?? index}`,
+        partnerOrderId,
+        actionOrderId,
+        itfOrderId: tx.order?.id,
+        customerId: tx.order?.customerId,
+        amount: Number(tx.amount ?? tx.order?.amount ?? 0),
+        fee: tx.fee ?? tx.order?.fee,
+        totalAmount: tx.totalAmount ?? tx.order?.totalAmount,
+        paymentState: getVPostTransactionStatus(tx),
+        responseCode: responseCode || undefined,
+        cardNumber: vpostInfo?.cardNumber,
+        clientName: clientName || undefined,
+        description: tx.description || tx.order?.description,
+        createdAt: tx.createdAt,
+        humandate: tx.humandate,
+        vpost: vpostInfo,
+        inDatabase: Boolean(local),
+        localOrder: local
+          ? {
+              id: local.id,
+              status: local.status,
+              user: local.user,
+              movieTitles,
+              screeningLabel,
+              hallName: firstScreening?.hall?.name,
+              seats: local.tickets.map(
+                (t) => `${t.seat?.row ?? ''}${t.seat?.number ?? ''}`
+              ),
+            }
+          : null,
+      };
+    });
+
+    return {
+      success: true,
+      transactions: rows,
+      paginate,
+      meta: {
+        days: (days === 'all' ? 'all' : days) as number | 'all',
+        totalFromVPost: paginate?.total ?? rows.length,
+      },
+    };
+  } catch (error: any) {
+    console.error('[Get All VPost Transactions] Error:', error);
+    return {
+      success: false,
+      error: 'vPost գործարքները բեռնելիս սխալ է տեղի ունեցել',
+      transactions: [] as AdminVPostTransactionRow[],
+    };
+  }
+}
+
+/** Ադմին — vPost confirm-payment (գանձել սառեցված գումարը) */
+export async function confirmVPostPaymentForOrder(params: {
+  orderId: number;
+  customerId?: number;
+  amount?: number;
+}) {
+  try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
+    if (!isAdminRole(role)) {
+      return { success: false, error: 'Իրավասությունը բավարար չէ' };
+    }
+
+    if (!hasVPostConfig()) {
+      return {
+        success: false,
+        error: 'Քարտային վճարման կարգավորումները բացակայում են',
+      };
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: params.orderId },
+      select: {
+        id: true,
+        userId: true,
+        totalAmount: true,
+        tickets: {
+          select: {
+            payment: { select: { transactionId: true } },
+          },
+        },
+      },
+    });
+
+    const customerID = order
+      ? String(order.userId)
+      : params.customerId != null
+        ? String(params.customerId)
+        : null;
+    const amount = order?.totalAmount ?? params.amount;
+
+    if (!customerID || amount == null || !Number.isFinite(amount)) {
+      return {
+        success: false,
+        error: 'Բացակայում են customerID կամ amount',
+      };
+    }
+
+    const confirmResult = await confirmVPostPayment({
+      orderID: params.orderId,
+      customerID,
+      amount,
+    });
+
+    if (
+      !confirmResult.status &&
+      !isApprovedResponseCode(confirmResult.data?.responseCode)
+    ) {
+      return {
+        success: false,
+        error:
+          confirmResult.message ||
+          'vPost confirm-payment — անհաջող պատասխան',
+        provider: confirmResult.data ?? null,
+      };
+    }
+
+    const itfOrderId = order
+      ? parseStoredItfOrderId(order.tickets)
+      : confirmResult.data?.itfOrderId
+        ? parseInt(String(confirmResult.data.itfOrderId), 10)
+        : undefined;
+    const { list } = await fetchVPostTransactionsForOrder(
+      params.orderId,
+      itfOrderId
+    );
+    const txInfo = buildVPostProviderInfoFromTransaction(list[0]);
+    const provider = mergeVPostProviderInfo(txInfo, confirmResult.data);
+
+    return {
+      success: true,
+      message: 'Գումարը հաջողությամբ գանձվել է',
+      provider,
+      confirmResponse: confirmResult.data,
+    };
+  } catch (error: any) {
+    console.error('[Confirm VPost Payment] Error:', error);
+    return {
+      success: false,
+      error: 'Վճարման գանձումը ձախողվեց',
+    };
+  }
+}
+
+/** Ադմին — vPost cancel (վերադարձնել / ազատել սառեցված գումարը) */
+export async function cancelVPostPaymentForOrder(params: {
+  orderId: number;
+  amount?: number;
+}) {
+  try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
+    if (!isAdminRole(role)) {
+      return { success: false, error: 'Իրավասությունը բավարար չէ' };
+    }
+
+    if (!hasVPostConfig()) {
+      return {
+        success: false,
+        error: 'Քարտային վճարման կարգավորումները բացակայում են',
+      };
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: params.orderId },
+      select: {
+        id: true,
+        totalAmount: true,
+        tickets: {
+          select: {
+            id: true,
+            payment: { select: { id: true, transactionId: true } },
+          },
+        },
+      },
+    });
+
+    const amount = order?.totalAmount ?? params.amount;
+    if (amount == null || !Number.isFinite(amount)) {
+      return { success: false, error: 'Գործարքի գումարը բացակայում է' };
+    }
+
+    const cancelResult = await cancelVPostPayment({
+      orderID: params.orderId,
+      amount,
+    });
+
+    if (!cancelResult.status) {
+      return {
+        success: false,
+        error:
+          cancelResult.message || 'vPost cancel — անհաջող պատասխան',
+        cancelResponse: cancelResult.data ?? null,
+      };
+    }
+
+    if (order) {
+      const ticketIds = order.tickets.map((t) => t.id);
+      if (ticketIds.length > 0) {
+        await prisma.payment.updateMany({
+          where: { ticketId: { in: ticketIds } },
+          data: { status: 'refunded' },
+        });
+      }
+    }
+
+    const itfOrderId = order
+      ? parseStoredItfOrderId(order.tickets)
+      : cancelResult.data?.itfOrderId
+        ? parseInt(String(cancelResult.data.itfOrderId), 10)
+        : undefined;
+    const { list } = await fetchVPostTransactionsForOrder(
+      params.orderId,
+      itfOrderId
+    );
+    const txInfo = buildVPostProviderInfoFromTransaction(list[0]);
+
+    return {
+      success: true,
+      message: 'Գումարը հաջողությամբ վերադարձվել է',
+      provider: txInfo,
+      cancelResponse: cancelResult.data,
+    };
+  } catch (error: any) {
+    console.error('[Cancel VPost Payment] Error:', error);
+    return {
+      success: false,
+      error: 'Վճարման չեղարկումը ձախողվեց',
     };
   }
 }

@@ -278,12 +278,41 @@ export async function deleteMovie(id: number) {
       select: { image: true },
     });
 
+    if (!movie) {
+      return { success: false, error: 'Ֆիլմը չի գտնվել' };
+    }
+
+    // Ստուգում ենք՝ ֆիլմը ունի՞ տոմսեր/վճարման պատմություն
+    const ticketCount = await prisma.ticket.count({
+      where: { screening: { movieId: id } },
+    });
+
+    if (ticketCount > 0) {
+      // Soft delete — պահում ենք ֆիլմը (ու վճարման պատմությունը), միայն
+      // ապաակտիվացնում ենք, որ չերևա հանրային/ակտիվ ցանկերում
+      await prisma.movie.update({
+        where: { id },
+        data: { isActive: false },
+      });
+
+      revalidatePath('/admin/movies');
+      revalidatePath('/movies');
+
+      return {
+        success: true,
+        softDeleted: true,
+        message:
+          'Ֆիլմը ապաակտիվացվեց (կան տոմսեր/վճարումներ՝ պատմությունը պահպանվում է)',
+      };
+    }
+
+    // Hard delete — եթե տոմսեր չկան
     await prisma.movie.delete({
       where: { id },
     });
 
     // Delete the image file from disk after successful DB delete
-    await deleteUploadedFile(movie?.image);
+    await deleteUploadedFile(movie.image);
 
     revalidatePath('/admin/movies');
     revalidatePath('/movies');

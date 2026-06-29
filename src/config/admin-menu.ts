@@ -16,6 +16,7 @@ import {
   Banknote,
   FileBarChart,
   Bell,
+  CreditCard,
   LucideIcon,
 } from 'lucide-react';
 
@@ -90,6 +91,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/tickets',
     color: 'text-green-600',
     bgColor: 'bg-green-50',
+  },
+  {
+    title: 'Վճարումներ',
+    icon: CreditCard,
+    href: '/admin/payments',
+    color: 'text-emerald-600',
+    bgColor: 'bg-emerald-50',
   },
   {
     title: 'Ծանուցումներ',

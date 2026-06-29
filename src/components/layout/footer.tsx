@@ -14,6 +14,7 @@ export default function Footer() {
     ],
     info: [
       { href: '/about', label: 'Մեր մասին' },
+      { href: '/packages', label: 'Փաթեթներ' },
       { href: '/contacts', label: 'Կոնտակտներ' },
     ],
     support: [

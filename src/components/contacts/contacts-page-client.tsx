@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   Mail,
@@ -15,6 +16,7 @@ import { createContact } from '@/app/actions/contacts';
 
 export default function ContactsPageClient() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,13 @@ export default function ContactsPageClient() {
     subject: '',
     message: '',
   });
+
+  useEffect(() => {
+    const subject = searchParams.get('subject');
+    if (subject) {
+      setFormData((prev) => ({ ...prev, subject }));
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

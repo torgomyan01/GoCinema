@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Film, Calendar, User, Ticket } from 'lucide-react';
+import { Menu, X, Film, Calendar, User, Ticket, Package } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
 import Image from 'next/image';
@@ -42,6 +42,7 @@ export default function Header() {
   const navItems = [
     { href: SITE_URL.MOVIES, label: 'Ֆիլմեր', icon: Film },
     { href: SITE_URL.SCHEDULE, label: 'Ժամանակացույց', icon: Calendar },
+    { href: SITE_URL.PACKAGES, label: 'Փաթեթներ', icon: Package },
     { href: SITE_URL.TICKETS, label: 'Իմ տոմսերը', icon: Ticket },
   ];
 

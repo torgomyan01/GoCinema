@@ -16,6 +16,7 @@ export const SITE_URL = {
   REGISTER: '/register',
   LOGIN: '/account',
   ADMIN: '/admin',
+  PACKAGES: '/packages',
   ABOUT: '/about',
   CONTACTS: '/contacts',
   FAQ: '/faq',

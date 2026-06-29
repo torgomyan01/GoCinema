@@ -254,7 +254,7 @@ export default function AboutPageClient() {
                   </div>
                   <div>
                     <div className="font-semibold mb-1">Աշխատանքային ժամեր</div>
-                    <p>Ամեն օր՝ 10:00 – 22:00</p>
+                    <p>Ամեն օր՝ 13:00 – 24:00</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">

@@ -11,7 +11,10 @@ import { releaseExpiredReservations } from '@/app/actions/tickets';
 import { createNotification, formatAmd } from '@/lib/notifications';
 import {
   fulfillOrderItemStock,
+  isQuantityOnlyProduct,
   returnOrderItemStock,
+  sellQuantityStock,
+  sellSpecificProductUnits,
   UNIT_STOCK_INSUFFICIENT,
 } from '@/lib/product-units';
 
@@ -480,12 +483,15 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
 }
 
 export interface CreateBoxOfficeOrderData {
-  products: BoxOfficeProductSelection[];
+  /** Սկանավորված QR կոդեր (ոչ-պոպկորն ապրանքներ) */
+  units?: string[];
+  /** Ձեռքով քանակով ապրանքներ (պոպկորն) */
+  popcorn?: BoxOfficeProductSelection[];
   paymentMethod?: BoxOfficePaymentMethod;
   amountPaid?: number;
 }
 
-/** Ինքնուրույն ապրանքների վաճառք դրամարկղից՝ առանց տոմսի (կանխիկ) */
+/** Ինքնուրույն ապրանքների վաճառք դրամարկղից՝ առանց տոմսի (կանխիկ, QR սկանավորմամբ) */
 export async function createBoxOfficeProductOrder(
   data: CreateBoxOfficeOrderData
 ) {
@@ -495,27 +501,101 @@ export async function createBoxOfficeProductOrder(
   }
 
   try {
-    const selections = (data.products ?? []).filter(
+    const unitCodes = Array.from(
+      new Set((data.units ?? []).map((c) => (c ?? '').trim()).filter(Boolean))
+    );
+    const popcornSelections = (data.popcorn ?? []).filter(
       (p) => p && p.productId > 0 && Number(p.quantity) > 0
     );
 
-    if (selections.length === 0) {
+    if (unitCodes.length === 0 && popcornSelections.length === 0) {
       return { success: false, error: 'Ընտրեք առնվազն մեկ ապրանք' };
     }
 
-    // Գները միշտ բազայից (չվստահել client-ին)
-    const dbProducts = await prisma.product.findMany({
-      where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
-      select: { id: true, name: true, price: true, stock: true, category: true },
-    });
-
+    // QR միավորների վալիդացիա (խմբավորում ըստ ապրանքի)
+    const unitsByProduct = new Map<
+      number,
+      { price: number; name: string; unitIds: number[] }
+    >();
     let total = 0;
-    for (const sel of selections) {
-      const product = dbProducts.find((p) => p.id === sel.productId);
+
+    if (unitCodes.length > 0) {
+      const dbUnits = await prisma.productUnit.findMany({
+        where: { qrCode: { in: unitCodes } },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              category: true,
+              isActive: true,
+            },
+          },
+        },
+      });
+      const byCode = new Map(dbUnits.map((u) => [u.qrCode, u]));
+      for (const code of unitCodes) {
+        const unit = byCode.get(code);
+        if (!unit) {
+          return { success: false, error: `QR «${code}» չի գտնվել` };
+        }
+        if (isQuantityOnlyProduct(unit.product.category)) {
+          return {
+            success: false,
+            error: `«${unit.product.name}» ապրանքը ավելացվում է քանակով, ոչ սկանավորմամբ`,
+          };
+        }
+        if (!unit.product.isActive) {
+          return { success: false, error: `«${unit.product.name}» ապրանքն ակտիվ չէ` };
+        }
+        if (unit.status !== 'in_stock') {
+          return { success: false, error: `QR «${code}» արդեն վաճառված է` };
+        }
+        const group = unitsByProduct.get(unit.product.id) ?? {
+          price: unit.product.price,
+          name: unit.product.name,
+          unitIds: [],
+        };
+        group.unitIds.push(unit.id);
+        unitsByProduct.set(unit.product.id, group);
+        total += unit.product.price;
+      }
+    }
+
+    // Պոպկորն՝ քանակով
+    const popcornProducts =
+      popcornSelections.length > 0
+        ? await prisma.product.findMany({
+            where: {
+              id: { in: popcornSelections.map((s) => s.productId) },
+              isActive: true,
+            },
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              stock: true,
+              category: true,
+            },
+          })
+        : [];
+
+    for (const sel of popcornSelections) {
+      const product = popcornProducts.find((p) => p.id === sel.productId);
       if (!product) {
         return { success: false, error: 'Ընտրված ապրանքը հասանելի չէ' };
       }
+      if (!isQuantityOnlyProduct(product.category)) {
+        return {
+          success: false,
+          error: `«${product.name}» ապրանքը պետք է սկանավորվի QR-ով`,
+        };
+      }
       const qty = Math.floor(Number(sel.quantity));
+      if (qty <= 0) {
+        return { success: false, error: 'Անվավեր քանակ' };
+      }
       if (product.stock < qty) {
         return {
           success: false,
@@ -546,36 +626,34 @@ export async function createBoxOfficeProductOrder(
         },
       });
 
-      await tx.orderItem.createMany({
-        data: selections.map((sel) => {
-          const product = dbProducts.find((p) => p.id === sel.productId)!;
-          return {
+      // QR ապրանքներ՝ մեկ պատվերի տող ամեն ապրանքի համար, կապել կոնկրետ միավորները
+      for (const [productId, group] of unitsByProduct) {
+        const item = await tx.orderItem.create({
+          data: {
+            orderId: created.id,
+            productId,
+            quantity: group.unitIds.length,
+            price: group.price,
+            fulfilledAt: new Date(),
+          },
+        });
+        await sellSpecificProductUnits(tx, group.unitIds, item.id);
+      }
+
+      // Պոպկորն՝ քանակով
+      for (const sel of popcornSelections) {
+        const product = popcornProducts.find((p) => p.id === sel.productId)!;
+        const qty = Math.floor(Number(sel.quantity));
+        await tx.orderItem.create({
+          data: {
             orderId: created.id,
             productId: sel.productId,
-            quantity: Math.floor(Number(sel.quantity)),
+            quantity: qty,
             price: product.price,
             fulfilledAt: new Date(),
-          };
-        }),
-      });
-
-      // Վաճառել ֆիզիկական միավորները (QR)՝ նշել sold, կապել պատվերի տողին
-      const createdItems = await tx.orderItem.findMany({
-        where: { orderId: created.id },
-        select: { id: true, productId: true },
-      });
-      const itemByProduct = new Map(
-        createdItems.map((i) => [i.productId, i.id])
-      );
-      for (const sel of selections) {
-        const product = dbProducts.find((p) => p.id === sel.productId)!;
-        await fulfillOrderItemStock(
-          tx,
-          sel.productId,
-          product.category,
-          Math.floor(Number(sel.quantity)),
-          itemByProduct.get(sel.productId) ?? null
-        );
+          },
+        });
+        await sellQuantityStock(tx, sel.productId, qty);
       }
 
       return tx.order.findUnique({
@@ -584,10 +662,16 @@ export async function createBoxOfficeProductOrder(
       });
     });
 
-    const itemCount = selections.reduce(
-      (sum, sel) => sum + Math.floor(Number(sel.quantity)),
+    const unitCount = Array.from(unitsByProduct.values()).reduce(
+      (sum, g) => sum + g.unitIds.length,
       0
     );
+    const itemCount =
+      unitCount +
+      popcornSelections.reduce(
+        (sum, sel) => sum + Math.floor(Number(sel.quantity)),
+        0
+      );
     await createNotification({
       type: 'box_office',
       title: 'Դրամարկղի վաճառք (ապրանք)',

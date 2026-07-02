@@ -19,7 +19,7 @@ interface TicketCardProps {
   getSeatTypeLabel: (seatType: string) => string;
   onCheckedChange?: (ticketId: string, checked: boolean) => void;
   isChecked?: boolean;
-  onAddProducts?: (ticketId: number) => void;
+  onAddProducts?: (ticketId: number, status: string) => void;
   orderStatus?: string;
 }
 
@@ -52,7 +52,10 @@ export default function TicketCard({
   const [checked, setChecked] = useState(isChecked);
   const isUsed = ticket.status === 'used';
   const canAddProducts =
-    ticket.status === 'paid' && !isUsed && Boolean(onAddProducts);
+    (ticket.status === 'paid' || ticket.status === 'reserved') &&
+    !isUsed &&
+    Boolean(onAddProducts);
+  const isUnpaid = ticket.status === 'reserved';
 
   useEffect(() => {
     setChecked(isChecked);
@@ -144,11 +147,11 @@ export default function TicketCard({
             {canAddProducts && (
               <button
                 type="button"
-                onClick={() => onAddProducts?.(Number(ticket.id))}
+                onClick={() => onAddProducts?.(Number(ticket.id), ticket.status)}
                 className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Ավելացնել
+                {isUnpaid ? 'Սկանավորել ապրանք' : 'Ավելացնել'}
               </button>
             )}
           </div>

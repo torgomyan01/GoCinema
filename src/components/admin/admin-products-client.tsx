@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -50,6 +50,35 @@ interface Product {
   isActive: boolean;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  snack: 'Նախուտեստ',
+  drink: 'Խմիչք',
+  combo: 'Կոմբո',
+  popcorn: 'Պոպկորն',
+  soda: 'Գազավորված խմիչք',
+  candy: 'Քաղցրավենիք',
+  hot_dog: 'Հոթ-դոգ',
+  nachos: 'Նաչոս',
+  coffee: 'Սրճարանային խմիչք',
+  tea: 'Թեյ',
+  juice: 'Հյութ',
+  water: 'Ջուր',
+  chips: 'Չիպս',
+  chocolate: 'Շոկոլադ',
+  ice_cream: 'Պաղպաղակ',
+  sandwich: 'Սենդվիչ',
+  pizza: 'Պիցցա',
+  burger: 'Բուրգեր',
+  salad: 'Աղցան',
+  other: 'Այլ',
+};
+
+const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
+
+function getCategoryLabel(category: string) {
+  return CATEGORY_LABELS[category] || category;
+}
+
 export default function AdminProductsClient({
   user,
 }: AdminProductsClientProps) {
@@ -66,6 +95,7 @@ export default function AdminProductsClient({
     text: string;
   } | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -331,6 +361,160 @@ export default function AdminProductsClient({
     ? products
     : products.filter((p) => p.isActive);
 
+  const groupedProducts = useMemo(() => {
+    const map = new Map<string, Product[]>();
+    for (const product of visibleProducts) {
+      const list = map.get(product.category) ?? [];
+      list.push(product);
+      map.set(product.category, list);
+    }
+
+    const ordered: { category: string; label: string; products: Product[] }[] =
+      [];
+    for (const category of CATEGORY_ORDER) {
+      const items = map.get(category);
+      if (items?.length) {
+        ordered.push({
+          category,
+          label: getCategoryLabel(category),
+          products: items,
+        });
+        map.delete(category);
+      }
+    }
+    for (const [category, items] of map.entries()) {
+      ordered.push({
+        category,
+        label: getCategoryLabel(category),
+        products: items,
+      });
+    }
+    return ordered;
+  }, [visibleProducts]);
+
+  const categoryTabs = useMemo(
+    () => [
+      { id: 'all', label: 'Բոլորը', count: visibleProducts.length },
+      ...groupedProducts.map((g) => ({
+        id: g.category,
+        label: g.label,
+        count: g.products.length,
+      })),
+    ],
+    [groupedProducts, visibleProducts.length]
+  );
+
+  const displayedSections = useMemo(() => {
+    if (activeCategory === 'all') return groupedProducts;
+    return groupedProducts.filter((g) => g.category === activeCategory);
+  }, [activeCategory, groupedProducts]);
+
+  const renderProductCard = (product: Product) => (
+    <motion.div
+      key={product.id}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md"
+    >
+      {product.image ? (
+        <div className="relative aspect-[4/3] w-full bg-gray-100 sm:aspect-video">
+          <img
+            src={product.image}
+            alt={product.name}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      ) : (
+        <div className="flex aspect-[4/3] w-full items-center justify-center bg-gray-100 text-gray-300 sm:aspect-video">
+          <ImageIcon className="h-10 w-10 sm:h-12 sm:w-12" />
+        </div>
+      )}
+      <div className="flex flex-1 flex-col p-3 sm:p-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <h3 className="line-clamp-2 text-sm font-bold text-gray-900 sm:text-base">
+            {product.name}
+          </h3>
+          <span
+            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium sm:text-xs ${
+              product.isActive
+                ? 'bg-green-100 text-green-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}
+          >
+            {product.isActive ? 'Ակտիվ' : 'Անակտիվ'}
+          </span>
+        </div>
+
+        {product.description && (
+          <p className="mb-2 line-clamp-2 text-xs text-gray-500 sm:text-sm">
+            {product.description}
+          </p>
+        )}
+
+        <div className="mb-3">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-xs ${
+              product.stock <= 0
+                ? 'bg-red-100 text-red-700'
+                : product.stock <= 5
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-green-100 text-green-700'
+            }`}
+          >
+            <Boxes className="h-3 w-3" />
+            {product.stock <= 0 ? 'Առկա չէ' : `Պաշար՝ ${product.stock}`}
+          </span>
+        </div>
+
+        <div className="mt-auto flex items-center justify-between gap-2">
+          <span className="text-lg font-bold text-gray-900 sm:text-xl">
+            {product.price.toFixed(0)} ֏
+          </span>
+          <div className="flex shrink-0 gap-0.5 sm:gap-1">
+            <button
+              type="button"
+              onClick={() => openRestockModal(product)}
+              className="rounded-lg p-1.5 text-green-600 transition-colors hover:bg-green-50 sm:p-2"
+              title={
+                isQuantityOnlyProduct(product.category)
+                  ? 'Ավելացնել քանակ'
+                  : 'Ավելացնել քանակ · QR սկան'
+              }
+            >
+              <PackagePlus className="h-4 w-4" />
+            </button>
+            {!isQuantityOnlyProduct(product.category) && (
+              <button
+                type="button"
+                onClick={() => setUnitsTarget(product)}
+                className="rounded-lg p-1.5 text-purple-600 transition-colors hover:bg-purple-50 sm:p-2"
+                title="QR միավորներ"
+              >
+                <QrCode className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleOpenEditModal(product)}
+              className="rounded-lg p-1.5 text-blue-600 transition-colors hover:bg-blue-50 sm:p-2"
+              title="Խմբագրել"
+            >
+              <Edit className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDeleteProduct(product)}
+              className="rounded-lg p-1.5 text-red-600 transition-colors hover:bg-red-50 sm:p-2"
+              title="Ջնջել"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -402,32 +586,6 @@ export default function AdminProductsClient({
     }
   };
 
-  const getCategoryLabel = (category: string) => {
-    const categoryLabels: Record<string, string> = {
-      snack: 'Նախուտեստ',
-      drink: 'Խմիչք',
-      combo: 'Կոմբո',
-      popcorn: 'Պոպկորն',
-      soda: 'Գազավորված խմիչք',
-      candy: 'Քաղցրավենիք',
-      hot_dog: 'Հոթ-դոգ',
-      nachos: 'Նաչոս',
-      coffee: 'Սրճարանային խմիչք',
-      tea: 'Թեյ',
-      juice: 'Հյութ',
-      water: 'Ջուր',
-      chips: 'Չիպս',
-      chocolate: 'Շոկոլադ',
-      ice_cream: 'Պաղպաղակ',
-      sandwich: 'Սենդվիչ',
-      pizza: 'Պիցցա',
-      burger: 'Բուրգեր',
-      salad: 'Աղցան',
-      other: 'Այլ',
-    };
-    return categoryLabels[category] || category;
-  };
-
   if (isLoading && products.length === 0) {
     return (
       <AdminLayout user={user}>
@@ -440,19 +598,19 @@ export default function AdminProductsClient({
 
   return (
     <AdminLayout user={user}>
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            <h1 className="mb-1 text-2xl font-bold text-gray-900 sm:mb-2 sm:text-3xl">
               Արտադրանքների կառավարում
             </h1>
-            <p className="text-gray-600">
+            <p className="text-sm text-gray-600 sm:text-base">
               Կարգավորեք նախուտեստները, խմիչքները և կոմբոներն
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <label className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 sm:flex-none sm:text-sm">
               <input
                 type="checkbox"
                 checked={showInactive}
@@ -463,10 +621,10 @@ export default function AdminProductsClient({
             </label>
             <button
               onClick={handleOpenAddModal}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm text-white transition-colors hover:bg-purple-700 sm:flex-none"
             >
-              <Plus className="w-4 h-4" />
-              Ավելացնել արտադրանք
+              <Plus className="h-4 w-4" />
+              <span className="sm:inline">Ավելացնել</span>
             </button>
           </div>
         </div>
@@ -483,125 +641,69 @@ export default function AdminProductsClient({
           </div>
         )}
 
-        {/* Products Grid */}
+        {/* Բաժինների ֆիլտր */}
+        {categoryTabs.length > 1 && (
+          <div className="sticky top-0 z-10 -mx-4 mb-4 border-b border-gray-200 bg-gray-50/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:mb-6 sm:px-6">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              {categoryTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveCategory(tab.id)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition sm:px-4 sm:py-2 sm:text-sm ${
+                    activeCategory === tab.id
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label}
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold sm:text-xs ${
+                      activeCategory === tab.id
+                        ? 'bg-white/20 text-white'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Արտադրանքներ՝ բաժիններով */}
         {visibleProducts.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-lg">
-            <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">
+          <div className="rounded-lg bg-gray-50 py-12 text-center">
+            <ShoppingCart className="mx-auto mb-4 h-16 w-16 text-gray-400" />
+            <p className="mb-4 text-gray-600">
               {products.length === 0
                 ? 'Արտադրանքներ չկան'
                 : 'Ակտիվ արտադրանքներ չկան'}
             </p>
             <button
               onClick={handleOpenAddModal}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              className="rounded-lg bg-purple-600 px-4 py-2 text-white transition-colors hover:bg-purple-700"
             >
               Ավելացնել արտադրանք
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {visibleProducts.map((product) => (
-              <motion.div
-                key={product.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
-              >
-                {product.image && (
-                  <div className="relative w-full h-48 bg-gray-200">
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="text-xl font-bold text-gray-900">
-                      {product.name}
-                    </h3>
-                    <span
-                      className={`px-2 py-1 rounded text-xs ${
-                        product.isActive
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {product.isActive ? 'Ակտիվ' : 'Անակտիվ'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-purple-600 mb-2">
-                    {getCategoryLabel(product.category)}
-                  </p>
-                  {product.description && (
-                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                      {product.description}
-                    </p>
-                  )}
-
-                  {/* Պաշար (stock) */}
-                  <div className="mb-4 flex items-center gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        product.stock <= 0
-                          ? 'bg-red-100 text-red-700'
-                          : product.stock <= 5
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-green-100 text-green-700'
-                      }`}
-                    >
-                      <Boxes className="h-3.5 w-3.5" />
-                      {product.stock <= 0
-                        ? 'Առկա չէ'
-                        : `Պաշար՝ ${product.stock}`}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-bold text-gray-900">
-                      {product.price.toFixed(0)} ֏
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openRestockModal(product)}
-                        className="p-2 text-green-600 hover:bg-green-50 rounded transition-colors"
-                        title={
-                          isQuantityOnlyProduct(product.category)
-                            ? 'Ավելացնել քանակ'
-                            : 'Ավելացնել քանակ · QR սկան'
-                        }
-                      >
-                        <PackagePlus className="w-4 h-4" />
-                      </button>
-                      {!isQuantityOnlyProduct(product.category) && (
-                        <button
-                          onClick={() => setUnitsTarget(product)}
-                          className="p-2 text-purple-600 hover:bg-purple-50 rounded transition-colors"
-                          title="QR միավորներ"
-                        >
-                          <QrCode className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleOpenEditModal(product)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        title="Խմբագրել"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(product)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Ջնջել"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+          <div className="space-y-8 sm:space-y-10">
+            {displayedSections.map((section) => (
+              <section key={section.category} id={`category-${section.category}`}>
+                <div className="mb-3 flex items-center justify-between sm:mb-4">
+                  <h2 className="text-base font-bold text-gray-900 sm:text-lg">
+                    {section.label}
+                  </h2>
+                  <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700">
+                    {section.products.length}
+                  </span>
                 </div>
-              </motion.div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {section.products.map((product) => renderProductCard(product))}
+                </div>
+              </section>
             ))}
           </div>
         )}

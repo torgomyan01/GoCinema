@@ -543,6 +543,103 @@ export async function resetProductUnitVerifications(productId: number) {
   }
 }
 
+export type SaleScanOutcome =
+  | 'ok'
+  | 'not_found'
+  | 'already_sold'
+  | 'inactive'
+  | 'is_popcorn';
+
+/**
+ * Սկանավորված QR-ը ստուգում է վաճառքի համար (առանց փոփոխության)։
+ * Վերադարձնում է ապրանքի/միավորի տվյալները՝ modal-ի զամբյուղում ավելացնելու համար։
+ */
+export async function lookupSaleProductByQr(qrCode: string) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const code = (qrCode ?? '').trim();
+  if (!code) {
+    return {
+      success: false,
+      outcome: 'not_found' as SaleScanOutcome,
+      error: 'QR կոդը դատարկ է',
+    };
+  }
+
+  try {
+    const unit = await prisma.productUnit.findUnique({
+      where: { qrCode: code },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            category: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!unit) {
+      return {
+        success: false,
+        outcome: 'not_found' as SaleScanOutcome,
+        error: 'QR կոդը բազայում չի գտնվել',
+        qrCode: code,
+      };
+    }
+
+    if (isQuantityOnlyProduct(unit.product.category)) {
+      return {
+        success: false,
+        outcome: 'is_popcorn' as SaleScanOutcome,
+        error: 'Այս ապրանքը ավելացվում է քանակով, ոչ սկանավորմամբ',
+        qrCode: code,
+      };
+    }
+
+    if (!unit.product.isActive) {
+      return {
+        success: false,
+        outcome: 'inactive' as SaleScanOutcome,
+        error: `«${unit.product.name}» ապրանքն ակտիվ չէ`,
+        qrCode: code,
+      };
+    }
+
+    if (unit.status !== 'in_stock') {
+      return {
+        success: false,
+        outcome: 'already_sold' as SaleScanOutcome,
+        error: 'Այս միավորն արդեն վաճառված է',
+        qrCode: code,
+      };
+    }
+
+    return {
+      success: true,
+      outcome: 'ok' as SaleScanOutcome,
+      qrCode: code,
+      unit: {
+        id: unit.id,
+        qrCode: unit.qrCode,
+        productId: unit.product.id,
+        name: unit.product.name,
+        price: unit.product.price,
+        category: unit.product.category,
+      },
+    };
+  } catch (error: unknown) {
+    console.error('[Lookup Sale Product By QR] Error:', error);
+    return { success: false, error: 'QR-ը ստուգելիս սխալ է տեղի ունեցել' };
+  }
+}
+
 /** QR կոդը փոխել (միայն in_stock միավորների համար) */
 export async function updateProductUnitQr(unitId: number, qrCode: string) {
   const staff = await requireStaff();

@@ -28,8 +28,10 @@ import {
   getBoxOfficeSeatMap,
   getBoxOfficeTicketBySeat,
 } from '@/app/actions/box-office';
-import ProductSaleModal from '@/components/admin/box-office-product-sale-modal';
+import ProductScanSaleModal from '@/components/admin/product-scan-sale-modal';
 import TicketSaleModal from '@/components/admin/box-office-ticket-sale-modal';
+import { type PaymentMethod } from '@/components/admin/box-office-payment-panel';
+import { lookupSaleProductByQr } from '@/app/actions/products';
 
 interface ScreeningListItem {
   id: number;
@@ -150,7 +152,6 @@ export default function BoxOfficeClient() {
 
   // Ինքնուրույն ապրանքների վաճառք (առանց տոմսի)
   const [productSaleOpen, setProductSaleOpen] = useState(false);
-  const [productCart, setProductCart] = useState<Record<number, number>>({});
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [lastOrder, setLastOrder] = useState<{
     id: number;
@@ -204,34 +205,7 @@ export default function BoxOfficeClient() {
     [cart, products]
   );
 
-  const setStandaloneQty = (productId: number, qty: number) => {
-    setProductCart((prev) => {
-      const next = { ...prev };
-      if (qty <= 0) {
-        delete next[productId];
-      } else {
-        next[productId] = qty;
-      }
-      return next;
-    });
-  };
-
-  const standaloneTotal = useMemo(
-    () =>
-      Object.entries(productCart).reduce((sum, [id, qty]) => {
-        const product = products.find((p) => p.id === Number(id));
-        return product ? sum + product.price * qty : sum;
-      }, 0),
-    [productCart, products]
-  );
-
-  const standaloneCount = useMemo(
-    () => Object.values(productCart).reduce((sum, qty) => sum + qty, 0),
-    [productCart]
-  );
-
   const openProductSale = () => {
-    setProductCart({});
     setError(null);
     setProductSaleOpen(true);
   };
@@ -239,7 +213,6 @@ export default function BoxOfficeClient() {
   const closeProductSale = () => {
     if (isCreatingOrder) return;
     setProductSaleOpen(false);
-    setProductCart({});
   };
 
   const openOrderPrint = (orderId: number) => {
@@ -250,16 +223,13 @@ export default function BoxOfficeClient() {
     );
   };
 
-  const handleCreateProductOrder = async (payment: {
-    method: 'cash' | 'card';
-    amountPaid: number;
+  const handleCreateProductOrder = async (payload: {
+    units: string[];
+    popcorn: { productId: number; quantity: number }[];
+    payment?: { method: PaymentMethod; amountPaid: number };
   }) => {
     if (isCreatingOrder) return;
-    const selections = Object.entries(productCart).map(([id, qty]) => ({
-      productId: Number(id),
-      quantity: qty,
-    }));
-    if (selections.length === 0) {
+    if (payload.units.length === 0 && payload.popcorn.length === 0) {
       setError('Ընտրեք առնվազն մեկ ապրանք');
       return;
     }
@@ -267,19 +237,19 @@ export default function BoxOfficeClient() {
     setError(null);
     try {
       const result = await createBoxOfficeProductOrder({
-        products: selections,
-        paymentMethod: payment.method,
-        amountPaid: payment.amountPaid,
+        units: payload.units,
+        popcorn: payload.popcorn,
+        paymentMethod: payload.payment?.method,
+        amountPaid: payload.payment?.amountPaid,
       });
       if (!result.success || !result.order) {
         setError(result.error || 'Ապրանքների վաճառքը չստացվեց');
         return;
       }
       const order = result.order as { id: number };
-      setLastOrder({ id: order.id, total: result.total ?? standaloneTotal });
+      setLastOrder({ id: order.id, total: result.total ?? 0 });
       openOrderPrint(order.id);
       setProductSaleOpen(false);
-      setProductCart({});
       void loadProducts();
     } catch (err) {
       console.error('Product order error:', err);
@@ -953,15 +923,16 @@ export default function BoxOfficeClient() {
 
       {/* Ինքնուրույն ապրանքների վաճառքի մոդալ */}
       {productSaleOpen && (
-        <ProductSaleModal
+        <ProductScanSaleModal
           products={products}
-          cart={productCart}
-          setQty={setStandaloneQty}
-          total={standaloneTotal}
-          count={standaloneCount}
-          isCreating={isCreatingOrder}
+          mode="standalone"
+          isSubmitting={isCreatingOrder}
+          error={error}
+          lookupUnit={lookupSaleProductByQr}
           onClose={closeProductSale}
           onSubmit={handleCreateProductOrder}
+          title="Ապրանքների վաճառք"
+          subtitle="Սկանավորեք ապրանքի QR-ը, պոպկորնը՝ ձեռքով"
         />
       )}
 

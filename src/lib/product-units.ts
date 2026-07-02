@@ -105,6 +105,38 @@ export async function sellProductUnits(
   await syncProductStock(tx, productId);
 }
 
+/**
+ * Վաճառել կոնկրետ սկանավորված միավորները (ID-ներով)։
+ * Բոլորը պետք է լինեն `in_stock`, հակառակ դեպքում՝ սխալ (double-sell պաշտպանություն)։
+ */
+export async function sellSpecificProductUnits(
+  tx: Tx,
+  unitIds: number[],
+  orderItemId: number | null
+) {
+  const ids = Array.from(new Set(unitIds.filter((id) => Number.isFinite(id))));
+  if (ids.length === 0) return;
+
+  const units = await tx.productUnit.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, productId: true, status: true },
+  });
+
+  if (units.length !== ids.length || units.some((u) => u.status !== 'in_stock')) {
+    throw new Error(UNIT_STOCK_INSUFFICIENT);
+  }
+
+  await tx.productUnit.updateMany({
+    where: { id: { in: ids }, status: 'in_stock' },
+    data: { status: 'sold', soldAt: new Date(), orderItemId },
+  });
+
+  const productIds = Array.from(new Set(units.map((u) => u.productId)));
+  for (const productId of productIds) {
+    await syncProductStock(tx, productId);
+  }
+}
+
 /** Վաճառված կոնկրետ միավորը (QR-ով) նշել sold */
 export async function sellProductUnitByQr(
   tx: Tx,

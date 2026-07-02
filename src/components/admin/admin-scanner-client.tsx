@@ -27,7 +27,7 @@ import {
 import { Search, Banknote } from 'lucide-react';
 import QRScanner from './qr-scanner';
 import TicketCard from './ticket-card';
-import ProductSaleModal from './box-office-product-sale-modal';
+import ProductScanSaleModal from './product-scan-sale-modal';
 import PaymentPanel, { type PaymentMethod } from './box-office-payment-panel';
 import { getBoxOfficeProducts } from '@/app/actions/box-office';
 import {
@@ -36,8 +36,9 @@ import {
   markAllTicketsInOrderAsUsed,
   findReservations,
   payReservationAtCounter,
-  addScannerEntryProducts,
+  addTicketProducts,
 } from '@/app/actions/scanner';
+import { lookupSaleProductByQr } from '@/app/actions/products';
 import Image from 'next/image';
 
 interface ReservationSearchResult {
@@ -110,7 +111,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const [productModalTicketId, setProductModalTicketId] = useState<
     number | null
   >(null);
-  const [productCart, setProductCart] = useState<Record<number, number>>({});
+  const [productModalStatus, setProductModalStatus] = useState<string>('paid');
   const [isAddingProducts, setIsAddingProducts] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
 
@@ -589,61 +590,32 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     return null;
   }, [productModalTicketId, activeWindow?.scannedData]);
 
-  const productCartTotal = useMemo(
-    () =>
-      Object.entries(productCart).reduce((sum, [id, qty]) => {
-        const product = scannerProducts.find((p) => p.id === Number(id));
-        return product ? sum + product.price * qty : sum;
-      }, 0),
-    [productCart, scannerProducts]
-  );
-
-  const productCartCount = useMemo(
-    () => Object.values(productCart).reduce((sum, qty) => sum + qty, 0),
-    [productCart]
-  );
-
-  const openProductModal = (ticketId: number) => {
-    setProductCart({});
+  const openProductModal = (ticketId: number, status: string) => {
+    setProductModalStatus(status);
     setProductError(null);
     setProductModalTicketId(ticketId);
   };
 
   const closeProductModal = () => {
     setProductModalTicketId(null);
-    setProductCart({});
     setProductError(null);
   };
 
-  const setProductQty = (productId: number, qty: number) => {
-    setProductCart((prev) => {
-      const next = { ...prev };
-      if (qty <= 0) {
-        delete next[productId];
-      } else {
-        next[productId] = qty;
-      }
-      return next;
-    });
-  };
-
-  const handleSubmitScannerProducts = async (payment: {
-    method: PaymentMethod;
-    amountPaid: number;
+  const handleSubmitScannerProducts = async (payload: {
+    units: string[];
+    popcorn: { productId: number; quantity: number }[];
+    payment?: { method: PaymentMethod; amountPaid: number };
   }) => {
     if (!productModalTicketId || !activeWindow?.qrCode) return;
     setIsAddingProducts(true);
     setProductError(null);
     try {
-      const selections = Object.entries(productCart).map(([id, qty]) => ({
-        productId: Number(id),
-        quantity: qty,
-      }));
-      const result = await addScannerEntryProducts({
+      const result = await addTicketProducts({
         ticketId: productModalTicketId,
-        products: selections,
-        paymentMethod: payment.method,
-        amountPaid: payment.amountPaid,
+        units: payload.units,
+        popcorn: payload.popcorn,
+        paymentMethod: payload.payment?.method,
+        amountPaid: payload.payment?.amountPaid,
       });
       if (result.success) {
         closeProductModal();
@@ -1333,7 +1305,8 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                     ) ??
                     [];
                   const canAdd =
-                    ticketData.status === 'paid' &&
+                    (ticketData.status === 'paid' ||
+                      ticketData.status === 'reserved') &&
                     activeWindow.scannedData.type === 'ticket';
 
                   if (ticketProducts.length === 0 && !canAdd) return null;
@@ -1348,11 +1321,18 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                         {canAdd && (
                           <button
                             type="button"
-                            onClick={() => openProductModal(Number(ticketData.id))}
+                            onClick={() =>
+                              openProductModal(
+                                Number(ticketData.id),
+                                ticketData.status
+                              )
+                            }
                             className="flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
                           >
                             <Plus className="w-4 h-4" />
-                            Ավելացնել
+                            {ticketData.status === 'reserved'
+                              ? 'Սկանավորել'
+                              : 'Ավելացնել'}
                           </button>
                         )}
                       </div>
@@ -1463,19 +1443,22 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       ) : null}
 
       {productModalTicketId !== null && (
-        <ProductSaleModal
+        <ProductScanSaleModal
           products={scannerProducts}
-          cart={productCart}
-          setQty={setProductQty}
-          total={productCartTotal}
-          count={productCartCount}
-          isCreating={isAddingProducts}
+          mode={productModalStatus === 'paid' ? 'ticket-paid' : 'ticket-unpaid'}
+          isSubmitting={isAddingProducts}
+          error={productError}
+          lookupUnit={lookupSaleProductByQr}
           onClose={closeProductModal}
           onSubmit={handleSubmitScannerProducts}
           title="Մուտքի կետ՝ ապրանքներ"
           subtitle={
             productModalTicket
-              ? `Տեղ ${productModalTicket.seat?.row ?? ''}${productModalTicket.seat?.number ?? ''} — պաշարը հանվում է մուտքի ժամանակ`
+              ? `Տեղ ${productModalTicket.seat?.row ?? ''}${productModalTicket.seat?.number ?? ''}${
+                  productModalStatus === 'paid'
+                    ? ' — վաճառք և վճարում'
+                    : ' — ավելանում է պատվերին, վճարումը միասին'
+                }`
               : 'Մուտքի կետ'
           }
         />

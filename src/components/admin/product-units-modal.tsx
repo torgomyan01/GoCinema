@@ -84,17 +84,45 @@ export default function ProductUnitsModal({
   const [sessionScanned, setSessionScanned] = useState<Set<string>>(new Set());
   const scanInputRef = useRef<HTMLInputElement>(null);
 
+  const focusScanInput = useCallback(() => {
+    if (activeTab !== 'verify') return;
+    requestAnimationFrame(() => {
+      scanInputRef.current?.focus({ preventScroll: true });
+    });
+  }, [activeTab]);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
 
   useEffect(() => {
-    if (activeTab === 'verify') {
-      const t = setTimeout(() => scanInputRef.current?.focus(), 50);
-      return () => clearTimeout(t);
-    }
-  }, [activeTab]);
+    if (activeTab !== 'verify') return;
+    const t = setTimeout(() => focusScanInput(), 50);
+    const onWindowFocus = () => focusScanInput();
+    window.addEventListener('focus', onWindowFocus);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('focus', onWindowFocus);
+    };
+  }, [activeTab, focusScanInput]);
+
+  const handleScanInputBlur = useCallback(() => {
+    window.setTimeout(() => {
+      if (activeTab !== 'verify') return;
+      const active = document.activeElement;
+      if (
+        active === scanInputRef.current ||
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement ||
+        active instanceof HTMLButtonElement
+      ) {
+        return;
+      }
+      focusScanInput();
+    }, 100);
+  }, [activeTab, focusScanInput]);
 
   const loadUnits = useCallback(async () => {
     setIsLoading(true);
@@ -142,11 +170,12 @@ export default function ProductUnitsModal({
 
   const handleVerifyScan = async (raw: string) => {
     const code = raw.trim();
-    if (!code || isVerifying) return;
+    if (!code) return;
 
     if (sessionScanned.has(code)) {
       addVerifyLog(code, 'duplicate_session', 'Այս սեսիայում արդեն սկանավորվել է');
       setScanInput('');
+      focusScanInput();
       return;
     }
 
@@ -198,7 +227,7 @@ export default function ProductUnitsModal({
     } finally {
       setIsVerifying(false);
       setScanInput('');
-      scanInputRef.current?.focus();
+      focusScanInput();
     }
   };
 
@@ -227,7 +256,7 @@ export default function ProductUnitsModal({
       setError('Ստուգումը զրոյացնելիս սխալ է տեղի ունեցել');
     } finally {
       setIsResetting(false);
-      scanInputRef.current?.focus();
+      focusScanInput();
     }
   };
 
@@ -467,7 +496,21 @@ export default function ProductUnitsModal({
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {activeTab === 'verify' ? (
-            <div className="space-y-4">
+            <div
+              className="space-y-4"
+              onMouseDown={(e) => {
+                const target = e.target as HTMLElement;
+                if (
+                  target.tagName === 'INPUT' ||
+                  target.tagName === 'BUTTON' ||
+                  target.closest('button')
+                ) {
+                  return;
+                }
+                e.preventDefault();
+                focusScanInput();
+              }}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-2">
                   <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
@@ -504,15 +547,15 @@ export default function ProductUnitsModal({
                     autoFocus
                     value={scanInput}
                     onChange={(e) => setScanInput(e.target.value)}
+                    onBlur={handleScanInputBlur}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
                         void handleVerifyScan(scanInput);
                       }
                     }}
-                    disabled={isVerifying}
                     placeholder="Սկանավորեք կամ մուտքագրեք QR կոդը"
-                    className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-60"
+                    className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                   {isVerifying && (
                     <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-purple-600" />

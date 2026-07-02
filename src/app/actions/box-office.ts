@@ -10,8 +10,8 @@ import { occupiedTicketWhere } from '@/lib/reservation';
 import { releaseExpiredReservations } from '@/app/actions/tickets';
 import { createNotification, formatAmd } from '@/lib/notifications';
 import {
-  sellProductUnits,
-  returnProductUnitsByOrderItem,
+  fulfillOrderItemStock,
+  returnOrderItemStock,
   UNIT_STOCK_INSUFFICIENT,
 } from '@/lib/product-units';
 
@@ -311,13 +311,18 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
     );
 
     let productsTotal = 0;
-    let dbProducts: { id: number; name: string; price: number; stock: number }[] =
-      [];
+    let dbProducts: {
+      id: number;
+      name: string;
+      price: number;
+      stock: number;
+      category: string;
+    }[] = [];
 
     if (selections.length > 0) {
       dbProducts = await prisma.product.findMany({
         where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
-        select: { id: true, name: true, price: true, stock: true },
+        select: { id: true, name: true, price: true, stock: true, category: true },
       });
       for (const sel of selections) {
         const product = dbProducts.find((p) => p.id === sel.productId);
@@ -401,9 +406,11 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
           createdItems.map((i) => [i.productId, i.id])
         );
         for (const sel of selections) {
-          await sellProductUnits(
+          const product = dbProducts.find((p) => p.id === sel.productId)!;
+          await fulfillOrderItemStock(
             tx,
             sel.productId,
+            product.category,
             Math.floor(Number(sel.quantity)),
             itemByProduct.get(sel.productId) ?? null
           );
@@ -499,7 +506,7 @@ export async function createBoxOfficeProductOrder(
     // Գները միշտ բազայից (չվստահել client-ին)
     const dbProducts = await prisma.product.findMany({
       where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
-      select: { id: true, name: true, price: true, stock: true },
+      select: { id: true, name: true, price: true, stock: true, category: true },
     });
 
     let total = 0;
@@ -561,9 +568,11 @@ export async function createBoxOfficeProductOrder(
         createdItems.map((i) => [i.productId, i.id])
       );
       for (const sel of selections) {
-        await sellProductUnits(
+        const product = dbProducts.find((p) => p.id === sel.productId)!;
+        await fulfillOrderItemStock(
           tx,
           sel.productId,
+          product.category,
           Math.floor(Number(sel.quantity)),
           itemByProduct.get(sel.productId) ?? null
         );
@@ -650,7 +659,11 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       include: {
         payment: true,
         seat: { select: { id: true, row: true, number: true } },
-        order: { include: { orderItems: true } },
+        order: {
+          include: {
+            orderItems: { include: { product: { select: { category: true } } } },
+          },
+        },
         screening: { include: { movie: { select: { title: true } } } },
       },
     });
@@ -692,9 +705,15 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
         });
       }
 
-      // Վերադարձնել վաճառված ֆիզիկական միավորները պահեստ (in_stock)
+      // Վերադարձնել պաշարը՝ ըստ ապրանքի տիպի (քանակ կամ QR միավոր)
       for (const item of itemsToRestore) {
-        await returnProductUnitsByOrderItem(tx, item.id);
+        await returnOrderItemStock(
+          tx,
+          item.id,
+          item.productId,
+          item.product?.category ?? 'snack',
+          item.quantity
+        );
       }
 
       if (ticket.orderId) {

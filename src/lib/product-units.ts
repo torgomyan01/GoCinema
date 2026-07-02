@@ -1,11 +1,10 @@
 import type { Prisma } from '@prisma/client';
 
 /**
- * ProductUnit-ների կառավարման ընդհանուր օգնականներ։
+ * Ապրանքների պաշարի կառավարում։
  *
- * Ամեն ֆիզիկական ապրանք ունի իր ունիկալ QR-ով ProductUnit գրառումը։
- * Վաճառքի ժամանակ միավորը դառնում է `sold` (չի ջնջվում՝ հարկային հաշվառման համար),
- * իսկ `product.stock`-ը միշտ համաժամեցվում է `in_stock` միավորների քանակին։
+ * - `popcorn` և այլ QUANTITY_ONLY կատեգորիաներ՝ պարզ քանակ (stock դաշտ)
+ * - Մնացածը՝ ամեն միավորի ունիկալ QR (ProductUnit), վաճառվածը մնում է բազայում
  */
 
 type Tx = Omit<
@@ -13,10 +12,23 @@ type Tx = Omit<
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >;
 
-/** Սխալ, երբ պահեստում բավարար in_stock միավոր չկա */
+/** QR-հաշվառում չունեցող կատեգորիաներ — վաճառվում են քանակով */
+export const QUANTITY_ONLY_CATEGORIES = ['popcorn'] as const;
+
+export function usesQrUnitTracking(category: string): boolean {
+  return !QUANTITY_ONLY_CATEGORIES.includes(
+    category as (typeof QUANTITY_ONLY_CATEGORIES)[number]
+  );
+}
+
+export function isQuantityOnlyProduct(category: string): boolean {
+  return !usesQrUnitTracking(category);
+}
+
+/** Սխալ, երբ պահեստում բավարար միավոր/քանակ չկա */
 export const UNIT_STOCK_INSUFFICIENT = 'UNIT_STOCK_INSUFFICIENT';
 
-/** Համաժամեցնել product.stock = in_stock միավորների քանակ */
+/** Համաժամեցնել product.stock = in_stock միավորների քանակ (միայն QR ապրանքների համար) */
 export async function syncProductStock(tx: Tx, productId: number) {
   const inStock = await tx.productUnit.count({
     where: { productId, status: 'in_stock' },
@@ -28,10 +40,42 @@ export async function syncProductStock(tx: Tx, productId: number) {
   return inStock;
 }
 
+/** Քանակային ապրանքից հանել (պոպկորն և նմանատիպ) */
+export async function sellQuantityStock(
+  tx: Tx,
+  productId: number,
+  quantity: number
+) {
+  const qty = Math.floor(Number(quantity));
+  if (!Number.isFinite(qty) || qty <= 0) return;
+
+  const decremented = await tx.product.updateMany({
+    where: { id: productId, stock: { gte: qty } },
+    data: { stock: { decrement: qty } },
+  });
+  if (decremented.count === 0) {
+    throw new Error(UNIT_STOCK_INSUFFICIENT);
+  }
+}
+
+/** Քանակային ապրանքի պաշար վերադարձնել (չեղարկում) */
+export async function returnQuantityStock(
+  tx: Tx,
+  productId: number,
+  quantity: number
+) {
+  const qty = Math.floor(Number(quantity));
+  if (!Number.isFinite(qty) || qty <= 0) return;
+
+  await tx.product.update({
+    where: { id: productId },
+    data: { stock: { increment: qty } },
+  });
+}
+
 /**
- * Վաճառել `quantity` միավոր (FIFO՝ ամենահին in_stock)։
+ * Վաճառել `quantity` QR միավոր (FIFO՝ ամենահին in_stock)։
  * Միավորները դառնում են `sold`, կապվում `orderItemId`-ին և մնում բազայում։
- * Եթե բավարար միավոր չկա՝ throw UNIT_STOCK_INSUFFICIENT։
  */
 export async function sellProductUnits(
   tx: Tx,
@@ -61,11 +105,7 @@ export async function sellProductUnits(
   await syncProductStock(tx, productId);
 }
 
-/**
- * Վաճառված կոնկրետ միավորը (QR-ով) նշել sold և կապել պատվերին։
- * Օգտագործվում է վաճառքի/մուտքի պահին QR սկանավորելիս։
- * Վերադարձնում է միավորը կամ null (եթե չկա/արդեն վաճառված)։
- */
+/** Վաճառված կոնկրետ միավորը (QR-ով) նշել sold */
 export async function sellProductUnitByQr(
   tx: Tx,
   qrCode: string,
@@ -89,10 +129,7 @@ export async function sellProductUnitByQr(
   return unit;
 }
 
-/**
- * Վերադարձնել պատվերի տողին կապված վաճառված միավորները պահեստ (in_stock)։
- * Օգտագործվում է չեղարկման/վերադարձի ժամանակ։
- */
+/** QR միավորները վերադարձնել պահեստ */
 export async function returnProductUnitsByOrderItem(
   tx: Tx,
   orderItemId: number
@@ -112,5 +149,35 @@ export async function returnProductUnitsByOrderItem(
   const productIds = Array.from(new Set(units.map((u) => u.productId)));
   for (const productId of productIds) {
     await syncProductStock(tx, productId);
+  }
+}
+
+/** Պատվերի տողի պաշարից հանել՝ ըստ ապրանքի տիպի */
+export async function fulfillOrderItemStock(
+  tx: Tx,
+  productId: number,
+  category: string,
+  quantity: number,
+  orderItemId: number | null
+) {
+  if (isQuantityOnlyProduct(category)) {
+    await sellQuantityStock(tx, productId, quantity);
+  } else {
+    await sellProductUnits(tx, productId, quantity, orderItemId);
+  }
+}
+
+/** Պատվերի տողի պաշար վերադարձնել՝ ըստ ապրանքի տիպի */
+export async function returnOrderItemStock(
+  tx: Tx,
+  orderItemId: number,
+  productId: number,
+  category: string,
+  quantity: number
+) {
+  if (isQuantityOnlyProduct(category)) {
+    await returnQuantityStock(tx, productId, quantity);
+  } else {
+    await returnProductUnitsByOrderItem(tx, orderItemId);
   }
 }

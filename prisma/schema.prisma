@@ -248,6 +248,7 @@ model ProductUnit {
   status      String    @default("in_stock") @db.VarChar(20) // in_stock, sold
   orderItemId Int? // վաճառքի կապ (որ պատվերի հետ վաճառվեց)
   soldAt      DateTime?
+  verifiedAt  DateTime? // ֆիզիկական ստուգում (ինվենտարիզացիա)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -257,6 +258,7 @@ model ProductUnit {
   @@index([productId])
   @@index([status])
   @@index([orderItemId])
+  @@index([verifiedAt])
   @@map("product_units")
 }
 

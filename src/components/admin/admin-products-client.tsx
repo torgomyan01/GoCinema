@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -24,7 +24,10 @@ import {
   updateProduct,
   deleteProduct,
   restockProductUnits,
+  restockProductQuantity,
 } from '@/app/actions/products';
+import { isQuantityOnlyProduct } from '@/lib/product-units';
+import ProductUnitsModal from './product-units-modal';
 
 interface AdminProductsClientProps {
   user: {
@@ -78,7 +81,20 @@ export default function AdminProductsClient({
   const [scannedCodes, setScannedCodes] = useState<string[]>([]);
   const [scanInput, setScanInput] = useState('');
   const [scanWarning, setScanWarning] = useState<string | null>(null);
+  const [restockAmount, setRestockAmount] = useState('');
   const [isRestocking, setIsRestocking] = useState(false);
+
+  // QR միավորների կառավարում
+  const [unitsTarget, setUnitsTarget] = useState<Product | null>(null);
+
+  const handleProductStockUpdated = useCallback(
+    (productId: number, stock: number) => {
+      setProducts((prev) =>
+        prev.map((p) => (p.id === productId ? { ...p, stock } : p))
+      );
+    },
+    []
+  );
 
   useEffect(() => {
     loadProducts();
@@ -146,6 +162,7 @@ export default function AdminProductsClient({
     setScannedCodes([]);
     setScanInput('');
     setScanWarning(null);
+    setRestockAmount('');
   };
 
   const closeRestockModal = () => {
@@ -154,6 +171,7 @@ export default function AdminProductsClient({
     setScannedCodes([]);
     setScanInput('');
     setScanWarning(null);
+    setRestockAmount('');
   };
 
   const handleAddScan = (raw: string) => {
@@ -171,6 +189,48 @@ export default function AdminProductsClient({
 
   const handleRemoveScan = (code: string) => {
     setScannedCodes((prev) => prev.filter((c) => c !== code));
+  };
+
+  const handleRestockQuantity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restockTarget) return;
+
+    const amount = parseInt(restockAmount, 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setScanWarning('Քանակը պետք է լինի 0-ից մեծ ամբողջ թիվ');
+      return;
+    }
+
+    setIsRestocking(true);
+    setStatusMessage(null);
+    try {
+      const result = await restockProductQuantity(restockTarget.id, amount);
+      if (result.success && result.product) {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === restockTarget.id ? (result.product as Product) : p
+          )
+        );
+        setStatusMessage({
+          type: 'success',
+          text: result.message || 'Քանակը ավելացվեց',
+        });
+        closeRestockModal();
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: result.error || 'Քանակ ավելացնելիս սխալ է տեղի ունեցել',
+        });
+      }
+    } catch (err) {
+      console.error('Error restocking product:', err);
+      setStatusMessage({
+        type: 'error',
+        text: 'Քանակ ավելացնելիս սխալ է տեղի ունեցել',
+      });
+    } finally {
+      setIsRestocking(false);
+    }
   };
 
   const handleRestock = async (e: React.FormEvent) => {
@@ -507,10 +567,23 @@ export default function AdminProductsClient({
                       <button
                         onClick={() => openRestockModal(product)}
                         className="p-2 text-green-600 hover:bg-green-50 rounded transition-colors"
-                        title="Ավելացնել քանակ (QR սկան)"
+                        title={
+                          isQuantityOnlyProduct(product.category)
+                            ? 'Ավելացնել քանակ'
+                            : 'Ավելացնել քանակ · QR սկան'
+                        }
                       >
                         <PackagePlus className="w-4 h-4" />
                       </button>
+                      {!isQuantityOnlyProduct(product.category) && (
+                        <button
+                          onClick={() => setUnitsTarget(product)}
+                          className="p-2 text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                          title="QR միավորներ"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleOpenEditModal(product)}
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -656,13 +729,19 @@ export default function AdminProductsClient({
 
                   <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                      <ScanLine className="h-4 w-4 text-green-600" />
-                      Պաշարը կառավարվում է QR-սկանավորմամբ
+                      {isQuantityOnlyProduct(formData.category) ? (
+                        <Boxes className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <ScanLine className="h-4 w-4 text-green-600" />
+                      )}
+                      {isQuantityOnlyProduct(formData.category)
+                        ? 'Պոպկորնը հաշվառվում է քանակով'
+                        : 'Պաշարը կառավարվում է QR-սկանավորմամբ'}
                     </div>
                     <p className="mt-1 text-xs text-gray-500">
-                      Քանակ ավելացնելու համար օգտագործեք «Ավելացնել քանակ · QR
-                      սկան» կոճակը՝ ամեն միավորի կոդը սկանավորելով։ Ձեռքով պաշար
-                      չի սահմանվում։
+                      {isQuantityOnlyProduct(formData.category)
+                        ? 'Քանակ ավելացնելու համար օգտագործեք «Ավելացնել քանակ» կոճակը։'
+                        : 'Քանակ ավելացնելու համար սկանավորեք ամեն միավորի QR կոդը։'}
                     </p>
                   </div>
 
@@ -773,9 +852,95 @@ export default function AdminProductsClient({
           )}
         </AnimatePresence>
 
-        {/* Ավելացնել քանակ (QR սկան) modal */}
+        {/* Ավելացնել քանակ modal — պոպկորն (քանակ) կամ մնացած (QR) */}
         <AnimatePresence>
-          {restockTarget && (
+          {restockTarget && isQuantityOnlyProduct(restockTarget.category) && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+              onClick={closeRestockModal}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700">
+                    <PackagePlus className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">
+                      Ավելացնել քանակ
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      «{restockTarget.name}» · ընթացիկ պաշար՝{' '}
+                      <span className="font-semibold">
+                        {restockTarget.stock}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleRestockQuantity} className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Ավելացվող քանակ
+                    </label>
+                    <input
+                      type="number"
+                      autoFocus
+                      value={restockAmount}
+                      onChange={(e) => setRestockAmount(e.target.value)}
+                      min="1"
+                      step="1"
+                      placeholder="Օր.՝ 50"
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    {restockAmount && parseInt(restockAmount, 10) > 0 && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Նոր պաշարը կլինի՝{' '}
+                        <span className="font-semibold text-green-700">
+                          {restockTarget.stock +
+                            (parseInt(restockAmount, 10) || 0)}
+                        </span>
+                      </p>
+                    )}
+                    {scanWarning && (
+                      <p className="mt-1 text-xs font-medium text-amber-600">
+                        {scanWarning}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeRestockModal}
+                      disabled={isRestocking}
+                      className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Չեղարկել
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isRestocking}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
+                    >
+                      <PackagePlus className="h-4 w-4" />
+                      {isRestocking ? 'Ավելացվում է...' : 'Ավելացնել'}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {restockTarget && !isQuantityOnlyProduct(restockTarget.category) && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -914,6 +1079,18 @@ export default function AdminProductsClient({
                 </form>
               </motion.div>
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* QR միավորների կառավարում */}
+        <AnimatePresence>
+          {unitsTarget && (
+            <ProductUnitsModal
+              key={unitsTarget.id}
+              product={unitsTarget}
+              onClose={() => setUnitsTarget(null)}
+              onStockUpdated={handleProductStockUpdated}
+            />
           )}
         </AnimatePresence>
       </div>

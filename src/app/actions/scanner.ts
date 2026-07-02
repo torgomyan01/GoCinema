@@ -7,7 +7,12 @@ import { authOptions } from '@/lib/auth';
 import { isStaffRole } from '@/lib/roles';
 import { COUNTER_PAYMENT_METHOD } from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
-import { sellProductUnits, UNIT_STOCK_INSUFFICIENT } from '@/lib/product-units';
+import {
+  fulfillOrderItemStock,
+  isQuantityOnlyProduct,
+  sellQuantityStock,
+  UNIT_STOCK_INSUFFICIENT,
+} from '@/lib/product-units';
 import type { Prisma } from '@prisma/client';
 
 type TxClient = Omit<
@@ -116,12 +121,18 @@ function resolveScannerPayment(
 async function fulfillTicketProducts(tx: TxClient, ticketId: number) {
   const items = await tx.orderItem.findMany({
     where: { ticketId, fulfilledAt: null },
-    include: { product: { select: { id: true, name: true } } },
+    include: { product: { select: { id: true, name: true, category: true } } },
   });
 
   for (const item of items) {
     try {
-      await sellProductUnits(tx, item.productId, item.quantity, item.id);
+      await fulfillOrderItemStock(
+        tx,
+        item.productId,
+        item.product.category,
+        item.quantity,
+        item.id
+      );
     } catch (error) {
       if (error instanceof Error && error.message === UNIT_STOCK_INSUFFICIENT) {
         throw new Error(`STOCK_INSUFFICIENT:${item.product.name}`);
@@ -623,7 +634,7 @@ export async function addScannerEntryProducts(data: {
 
     const dbProducts = await prisma.product.findMany({
       where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
-      select: { id: true, name: true, price: true },
+      select: { id: true, name: true, price: true, stock: true, category: true },
     });
 
     let productsTotal = 0;
@@ -635,6 +646,15 @@ export async function addScannerEntryProducts(data: {
       const qty = Math.floor(Number(sel.quantity));
       if (qty <= 0) {
         return { success: false, error: 'Անվավեր քանակ' };
+      }
+      if (isQuantityOnlyProduct(product.category) && product.stock < qty) {
+        return {
+          success: false,
+          error:
+            product.stock <= 0
+              ? `«${product.name}» ապրանքն առկա չէ`
+              : `«${product.name}» ապրանքի պաշարը բավարար չէ (առկա է ${product.stock})`,
+        };
       }
       productsTotal += product.price * qty;
     }
@@ -679,15 +699,30 @@ export async function addScannerEntryProducts(data: {
       await tx.orderItem.createMany({
         data: selections.map((sel) => {
           const product = dbProducts.find((p) => p.id === sel.productId)!;
+          const qty = Math.floor(Number(sel.quantity));
+          const isQtyOnly = isQuantityOnlyProduct(product.category);
           return {
             orderId,
             ticketId,
             productId: sel.productId,
-            quantity: Math.floor(Number(sel.quantity)),
+            quantity: qty,
             price: product.price,
+            // Պոպկորն՝ անմիջապես հանվում է պաշարից, QR ապրանքները՝ մուտքի ժամանակ
+            ...(isQtyOnly ? { fulfilledAt: new Date() } : {}),
           };
         }),
       });
+
+      for (const sel of selections) {
+        const product = dbProducts.find((p) => p.id === sel.productId)!;
+        if (!isQuantityOnlyProduct(product.category)) continue;
+
+        await sellQuantityStock(
+          tx,
+          sel.productId,
+          Math.floor(Number(sel.quantity))
+        );
+      }
     });
 
     const seatLabel = ticket.seat
@@ -712,6 +747,19 @@ export async function addScannerEntryProducts(data: {
       message: 'Ապրանքները ավելացվեցին տոմսին',
     };
   } catch (error: unknown) {
+    const stockError = mapStockError(error);
+    if (stockError) {
+      return { success: false, error: stockError };
+    }
+    if (
+      error instanceof Error &&
+      error.message === UNIT_STOCK_INSUFFICIENT
+    ) {
+      return {
+        success: false,
+        error: 'Ապրանքի պաշարը բավարար չէ',
+      };
+    }
     console.error('[Add Scanner Entry Products] Error:', error);
     return {
       success: false,

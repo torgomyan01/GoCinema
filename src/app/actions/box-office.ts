@@ -21,6 +21,9 @@ import {
 const WALK_IN_PHONE = '000000000';
 const WALK_IN_NAME = 'Դրամարկղ (walk-in)';
 
+/** Չեղարկման թույլատրելի ժամկետ՝ ցուցադրության ավարտից հետո (1 ժամ) */
+const CANCEL_GRACE_MS = 60 * 60 * 1000;
+
 async function requireStaff() {
   const session = await getServerSession(authOptions);
   const user = session?.user as { id?: string; role?: string } | undefined;
@@ -769,6 +772,23 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
 
     if (!['paid', 'reserved'].includes(ticket.status)) {
       return { success: false, error: 'Այս տոմսը չի կարող չեղարկվել' };
+    }
+
+    // Ցուցադրության ավարտից 1 ժամ անց տոմսը այլևս չի կարող չեղարկվել
+    const screeningEnd = ticket.screening?.endTime
+      ? new Date(ticket.screening.endTime)
+      : null;
+    if (screeningEnd) {
+      const cancelDeadline = new Date(
+        screeningEnd.getTime() + CANCEL_GRACE_MS
+      );
+      if (Date.now() > cancelDeadline.getTime()) {
+        return {
+          success: false,
+          error:
+            'Չեղարկման ժամկետն անցել է (ցուցադրության ավարտից 1 ժամ հետո տոմսը չի չեղարկվում)',
+        };
+      }
     }
 
     // Այս տոմսին կապված ապրանքների քանակները՝ պաշար վերադարձնելու համար

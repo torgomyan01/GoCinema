@@ -7,6 +7,7 @@ import { authOptions } from '@/lib/auth';
 import { isStaffRole } from '@/lib/roles';
 import { COUNTER_PAYMENT_METHOD } from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
+import { sellProductUnits, UNIT_STOCK_INSUFFICIENT } from '@/lib/product-units';
 import type { Prisma } from '@prisma/client';
 
 type TxClient = Omit<
@@ -115,17 +116,17 @@ function resolveScannerPayment(
 async function fulfillTicketProducts(tx: TxClient, ticketId: number) {
   const items = await tx.orderItem.findMany({
     where: { ticketId, fulfilledAt: null },
-    include: { product: { select: { id: true, name: true, stock: true } } },
+    include: { product: { select: { id: true, name: true } } },
   });
 
   for (const item of items) {
-    const qty = item.quantity;
-    const decremented = await tx.product.updateMany({
-      where: { id: item.productId, stock: { gte: qty } },
-      data: { stock: { decrement: qty } },
-    });
-    if (decremented.count === 0) {
-      throw new Error(`STOCK_INSUFFICIENT:${item.product.name}`);
+    try {
+      await sellProductUnits(tx, item.productId, item.quantity, item.id);
+    } catch (error) {
+      if (error instanceof Error && error.message === UNIT_STOCK_INSUFFICIENT) {
+        throw new Error(`STOCK_INSUFFICIENT:${item.product.name}`);
+      }
+      throw error;
     }
     await tx.orderItem.update({
       where: { id: item.id },

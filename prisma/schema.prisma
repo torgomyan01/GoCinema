@@ -231,10 +231,33 @@ model Product {
   updatedAt   DateTime  @updatedAt
 
   orderItems OrderItem[]
+  units      ProductUnit[]
 
   @@index([category])
   @@index([isActive])
   @@map("products")
+}
+
+// Ամեն ֆիզիկական միավոր՝ իր ունիկալ QR/գործարանային կոդով։
+// Restock-ի ժամանակ ամեն միավոր սկանավորվում է, վաճառքից հետո մնում է
+// բազայում (status = sold)՝ հարկային հաշվառման համար։
+model ProductUnit {
+  id          Int       @id @default(autoincrement())
+  productId   Int
+  qrCode      String    @unique @db.VarChar(255) // ամեն միավորի ունիկալ կոդ
+  status      String    @default("in_stock") @db.VarChar(20) // in_stock, sold
+  orderItemId Int? // վաճառքի կապ (որ պատվերի հետ վաճառվեց)
+  soldAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItem OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([status])
+  @@index([orderItemId])
+  @@map("product_units")
 }
 
 // ============================================
@@ -272,6 +295,7 @@ model OrderItem {
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   ticket  Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  units   ProductUnit[]
 
   @@index([orderId])
   @@index([ticketId])

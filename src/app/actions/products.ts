@@ -98,10 +98,8 @@ export async function createProduct(data: CreateProductData) {
         price: data.price,
         image: data.image || null,
         category: data.category,
-        stock:
-          data.stock !== undefined && Number.isFinite(data.stock)
-            ? Math.max(0, Math.floor(data.stock))
-            : 0,
+        // Պաշարը կառավարվում է QR-միավորներով (restock սկան)՝ սկզբում 0
+        stock: 0,
         isActive: data.isActive !== undefined ? data.isActive : true,
       },
     });
@@ -153,10 +151,7 @@ export async function updateProduct(data: UpdateProductData) {
         ...(data.price && { price: data.price }),
         ...(data.image !== undefined && { image: data.image }),
         ...(data.category && { category: data.category }),
-        ...(data.stock !== undefined &&
-          Number.isFinite(data.stock) && {
-            stock: Math.max(0, Math.floor(data.stock)),
-          }),
+        // Պաշարը (stock) չի փոխվում ձեռքով՝ կառավարվում է QR-միավորներով
         ...(data.isActive !== undefined && { isActive: data.isActive }),
       },
     });
@@ -179,17 +174,15 @@ export async function updateProduct(data: UpdateProductData) {
 }
 
 /**
- * Ապրանքին քանակ ավելացնել (restock)։ `amount`-ը ավելացվում է առկա պաշարին։
+ * Ապրանքին քանակ ավելացնել՝ սկանավորելով ամեն միավորի ունիկալ QR/գործարանային կոդը։
+ * Ամեն կոդ դառնում է առանձին ProductUnit (status = in_stock)։
+ * Արդեն գոյություն ունեցող կոդերը բաց են թողնվում (կրկնակի սկան)։
+ * Ապրանքի `stock`-ը համաժամեցվում է՝ = in_stock միավորների քանակ։
  */
-export async function restockProduct(id: number, amount: number) {
+export async function restockProductUnits(id: number, qrCodes: string[]) {
   try {
     if (!id) {
       return { success: false, error: 'Ապրանքի ID-ն պարտադիր է' };
-    }
-
-    const qty = Math.floor(Number(amount));
-    if (!Number.isFinite(qty) || qty <= 0) {
-      return { success: false, error: 'Քանակը պետք է լինի 0-ից մեծ ամբողջ թիվ' };
     }
 
     const existing = await prisma.product.findUnique({ where: { id } });
@@ -197,25 +190,101 @@ export async function restockProduct(id: number, amount: number) {
       return { success: false, error: 'Արտադրանքը չի գտնվել' };
     }
 
+    // Նորմալիզացիա՝ trim, դատարկների զտում, ներմուտքի ներսում կրկնակիների հեռացում
+    const seen = new Set<string>();
+    const codes: string[] = [];
+    for (const raw of qrCodes ?? []) {
+      const code = String(raw ?? '').trim();
+      if (!code) continue;
+      if (seen.has(code)) continue;
+      seen.add(code);
+      codes.push(code);
+    }
+
+    if (codes.length === 0) {
+      return { success: false, error: 'Սկանավորեք առնվազն մեկ QR կոդ' };
+    }
+
+    // Բազայում արդեն առկա կոդերը (ցանկացած ապրանքի)՝ բաց ենք թողնում
+    const existingUnits = await prisma.productUnit.findMany({
+      where: { qrCode: { in: codes } },
+      select: { qrCode: true },
+    });
+    const existingCodes = new Set(existingUnits.map((u) => u.qrCode));
+    const newCodes = codes.filter((c) => !existingCodes.has(c));
+
+    if (newCodes.length > 0) {
+      await prisma.productUnit.createMany({
+        data: newCodes.map((qrCode) => ({
+          productId: id,
+          qrCode,
+          status: 'in_stock',
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    // stock = in_stock միավորների իրական քանակ
+    const inStockCount = await prisma.productUnit.count({
+      where: { productId: id, status: 'in_stock' },
+    });
     const product = await prisma.product.update({
       where: { id },
-      data: { stock: { increment: qty } },
+      data: { stock: inStockCount },
     });
 
     revalidatePath('/admin/products');
     revalidatePath('/admin/box-office');
     revalidatePath('/checkout');
 
+    const duplicates = codes.filter((c) => existingCodes.has(c));
     return {
       success: true,
       product,
-      message: `Ավելացվեց ${qty} միավոր։ Ընդհանուր պաշարը՝ ${product.stock}`,
+      added: newCodes.length,
+      duplicates,
+      message:
+        duplicates.length > 0
+          ? `Ավելացվեց ${newCodes.length} միավոր։ ${duplicates.length} կոդ արդեն գրանցված էր և բաց թողնվեց։ Ընդհանուր պաշար՝ ${inStockCount}`
+          : `Ավելացվեց ${newCodes.length} միավոր։ Ընդհանուր պաշար՝ ${inStockCount}`,
     };
   } catch (error: any) {
-    console.error('[Restock Product] Error:', error);
+    console.error('[Restock Product Units] Error:', error);
     return {
       success: false,
       error: 'Քանակ լրացնելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** Ապրանքի միավորների ամփոփում՝ in_stock և վաճառված (հարկային հաշվառման համար) */
+export async function getProductUnits(productId: number) {
+  try {
+    const [units, inStock, sold] = await Promise.all([
+      prisma.productUnit.findMany({
+        where: { productId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          qrCode: true,
+          status: true,
+          soldAt: true,
+          createdAt: true,
+        },
+      }),
+      prisma.productUnit.count({ where: { productId, status: 'in_stock' } }),
+      prisma.productUnit.count({ where: { productId, status: 'sold' } }),
+    ]);
+
+    return { success: true, units, inStock, sold };
+  } catch (error: any) {
+    console.error('[Get Product Units] Error:', error);
+    return {
+      success: false,
+      error: 'Միավորները բեռնելիս սխալ է տեղի ունեցել',
+      units: [],
+      inStock: 0,
+      sold: 0,
     };
   }
 }

@@ -9,6 +9,11 @@ import { isStaffRole } from '@/lib/roles';
 import { occupiedTicketWhere } from '@/lib/reservation';
 import { releaseExpiredReservations } from '@/app/actions/tickets';
 import { createNotification, formatAmd } from '@/lib/notifications';
+import {
+  sellProductUnits,
+  returnProductUnitsByOrderItem,
+  UNIT_STOCK_INSUFFICIENT,
+} from '@/lib/product-units';
 
 const WALK_IN_PHONE = '000000000';
 const WALK_IN_NAME = 'Դրամարկղ (walk-in)';
@@ -387,16 +392,21 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
           }),
         });
 
-        // Պաշարից հանել՝ ատոմիկ, պաշարի բավարարության պայմանով
+        // Վաճառել ֆիզիկական միավորները (QR)՝ նշել sold, կապել պատվերի տողին
+        const createdItems = await tx.orderItem.findMany({
+          where: { orderId: order.id },
+          select: { id: true, productId: true },
+        });
+        const itemByProduct = new Map(
+          createdItems.map((i) => [i.productId, i.id])
+        );
         for (const sel of selections) {
-          const qty = Math.floor(Number(sel.quantity));
-          const decremented = await tx.product.updateMany({
-            where: { id: sel.productId, stock: { gte: qty } },
-            data: { stock: { decrement: qty } },
-          });
-          if (decremented.count === 0) {
-            throw new Error('STOCK_CONFLICT');
-          }
+          await sellProductUnits(
+            tx,
+            sel.productId,
+            Math.floor(Number(sel.quantity)),
+            itemByProduct.get(sel.productId) ?? null
+          );
         }
 
         await tx.ticket.update({
@@ -444,7 +454,11 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
 
     return { success: true, ticket, total: grandTotal };
   } catch (error) {
-    if (error instanceof Error && error.message === 'STOCK_CONFLICT') {
+    if (
+      error instanceof Error &&
+      (error.message === 'STOCK_CONFLICT' ||
+        error.message === UNIT_STOCK_INSUFFICIENT)
+    ) {
       return {
         success: false,
         error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
@@ -538,16 +552,21 @@ export async function createBoxOfficeProductOrder(
         }),
       });
 
-      // Պաշարից հանել՝ ատոմիկ, պաշարի բավարարության պայմանով
+      // Վաճառել ֆիզիկական միավորները (QR)՝ նշել sold, կապել պատվերի տողին
+      const createdItems = await tx.orderItem.findMany({
+        where: { orderId: created.id },
+        select: { id: true, productId: true },
+      });
+      const itemByProduct = new Map(
+        createdItems.map((i) => [i.productId, i.id])
+      );
       for (const sel of selections) {
-        const qty = Math.floor(Number(sel.quantity));
-        const decremented = await tx.product.updateMany({
-          where: { id: sel.productId, stock: { gte: qty } },
-          data: { stock: { decrement: qty } },
-        });
-        if (decremented.count === 0) {
-          throw new Error('STOCK_CONFLICT');
-        }
+        await sellProductUnits(
+          tx,
+          sel.productId,
+          Math.floor(Number(sel.quantity)),
+          itemByProduct.get(sel.productId) ?? null
+        );
       }
 
       return tx.order.findUnique({
@@ -572,7 +591,11 @@ export async function createBoxOfficeProductOrder(
 
     return { success: true, order, total };
   } catch (error) {
-    if (error instanceof Error && error.message === 'STOCK_CONFLICT') {
+    if (
+      error instanceof Error &&
+      (error.message === 'STOCK_CONFLICT' ||
+        error.message === UNIT_STOCK_INSUFFICIENT)
+    ) {
       return {
         success: false,
         error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
@@ -669,14 +692,9 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
         });
       }
 
-      // Վերադարձնել ապրանքների քանակը պաշար
+      // Վերադարձնել վաճառված ֆիզիկական միավորները պահեստ (in_stock)
       for (const item of itemsToRestore) {
-        if (item.quantity > 0) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { increment: item.quantity } },
-          });
-        }
+        await returnProductUnitsByOrderItem(tx, item.id);
       }
 
       if (ticket.orderId) {

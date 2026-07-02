@@ -20,6 +20,20 @@ export const RESERVATION_HOLD_MS = RESERVATION_HOLD_MINUTES * 60 * 1000;
 /** Order.paymentMethod-ի արժեքը՝ դրամարկղում վճարվող ամրագրումների համար։ */
 export const COUNTER_PAYMENT_METHOD = 'counter';
 
+/**
+ * Դրամարկղ-ամրագրման սպասարկման լրացուցիչ ժամկետ՝ ցուցադրության ավարտից հետո։
+ * Ուշացած հաճախորդին կարողանանք սպասարկել (QR-ը չի անհետանում, տեղը չի ազատվում)
+ * մինչև ցուցադրության ավարտից 1 ժամ անց։
+ */
+export const COUNTER_SERVICE_GRACE_MS = 60 * 60 * 1000;
+
+/** Դրամարկղ-ամրագրման hold-ի ավարտը = ցուցադրության ավարտ + grace։ */
+export function counterHoldUntil(screeningEnd: Date | string): Date {
+  return new Date(
+    new Date(screeningEnd).getTime() + COUNTER_SERVICE_GRACE_MS
+  );
+}
+
 /** Անվճար (դրամարկղ) ամրագրման առավելագույն աթոռների քանակ՝ մեկ հաշվի վրա։ */
 export const MAX_FREE_RESERVED_SEATS = 4;
 

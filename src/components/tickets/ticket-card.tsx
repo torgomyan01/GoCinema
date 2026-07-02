@@ -16,7 +16,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { SITE_URL } from '@/utils/consts';
-import { RESERVATION_HOLD_MS, RESERVATION_HOLD_MINUTES } from '@/lib/reservation';
+import {
+  RESERVATION_HOLD_MS,
+  RESERVATION_HOLD_MINUTES,
+  COUNTER_SERVICE_GRACE_MS,
+} from '@/lib/reservation';
 
 interface TicketCardProps {
   ticket: {
@@ -76,8 +80,11 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
 
   // Դրամարկղ-ամրագրում՝ վճարվում է մուտքի մոտ, ոչ թե օնլայն 10 րոպեում
   const isCounterReservation = ticket.order?.paymentMethod === 'counter';
-  const screeningStarted =
-    new Date(ticket.screening.startTime).getTime() <= Date.now();
+  // Դրամարկղ-ամրագրման QR-ը հասանելի է մինչև ցուցադրության ավարտից 1 ժամ անց,
+  // որպեսզի ուշացած հաճախորդին կարողանան սպասարկել մուտքի մոտ։
+  const counterServiceOpen =
+    Date.now() <
+    new Date(ticket.screening.endTime).getTime() + COUNTER_SERVICE_GRACE_MS;
 
   // Ամրագրման «hold» հետհաշվարկ (10 րոպե տոմսի ստեղծման պահից) — միայն online
   useEffect(() => {
@@ -285,17 +292,15 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                     )}
                   {ticket.status === 'reserved' &&
                     isCounterReservation &&
-                    !screeningStarted && (
+                    counterServiceOpen && (
                       <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" />
-                        Վճարեք մուտքի մոտ մինչև {formatTime(
-                          ticket.screening.startTime
-                        )}
+                        Վճարեք մուտքի մոտ
                       </span>
                     )}
                   {ticket.status === 'reserved' &&
                     isCounterReservation &&
-                    screeningStarted && (
+                    !counterServiceOpen && (
                       <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-red-50 text-red-700 border border-red-200 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" />
                         Ամրագրման ժամկետը լրացել է
@@ -450,7 +455,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                   {/* Դրամարկղ-ամրագրում՝ ցույց տուր QR-ը մուտքի մոտ */}
                   {ticket.status === 'reserved' &&
                     isCounterReservation &&
-                    !screeningStarted && (
+                    counterServiceOpen && (
                       <>
                         <button
                           onClick={() => setShowQRModal(true)}
@@ -460,14 +465,15 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                           Ցույց տալ QR (վճարում մուտքի մոտ)
                         </button>
                         <p className="text-xs text-gray-500 text-right md:max-w-48">
-                          Ցույց տվեք այս QR-ը դրամարկղում՝ վճարելու համար մինչև
-                          ցուցադրության սկիզբը։
+                          Ցույց տվեք այս QR-ը դրամարկղում՝ վճարելու համար։ QR-ը
+                          հասանելի է նաև ցուցադրության ընթացքում՝ ուշանալու
+                          դեպքում։
                         </p>
                       </>
                     )}
                   {ticket.status === 'reserved' &&
                     isCounterReservation &&
-                    screeningStarted && (
+                    !counterServiceOpen && (
                       <Link
                         href={SITE_URL.SCHEDULE}
                         className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-all text-center shadow-sm"

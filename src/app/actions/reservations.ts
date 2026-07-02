@@ -8,6 +8,7 @@ import {
   occupiedTicketWhere,
   COUNTER_PAYMENT_METHOD,
   MAX_FREE_RESERVED_SEATS,
+  counterHoldUntil,
 } from '@/lib/reservation';
 import { releaseExpiredReservations } from './tickets';
 import { createNotification, formatAmd } from '@/lib/notifications';
@@ -148,9 +149,11 @@ export async function createCounterReservation(
       });
     }
 
-    const holdUntil = new Date(screening.startTime);
+    // hold-ը մինչև ցուցադրության ավարտից 1 ժամ անց, որպեսզի ուշացած
+    // հաճախորդին կարողանանք սպասարկել դրամարկղում (QR-ը չի անհետանում)
+    const holdUntil = counterHoldUntil(screening.endTime);
 
-    // Ստեղծում ենք տոմսերը՝ holdUntil = ցուցադրության սկիզբ
+    // Ստեղծում ենք տոմսերը՝ holdUntil = ցուցադրության ավարտ + grace
     const created = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {

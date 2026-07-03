@@ -13,11 +13,13 @@ import {
   LogOut,
   CheckCircle,
   Shield,
+  Clapperboard,
 } from 'lucide-react';
 import Link from 'next/link';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SITE_URL } from '@/utils/consts';
+import { hasRole } from '@/lib/roles';
 
 export default function LoginPageClient() {
   const { data: session, status, update } = useSession();
@@ -289,12 +291,22 @@ export default function LoginPageClient() {
                   Իմ տոմսերը
                 </Link>
 
-                {user.role === 'admin' && (
+                {hasRole(user.role, ['admin']) && (
                   <Link
                     href={SITE_URL.ADMIN}
                     className="w-full px-6 py-3 bg-white border-2 border-purple-600 text-purple-600 rounded-lg font-semibold hover:bg-purple-50 transition-all text-center block"
                   >
                     Ադմինիստացիոն էջ
+                  </Link>
+                )}
+
+                {hasRole(user.role, ['producer', 'admin']) && (
+                  <Link
+                    href={SITE_URL.PRODUCER}
+                    className="w-full px-6 py-3 bg-white border-2 border-amber-500 text-amber-600 rounded-lg font-semibold hover:bg-amber-50 transition-all text-center flex items-center justify-center gap-2"
+                  >
+                    <Clapperboard className="w-5 h-5" />
+                    Իմ ֆիլմերը
                   </Link>
                 )}
 

@@ -15,6 +15,7 @@ export interface CreateMovieData {
   description?: string | null;
   trailerUrl?: string | null;
   isActive?: boolean;
+  producerIds?: number[];
 }
 
 export interface UpdateMovieData extends Partial<CreateMovieData> {
@@ -27,6 +28,11 @@ export async function getMovies() {
       orderBy: {
         releaseDate: 'desc',
       },
+      include: {
+        producers: {
+          select: { id: true, name: true, phone: true },
+        },
+      },
     });
     return { success: true, movies };
   } catch (error: any) {
@@ -35,6 +41,25 @@ export async function getMovies() {
       success: false,
       error: 'Ֆիլմերը բեռնելիս սխալ է տեղի ունեցել',
       movies: [],
+    };
+  }
+}
+
+/** Բոլոր օգտատերերը, ովքեր ունեն producer role — ֆիլմին կցելու համար */
+export async function getProducerUsers() {
+  try {
+    const users = await prisma.user.findMany({
+      where: { role: { contains: 'producer' } },
+      select: { id: true, name: true, phone: true, email: true },
+      orderBy: { name: 'asc' },
+    });
+    return { success: true, users };
+  } catch (error: any) {
+    console.error('[Get Producer Users] Error:', error);
+    return {
+      success: false,
+      error: 'Ֆիլմարտադրողներին բեռնելիս սխալ է տեղի ունեցել',
+      users: [],
     };
   }
 }
@@ -173,6 +198,7 @@ export async function createMovie(data: CreateMovieData) {
       };
     }
 
+    const producerIds = (data.producerIds ?? []).filter((id) => id > 0);
     const movie = await prisma.movie.create({
       data: {
         title: data.title,
@@ -186,6 +212,12 @@ export async function createMovie(data: CreateMovieData) {
         description: data.description || null,
         trailerUrl: data.trailerUrl || null,
         isActive: data.isActive !== undefined ? data.isActive : true,
+        ...(producerIds.length > 0 && {
+          producers: { connect: producerIds.map((id) => ({ id })) },
+        }),
+      },
+      include: {
+        producers: { select: { id: true, name: true, phone: true } },
       },
     });
 
@@ -208,7 +240,7 @@ export async function createMovie(data: CreateMovieData) {
 
 export async function updateMovie(data: UpdateMovieData) {
   try {
-    const { id, ...updateData } = data;
+    const { id, producerIds, ...updateData } = data;
 
     // Validation
     if (!id) {
@@ -250,6 +282,17 @@ export async function updateMovie(data: UpdateMovieData) {
         releaseDate: updateData.releaseDate
           ? new Date(updateData.releaseDate)
           : undefined,
+        // producerIds=undefined → կապը չենք փոխում; [] → ջնջում ենք բոլորը
+        ...(producerIds !== undefined && {
+          producers: {
+            set: producerIds
+              .filter((pid) => pid > 0)
+              .map((pid) => ({ id: pid })),
+          },
+        }),
+      },
+      include: {
+        producers: { select: { id: true, name: true, phone: true } },
       },
     });
 

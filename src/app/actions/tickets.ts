@@ -358,6 +358,88 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
   }
 }
 
+/** Ֆիլմի բոլոր ցուցադրությունները՝ տոմսերի ամփոփ վիճակագրությամբ (admin) */
+export async function getScreeningsForMovieAdmin(movieId: number) {
+  try {
+    await releaseExpiredReservations();
+
+    const screenings = await prisma.screening.findMany({
+      where: { movieId },
+      orderBy: { startTime: 'desc' },
+      include: {
+        hall: { select: { id: true, name: true, capacity: true } },
+        tickets: { select: { status: true, price: true } },
+      },
+    });
+
+    const data = screenings.map((s) => {
+      const counts = { reserved: 0, paid: 0, used: 0, cancelled: 0 };
+      let revenue = 0;
+      for (const t of s.tickets) {
+        if (t.status in counts) {
+          counts[t.status as keyof typeof counts] += 1;
+        }
+        if (t.status === 'paid' || t.status === 'used') revenue += t.price;
+      }
+      const sold = counts.paid + counts.used;
+      return {
+        id: s.id,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        price: s.basePrice,
+        hallId: s.hall?.id ?? null,
+        hallName: s.hall?.name ?? '—',
+        capacity: s.hall?.capacity ?? 0,
+        totalTickets: s.tickets.length,
+        sold,
+        counts,
+        revenue,
+      };
+    });
+
+    return { success: true, screenings: data };
+  } catch (error: any) {
+    console.error('[Get Screenings For Movie Admin] Error:', error);
+    return {
+      success: false,
+      error: 'Ցուցադրությունները բեռնելիս սխալ է տեղի ունեցել',
+      screenings: [],
+    };
+  }
+}
+
+/** Ցուցադրության բոլոր տոմսերը (բոլոր կարգավիճակներով)՝ ադմինի կառավարման համար */
+export async function getTicketsForScreeningAdmin(screeningId: number) {
+  try {
+    const tickets = await prisma.ticket.findMany({
+      where: { screeningId },
+      include: {
+        user: {
+          select: { id: true, name: true, phone: true, email: true },
+        },
+        seat: {
+          select: { id: true, row: true, number: true, seatType: true },
+        },
+        order: { select: { id: true, paymentMethod: true } },
+      },
+      orderBy: [
+        { seat: { row: 'asc' } },
+        { seat: { number: 'asc' } },
+        { id: 'asc' },
+      ],
+    });
+
+    return { success: true, tickets };
+  } catch (error: any) {
+    console.error('[Get Tickets For Screening Admin] Error:', error);
+    return {
+      success: false,
+      error: 'Տոմսերը բեռնելիս սխալ է տեղի ունեցել',
+      tickets: [],
+    };
+  }
+}
+
 export async function updateTicketStatus(
   id: number,
   status: 'reserved' | 'paid' | 'used' | 'cancelled'
@@ -379,6 +461,8 @@ export async function updateTicketStatus(
 
     revalidatePath('/tickets');
     revalidatePath('/payment');
+    revalidatePath('/admin/tickets');
+    revalidatePath('/admin/movies');
 
     return {
       success: true,

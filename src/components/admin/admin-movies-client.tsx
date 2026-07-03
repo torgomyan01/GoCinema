@@ -16,20 +16,31 @@ import {
   Search,
   ArrowLeft,
   Play,
+  Clapperboard,
+  Ticket as TicketIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Autocomplete, AutocompleteItem } from '@heroui/react';
 import AdminLayout from './admin-layout';
 import FileUpload from './file-upload';
+import MovieTicketsModal from './movie-tickets-modal';
 import {
   getMovies,
   createMovie,
   updateMovie,
   archiveMovie,
   restoreMovie,
+  getProducerUsers,
 } from '@/app/actions/movies';
 import { AGE_RATING_OPTIONS, ageRatingClasses } from '@/lib/age-rating';
+
+interface ProducerUser {
+  id: number;
+  name: string | null;
+  phone: string | null;
+  email?: string | null;
+}
 
 interface AdminMoviesClientProps {
   user: {
@@ -54,6 +65,7 @@ interface Movie {
   description?: string | null;
   trailerUrl?: string | null;
   isActive?: boolean;
+  producers?: ProducerUser[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -86,6 +98,9 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
     'Քրեական',
   ];
 
+  const [producerUsers, setProducerUsers] = useState<ProducerUser[]>([]);
+  const [ticketsMovie, setTicketsMovie] = useState<Movie | null>(null);
+
   // Form state
   const [formData, setFormData] = useState({
     title: '',
@@ -98,6 +113,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
     releaseDate: '',
     description: '',
     trailerUrl: '',
+    producerIds: [] as number[],
   });
 
   // Load movies from database
@@ -119,6 +135,18 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
     };
 
     loadMovies();
+
+    const loadProducers = async () => {
+      try {
+        const result = await getProducerUsers();
+        if (result.success && result.users) {
+          setProducerUsers(result.users as ProducerUser[]);
+        }
+      } catch (error) {
+        console.error('Error loading producers:', error);
+      }
+    };
+    loadProducers();
   }, []);
 
   const filteredMovies = movies.filter((movie) => {
@@ -187,6 +215,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       releaseDate: '',
       description: '',
       trailerUrl: '',
+      producerIds: [],
     });
     setIsAddModalOpen(true);
   };
@@ -204,8 +233,18 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       releaseDate: new Date(movie.releaseDate).toISOString().split('T')[0],
       description: movie.description || '',
       trailerUrl: movie.trailerUrl || '',
+      producerIds: (movie.producers ?? []).map((p) => p.id),
     });
     setIsEditModalOpen(true);
+  };
+
+  const toggleProducer = (producerId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      producerIds: prev.producerIds.includes(producerId)
+        ? prev.producerIds.filter((id) => id !== producerId)
+        : [...prev.producerIds, producerId],
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -226,6 +265,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           description: formData.description || null,
           trailerUrl: formData.trailerUrl || null,
           isActive: true,
+          producerIds: formData.producerIds,
         });
 
         if (result.success && result.movie) {
@@ -247,6 +287,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           releaseDate: new Date(formData.releaseDate),
           description: formData.description || null,
           trailerUrl: formData.trailerUrl || null,
+          producerIds: formData.producerIds,
         });
 
         if (result.success && result.movie) {
@@ -279,6 +320,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
         releaseDate: '',
         description: '',
         trailerUrl: '',
+        producerIds: [],
       });
     }
   };
@@ -457,6 +499,14 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
 
                     {/* Actions */}
                     <div className="flex flex-col gap-2 pt-4 border-t border-gray-200">
+                      <button
+                        type="button"
+                        onClick={() => setTicketsMovie(movie)}
+                        className="w-full px-3 py-2 bg-purple-50 text-purple-600 rounded-lg font-medium hover:bg-purple-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <TicketIcon className="w-4 h-4" />
+                        Ցուցադրություններ և տոմսեր
+                      </button>
                       {movie.trailerUrl && (
                         <a
                           href={movie.trailerUrl}
@@ -767,6 +817,56 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                     />
                   </div>
 
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                      <Clapperboard className="w-4 h-4 text-purple-500" />
+                      Ֆիլմարտադրողներ
+                    </label>
+                    {producerUsers.length === 0 ? (
+                      <p className="text-xs text-gray-500 rounded-lg border border-dashed border-gray-300 px-4 py-3">
+                        Ֆիլմարտադրող օգտատերեր չկան։ Օգտատերերի բաժնից որևէ
+                        օգտատիրոջ տվեք «Ֆիլմարտադրող» դերը, ապա այստեղ կկարողանաք
+                        կցել ֆիլմին։
+                      </p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                        {producerUsers.map((producer) => {
+                          const checked = formData.producerIds.includes(
+                            producer.id
+                          );
+                          return (
+                            <label
+                              key={producer.id}
+                              className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                                checked ? 'bg-purple-50' : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleProducer(producer.id)}
+                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                              />
+                              <span className="flex-1 text-sm text-gray-800">
+                                {producer.name || 'Անանուն'}
+                                {producer.phone && (
+                                  <span className="text-gray-400">
+                                    {' '}
+                                    · {producer.phone}
+                                  </span>
+                                )}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-gray-500">
+                      Կցված արտադրողները կտեսնեն այս ֆիլմի հաշվետվությունը իրենց
+                      «Իմ ֆիլմերը» բաժնում։
+                    </p>
+                  </div>
+
                   <div className="flex items-center gap-4 pt-4 border-t border-gray-200">
                     <button
                       type="submit"
@@ -791,6 +891,17 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {ticketsMovie && (
+          <MovieTicketsModal
+            movie={{
+              id: ticketsMovie.id,
+              title: ticketsMovie.title,
+              image: ticketsMovie.image,
+            }}
+            onClose={() => setTicketsMovie(null)}
+          />
+        )}
       </div>
     </AdminLayout>
   );

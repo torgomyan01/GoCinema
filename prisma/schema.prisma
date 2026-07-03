@@ -17,7 +17,7 @@ model User {
   name             String?   @db.VarChar(255)
   phone            String    @unique @db.VarChar(50)
   password         String    @db.VarChar(255)
-  role             String    @default("user") @db.VarChar(50) // user, admin, moderator, employee (comma-separated roles supported in app code)
+  role             String    @default("user") @db.VarChar(50) // user, admin, moderator, employee, producer (comma-separated roles supported in app code)
   emailVerified    Boolean   @default(false)
   phoneVerified    Boolean   @default(false)
   avatar           String?   @db.VarChar(500)
@@ -34,6 +34,7 @@ model User {
   contacts          Contact[]
   passwordResetTokens PasswordResetToken[]
   supportRequests   SupportRequest[]
+  producedMovies    Movie[]   @relation("MovieProducers")
 
   @@index([email])
   @@index([phone])
@@ -96,6 +97,7 @@ model Movie {
   screenings  Screening[]
   reviews     Review[]
   premieres   Premiere[]
+  producers   User[]      @relation("MovieProducers")
 
   @@index([slug])
   @@index([genre])

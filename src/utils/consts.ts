@@ -16,6 +16,8 @@ export const SITE_URL = {
   REGISTER: '/register',
   LOGIN: '/account',
   ADMIN: '/admin',
+  PRODUCER: '/producer',
+  PRODUCER_MOVIE: (movieId: string | number) => `/producer/${movieId}`,
   PACKAGES: '/packages',
   ABOUT: '/about',
   CONTACTS: '/contacts',

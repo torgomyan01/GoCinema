@@ -2,7 +2,13 @@ export const STAFF_ROLES = ['admin', 'moderator', 'employee'] as const;
 
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
-export const ALL_ROLES = ['user', 'admin', 'moderator', 'employee'] as const;
+export const ALL_ROLES = [
+  'user',
+  'admin',
+  'moderator',
+  'employee',
+  'producer',
+] as const;
 
 export type AppRole = (typeof ALL_ROLES)[number];
 
@@ -11,6 +17,7 @@ export const ROLE_LABELS: Record<string, string> = {
   admin: 'Ադմինիստրատոր',
   moderator: 'Մոդերատոր',
   employee: 'Աշխատակից',
+  producer: 'Ֆիլմարտադրող',
 };
 
 /** Նորմալիզացնում է role-երի ցանկը՝ comma-separated string-ի */
@@ -44,5 +51,9 @@ export function isStaffRole(role?: string | null) {
 
 export function isAdminRole(role?: string | null) {
   return hasRole(role, ['admin']);
+}
+
+export function isProducerRole(role?: string | null) {
+  return hasRole(role, ['producer']);
 }
 

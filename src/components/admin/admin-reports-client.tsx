@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Armchair,
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Download,
   Film,
@@ -15,6 +17,7 @@ import {
   TrendingUp,
   UserX,
   XCircle,
+  ShoppingCart,
 } from 'lucide-react';
 import {
   getMovieReports,
@@ -93,6 +96,45 @@ function formatDayLabel(value: string | Date): string {
   });
 }
 
+function formatDateTime(value: string | Date): string {
+  return new Date(value).toLocaleString('hy-AM', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'paid':
+      return 'Վճարված';
+    case 'used':
+      return 'Եկել է';
+    case 'reserved':
+      return 'Ամրագրված';
+    case 'cancelled':
+      return 'Չեղարկված';
+    default:
+      return status;
+  }
+}
+
+function statusClasses(status: string): string {
+  switch (status) {
+    case 'paid':
+      return 'bg-orange-50 text-orange-700 border-orange-200';
+    case 'used':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'reserved':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'cancelled':
+      return 'bg-red-50 text-red-700 border-red-200';
+    default:
+      return 'bg-gray-50 text-gray-700 border-gray-200';
+  }
+}
+
 export default function AdminReportsClient() {
   const initialRange = presetRange('thisWeek');
   const [preset, setPreset] = useState<PresetKey>('thisWeek');
@@ -103,6 +145,12 @@ export default function AdminReportsClient() {
   const [data, setData] = useState<MovieReportData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedMovies, setExpandedMovies] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [expandedScreenings, setExpandedScreenings] = useState<Set<number>>(
+    () => new Set()
+  );
 
   const load = useCallback(
     async (range: { from: string; to: string }, reportBasis: ReportBasis) => {
@@ -115,6 +163,8 @@ export default function AdminReportsClient() {
       });
       if (result.success && result.data) {
         setData(result.data);
+        setExpandedMovies(new Set());
+        setExpandedScreenings(new Set());
       } else {
         setError(result.error || 'Սխալ է տեղի ունեցել');
         setData(null);
@@ -207,6 +257,24 @@ export default function AdminReportsClient() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const toggleMovie = (movieId: number) => {
+    setExpandedMovies((prev) => {
+      const next = new Set(prev);
+      if (next.has(movieId)) next.delete(movieId);
+      else next.add(movieId);
+      return next;
+    });
+  };
+
+  const toggleScreening = (screeningId: number) => {
+    setExpandedScreenings((prev) => {
+      const next = new Set(prev);
+      if (next.has(screeningId)) next.delete(screeningId);
+      else next.add(screeningId);
+      return next;
+    });
   };
 
   const summaryCards = data
@@ -533,68 +601,100 @@ export default function AdminReportsClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.rows.map((row) => (
-                    <tr
-                      key={row.movieId}
-                      className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-12 w-9 shrink-0 overflow-hidden rounded-md bg-gray-100">
-                            {row.image ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={row.image}
-                                alt={row.title}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-gray-300">
-                                <Film className="h-4 w-4" />
-                              </div>
-                            )}
-                          </div>
-                          <span className="font-medium text-gray-900">
-                            {row.title}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-center font-semibold text-gray-900">
-                        {row.sold}
-                      </td>
-                      <td className="px-3 py-3 text-center text-emerald-600">
-                        {row.attended}
-                      </td>
-                      <td className="px-3 py-3 text-center text-orange-600">
-                        {row.noShow}
-                      </td>
-                      <td className="px-3 py-3 text-center text-gray-500">
-                        {row.reserved}
-                      </td>
-                      <td className="px-3 py-3 text-center text-red-500">
-                        {row.cancelled}
-                      </td>
-                      <td className="px-3 py-3 text-center text-gray-600">
-                        {row.screenings}
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                            row.occupancy >= 0.7
-                              ? 'bg-green-100 text-green-700'
-                              : row.occupancy >= 0.4
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-gray-100 text-gray-600'
-                          }`}
+                  {data.rows.map((row) => {
+                    const isExpanded = expandedMovies.has(row.movieId);
+                    return (
+                      <Fragment key={row.movieId}>
+                        <tr
+                          className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60"
                         >
-                          {formatPercent(row.occupancy)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                        {formatAmd(row.revenue)}
-                      </td>
-                    </tr>
-                  ))}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleMovie(row.movieId)}
+                                className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 print:hidden"
+                                title="Բացել ցուցադրությունները"
+                              >
+                                <ChevronDown
+                                  className={`h-4 w-4 transition-transform ${
+                                    isExpanded ? 'rotate-180' : ''
+                                  }`}
+                                />
+                              </button>
+                              <div className="h-12 w-9 shrink-0 overflow-hidden rounded-md bg-gray-100">
+                                {row.image ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={row.image}
+                                    alt={row.title}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-gray-300">
+                                    <Film className="h-4 w-4" />
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-900">
+                                  {row.title}
+                                </span>
+                                <p className="text-xs text-gray-500 print:hidden">
+                                  {row.screeningDetails.length} ցուցադրություն · մանրամասն
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-center font-semibold text-gray-900">
+                            {row.sold}
+                          </td>
+                          <td className="px-3 py-3 text-center text-emerald-600">
+                            {row.attended}
+                          </td>
+                          <td className="px-3 py-3 text-center text-orange-600">
+                            {row.noShow}
+                          </td>
+                          <td className="px-3 py-3 text-center text-gray-500">
+                            {row.reserved}
+                          </td>
+                          <td className="px-3 py-3 text-center text-red-500">
+                            {row.cancelled}
+                          </td>
+                          <td className="px-3 py-3 text-center text-gray-600">
+                            {row.screenings}
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                                row.occupancy >= 0.7
+                                  ? 'bg-green-100 text-green-700'
+                                  : row.occupancy >= 0.4
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-gray-100 text-gray-600'
+                              }`}
+                            >
+                              {formatPercent(row.occupancy)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                            {formatAmd(row.revenue)}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={9} className="bg-gray-50/70 px-4 py-4">
+                              <MovieScreeningDetails
+                                screenings={row.screeningDetails}
+                                expandedScreenings={expandedScreenings}
+                                onToggleScreening={toggleScreening}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold text-gray-900">
@@ -633,6 +733,208 @@ export default function AdminReportsClient() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function MovieScreeningDetails({
+  screenings,
+  expandedScreenings,
+  onToggleScreening,
+}: {
+  screenings: MovieReportData['rows'][number]['screeningDetails'];
+  expandedScreenings: Set<number>;
+  onToggleScreening: (screeningId: number) => void;
+}) {
+  if (screenings.length === 0) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
+        Այս ֆիլմի համար ընտրված միջակայքում ցուցադրություններ չկան
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {screenings.map((screening) => {
+        const isOpen = expandedScreenings.has(screening.id);
+        return (
+          <div
+            key={screening.id}
+            className="overflow-hidden rounded-xl border border-gray-200 bg-white"
+          >
+            <button
+              type="button"
+              onClick={() => onToggleScreening(screening.id)}
+              className="flex w-full flex-col gap-3 px-4 py-3 text-left hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <ChevronDown
+                  className={`h-4 w-4 text-gray-400 transition-transform ${
+                    isOpen ? 'rotate-180' : ''
+                  }`}
+                />
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {formatDateTime(screening.startTime)} · {screening.hallName}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Տեղեր {screening.capacity} · տոմսեր {screening.tickets.length}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-5 gap-2 text-center text-xs sm:min-w-[420px]">
+                <MiniMetric label="Վաճառ." value={screening.sold} tone="green" />
+                <MiniMetric label="Եկել" value={screening.attended} tone="emerald" />
+                <MiniMetric label="Չներկ." value={screening.noShow} tone="orange" />
+                <MiniMetric label="Ամրագր." value={screening.reserved} tone="amber" />
+                <MiniMetric label="Չեղ." value={screening.cancelled} tone="red" />
+              </div>
+            </button>
+
+            {isOpen && (
+              <div className="border-t border-gray-100 p-4">
+                {screening.tickets.length === 0 ? (
+                  <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+                    Այս ցուցադրության համար տոմսեր չկան
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px] text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-500">
+                          <th className="px-3 py-2">Աթոռ</th>
+                          <th className="px-3 py-2">Կարգավիճակ</th>
+                          <th className="px-3 py-2">Հաճախորդ</th>
+                          <th className="px-3 py-2">Հեռախոս</th>
+                          <th className="px-3 py-2">Պատվեր</th>
+                          <th className="px-3 py-2">Ապրանքներ</th>
+                          <th className="px-3 py-2 text-right">Գումար</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {screening.tickets.map((ticket) => {
+                          const hasProducts = ticket.orderItems.length > 0;
+                          const isNoShow =
+                            ticket.status === 'paid' || ticket.noShow;
+                          return (
+                            <tr key={ticket.id} className="hover:bg-gray-50/80">
+                              <td className="px-3 py-2">
+                                <div className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2 py-1 font-semibold text-gray-800">
+                                  <Armchair className="h-4 w-4 text-gray-500" />
+                                  {ticket.seat
+                                    ? `${ticket.seat.row}${ticket.seat.number}`
+                                    : '—'}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                  <span
+                                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClasses(
+                                      ticket.status
+                                    )}`}
+                                  >
+                                    {statusLabel(ticket.status)}
+                                  </span>
+                                  {isNoShow && (
+                                    <span className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">
+                                      Չի եկել
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="font-medium text-gray-900">
+                                  {ticket.user.name || '—'}
+                                </div>
+                                {ticket.user.email && (
+                                  <div className="text-xs text-gray-500">
+                                    {ticket.user.email}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700">
+                                {ticket.user.phone || '—'}
+                              </td>
+                              <td className="px-3 py-2">
+                                {ticket.order ? (
+                                  <div>
+                                    <div className="font-semibold text-gray-900">
+                                      #{ticket.order.id}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {ticket.order.paymentMethod} ·{' '}
+                                      {ticket.order.status}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                {hasProducts ? (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {ticket.orderItems.map((item) => (
+                                      <span
+                                        key={`${ticket.id}-${item.id}`}
+                                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+                                          item.ticketId === null
+                                            ? 'bg-purple-50 text-purple-700'
+                                            : 'bg-blue-50 text-blue-700'
+                                        }`}
+                                      >
+                                        <ShoppingCart className="h-3 w-3" />
+                                        {item.product.name} x{item.quantity}
+                                        {item.ticketId === null ? ' · ընդհանուր' : ''}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">
+                                    Ապրանք չկա
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                {formatAmd(ticket.price)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MiniMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'green' | 'emerald' | 'orange' | 'amber' | 'red';
+}) {
+  const classes: Record<typeof tone, string> = {
+    green: 'bg-green-50 text-green-700',
+    emerald: 'bg-emerald-50 text-emerald-700',
+    orange: 'bg-orange-50 text-orange-700',
+    amber: 'bg-amber-50 text-amber-700',
+    red: 'bg-red-50 text-red-700',
+  };
+
+  return (
+    <div className={`rounded-lg px-2 py-1 ${classes[tone]}`}>
+      <div className="font-bold">{value}</div>
+      <div>{label}</div>
     </div>
   );
 }

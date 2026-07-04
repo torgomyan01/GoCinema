@@ -20,6 +20,62 @@ export interface MovieReportRow {
   screenings: number; // ցուցադրությունների քանակ (ըստ startTime)
   capacity: number; // ընդհանուր տեղեր այդ ցուցադրություններում
   occupancy: number; // 0..1 (sold / capacity)
+  screeningDetails: MovieReportScreening[];
+}
+
+export interface MovieReportOrderItem {
+  id: number;
+  ticketId: number | null;
+  quantity: number;
+  price: number;
+  product: {
+    id: number;
+    name: string;
+    category: string;
+  };
+}
+
+export interface MovieReportTicket {
+  id: number;
+  status: string;
+  price: number;
+  noShow: boolean;
+  createdAt: string;
+  usedAtLabel: string | null;
+  seat: {
+    id: number;
+    row: string;
+    number: number;
+    seatType: string;
+  } | null;
+  user: {
+    id: number;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+  };
+  order: {
+    id: number;
+    status: string;
+    paymentMethod: string;
+    totalAmount: number;
+  } | null;
+  orderItems: MovieReportOrderItem[];
+}
+
+export interface MovieReportScreening {
+  id: number;
+  startTime: string;
+  endTime: string;
+  hallName: string;
+  capacity: number;
+  sold: number;
+  attended: number;
+  noShow: number;
+  reserved: number;
+  cancelled: number;
+  revenue: number;
+  tickets: MovieReportTicket[];
 }
 
 export interface WeeklyPoint {
@@ -119,8 +175,57 @@ export async function getMovieReports(params: {
         select: {
           id: true,
           movieId: true,
-          hall: { select: { capacity: true } },
+          startTime: true,
+          endTime: true,
+          hall: { select: { name: true, capacity: true } },
           movie: { select: { id: true, title: true, image: true } },
+          tickets: {
+            orderBy: [{ seat: { row: 'asc' } }, { seat: { number: 'asc' } }],
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                  email: true,
+                },
+              },
+              seat: {
+                select: {
+                  id: true,
+                  row: true,
+                  number: true,
+                  seatType: true,
+                },
+              },
+              orderItems: {
+                include: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      category: true,
+                    },
+                  },
+                },
+              },
+              order: {
+                include: {
+                  orderItems: {
+                    include: {
+                      product: {
+                        select: {
+                          id: true,
+                          name: true,
+                          category: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       }),
     ]);
@@ -146,17 +251,81 @@ export async function getMovieReports(params: {
           screenings: 0,
           capacity: 0,
           occupancy: 0,
+          screeningDetails: [],
         };
         movieMap.set(id, row);
       }
       return row;
     };
 
-    // Ցուցադրությունների քանակ + ընդհանուր տեղեր (ըստ startTime ժամանակահատվածի)
+    // Ցուցադրությունների քանակ + ընդհանուր տեղեր + մանրամասներ (ըստ startTime ժամանակահատվածի)
     for (const s of screenings) {
       const row = ensureRow(s.movieId, s.movie.title, s.movie.image);
       row.screenings += 1;
       row.capacity += s.hall?.capacity ?? 0;
+      row.screeningDetails.push({
+        id: s.id,
+        startTime: s.startTime.toISOString(),
+        endTime: s.endTime.toISOString(),
+        hallName: s.hall?.name ?? '—',
+        capacity: s.hall?.capacity ?? 0,
+        sold: 0,
+        attended: 0,
+        noShow: 0,
+        reserved: 0,
+        cancelled: 0,
+        revenue: 0,
+        tickets: s.tickets
+          .map((ticket) => {
+            const itemsFromOrder =
+              ticket.order?.orderItems.filter(
+                (item) => item.ticketId === ticket.id || item.ticketId === null
+              ) ?? [];
+            const itemById = new Map<number, (typeof itemsFromOrder)[number]>();
+            for (const item of [...ticket.orderItems, ...itemsFromOrder]) {
+              itemById.set(item.id, item);
+            }
+            return {
+              id: ticket.id,
+              status: ticket.status,
+              price: ticket.price,
+              noShow: ticket.noShow,
+              createdAt: ticket.createdAt.toISOString(),
+              usedAtLabel: ticket.status === 'used' ? 'Սկանավորված' : null,
+              seat: ticket.seat
+                ? {
+                    id: ticket.seat.id,
+                    row: ticket.seat.row,
+                    number: ticket.seat.number,
+                    seatType: ticket.seat.seatType,
+                  }
+                : null,
+              user: ticket.user,
+              order: ticket.order
+                ? {
+                    id: ticket.order.id,
+                    status: ticket.order.status,
+                    paymentMethod: ticket.order.paymentMethod,
+                    totalAmount: ticket.order.totalAmount,
+                  }
+                : null,
+              orderItems: Array.from(itemById.values()).map((item) => ({
+                id: item.id,
+                ticketId: item.ticketId,
+                quantity: item.quantity,
+                price: item.price,
+                product: item.product,
+              })),
+            };
+          })
+          .sort((a, b) => {
+            const rowCompare = (a.seat?.row ?? '').localeCompare(
+              b.seat?.row ?? ''
+            );
+            if (rowCompare !== 0) return rowCompare;
+            return (a.seat?.number ?? 0) - (b.seat?.number ?? 0);
+          }),
+      });
     }
 
     // Տոմսերի ագրեգացիա
@@ -176,6 +345,19 @@ export async function getMovieReports(params: {
 
     for (const row of movieMap.values()) {
       row.occupancy = row.capacity > 0 ? row.sold / row.capacity : 0;
+      for (const screening of row.screeningDetails) {
+        for (const ticket of screening.tickets) {
+          const isSold = ticket.status === 'paid' || ticket.status === 'used';
+          if (isSold) {
+            screening.sold += 1;
+            screening.revenue += ticket.price;
+          }
+          if (ticket.status === 'used') screening.attended += 1;
+          if (ticket.status === 'paid') screening.noShow += 1;
+          if (ticket.status === 'reserved') screening.reserved += 1;
+          if (ticket.status === 'cancelled') screening.cancelled += 1;
+        }
+      }
     }
 
     const rows = Array.from(movieMap.values()).sort((a, b) => b.sold - a.sold);

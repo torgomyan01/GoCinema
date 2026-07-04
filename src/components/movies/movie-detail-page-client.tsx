@@ -6,7 +6,6 @@ import {
   Calendar,
   Clock,
   Film,
-  Star,
   Play,
   ArrowLeft,
   Ticket,
@@ -29,7 +28,6 @@ interface MovieDetailPageClientProps {
     duration: number;
     description?: string | null;
     genre?: string | null;
-    rating?: number | null;
     ageRating?: string | null;
     releaseDate: Date | string;
     trailerUrl?: string | null;
@@ -204,14 +202,6 @@ export default function MovieDetailPageClient({
             </h1>
 
             <div className="flex flex-wrap items-center gap-4 text-white/90 mb-6">
-              {movie.rating && (
-                <div className="flex items-center gap-2">
-                  <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                  <span className="text-xl font-semibold">
-                    {movie.rating.toFixed(1)}
-                  </span>
-                </div>
-              )}
               {movie.genre && (
                 <div className="flex items-center gap-2">
                   <Film className="w-5 h-5" />
@@ -577,19 +567,6 @@ export default function MovieDetailPageClient({
               </h3>
 
               <div className="space-y-4">
-                {movie.rating && (
-                  <div>
-                    <div className="text-sm text-gray-500 mb-1">Վարկանիշ</div>
-                    <div className="flex items-center gap-2">
-                      <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                      <span className="text-2xl font-bold text-gray-900">
-                        {movie.rating.toFixed(1)}
-                      </span>
-                      <span className="text-gray-500">/ 10</span>
-                    </div>
-                  </div>
-                )}
-
                 {movie.genre && (
                   <div>
                     <div className="text-sm text-gray-500 mb-1">Ժանր</div>

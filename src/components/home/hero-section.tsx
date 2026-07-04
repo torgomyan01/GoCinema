@@ -9,7 +9,6 @@ import {
   Clock,
   MapPin,
   Play,
-  Star,
   Ticket,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -31,7 +30,6 @@ interface HeroTicket {
     title: string;
     image: string | null;
     slug: string | null;
-    rating: number;
     ageRating: string | null;
   };
   hall: {
@@ -64,7 +62,6 @@ const MOCK_TICKET: HeroTicket = {
     title: 'GoCinema Hall',
     image: '/images/hero-background.png',
     slug: null,
-    rating: 0,
     ageRating: null,
   },
   hall: {
@@ -112,7 +109,6 @@ function mapScreeningToTicket(screening: ScreeningListItem): HeroTicket {
       title: screening.movie?.title?.trim() || 'Անհայտ ֆիլմ',
       image: screening.movie?.image ?? null,
       slug: screening.movie?.slug ?? null,
-      rating: screening.movie?.rating ?? 0,
       ageRating: screening.movie?.ageRating ?? null,
     },
     hall: {
@@ -215,21 +211,7 @@ function HeroTicketCard({
           compact ? 'p-4' : 'p-5'
         }`}
       >
-        <div className="flex items-center justify-between gap-2">
-          {ticket.movie.rating > 0 ? (
-            <div className="flex items-center gap-1.5 text-yellow-400">
-              <Star className="h-4 w-4 fill-current" />
-              <span className="text-sm font-bold text-white">
-                {ticket.movie.rating.toFixed(1)}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1 text-yellow-400">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Star key={index} className="h-4 w-4 fill-current" />
-              ))}
-            </div>
-          )}
+        <div className="flex items-center justify-end gap-2">
           <span
             className={`rounded-full px-3 py-1 text-sm font-bold ${
               hasSeats

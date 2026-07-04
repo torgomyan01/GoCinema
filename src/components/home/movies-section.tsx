@@ -16,7 +16,6 @@ interface Movie {
   slug?: string | null;
   image?: string | null;
   duration: number;
-  rating?: number | null;
   genre?: string | null;
   releaseDate: Date | string;
   isActive?: boolean;

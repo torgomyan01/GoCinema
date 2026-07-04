@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Calendar, Clock, Film, Star, Sparkles } from 'lucide-react';
+import { Calendar, Clock, Film, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
@@ -17,7 +17,6 @@ interface Premiere {
     slug?: string | null;
     image?: string | null;
     duration: number;
-    rating?: number | null;
     genre?: string | null;
     releaseDate: Date | string;
   };
@@ -167,12 +166,6 @@ export default function PremierePageClient({ premieres }: PremierePageClientProp
                             <Clock className="w-4 h-4" />
                             <span>{formatDuration(premiere.movie.duration)}</span>
                           </div>
-                          {premiere.movie.rating && (
-                            <div className="flex items-center gap-2">
-                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                              <span>{premiere.movie.rating.toFixed(1)}</span>
-                            </div>
-                          )}
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4" />
                             <span>{formatReleaseDate(premiere.movie.releaseDate)}</span>

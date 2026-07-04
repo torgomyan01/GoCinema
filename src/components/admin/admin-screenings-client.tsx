@@ -16,7 +16,6 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  Star,
   Search,
   Info,
 } from 'lucide-react';
@@ -1055,15 +1054,6 @@ export default function AdminScreeningsClient({
                                 <span>{selectedMovie.genre}</span>
                               </>
                             )}
-                            {selectedMovie.rating && (
-                              <>
-                                <span>•</span>
-                                <div className="flex items-center gap-1">
-                                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                  <span>{selectedMovie.rating}/10</span>
-                                </div>
-                              </>
-                            )}
                           </div>
                         </div>
                         <button
@@ -1531,12 +1521,6 @@ export default function AdminScreeningsClient({
                                     <span>{movie.genre}</span>
                                   </div>
                                 )}
-                                {movie.rating && (
-                                  <div className="flex items-center gap-2">
-                                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                    <span>{movie.rating}/10</span>
-                                  </div>
-                                )}
                               </div>
                               {movie.description && (
                                 <p className="text-xs text-gray-500 mt-2 line-clamp-2">
@@ -1689,12 +1673,6 @@ export default function AdminScreeningsClient({
                                         {screening.hall?.capacity || 0} տեղ
                                       </span>
                                     </div>
-                                    {screening.movie?.rating && (
-                                      <div className="flex items-center gap-2 text-gray-600">
-                                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                        <span>{screening.movie.rating}/10</span>
-                                      </div>
-                                    )}
                                   </div>
 
                                   {screening.movie?.description && (

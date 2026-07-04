@@ -33,7 +33,6 @@ interface Screening {
     duration: number;
     description?: string | null;
     genre?: string | null;
-    rating?: number | null;
   };
   hall: {
     id: number;
@@ -258,15 +257,6 @@ export default function ScreeningDetailPageClient({
                   >
                     {screening.movie.title}
                   </Link>
-
-                  {screening.movie.rating && (
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="text-2xl font-bold text-purple-600">
-                        {screening.movie.rating.toFixed(1)}
-                      </span>
-                      <span className="text-gray-500">/ 10</span>
-                    </div>
-                  )}
 
                   {screening.movie.genre && (
                     <div className="flex items-center gap-2 mb-4">

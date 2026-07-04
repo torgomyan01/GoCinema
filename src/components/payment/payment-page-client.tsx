@@ -28,7 +28,6 @@ import {
   syncVPostOrderStatus,
 } from '@/app/actions/payments';
 import { getOrderById } from '@/app/actions/orders';
-import { RESERVATION_HOLD_MS, RESERVATION_HOLD_MINUTES } from '@/lib/reservation';
 
 interface PaymentPageClientProps {
   orderId: string;
@@ -120,7 +119,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     null
   );
   const [qrCodes, setQrCodes] = useState<Map<number, string>>(new Map());
-  const [holdSecondsLeft, setHoldSecondsLeft] = useState<number | null>(null);
   const qrCodeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
@@ -334,39 +332,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
       cancelled = true;
     };
   }, [isAwaitingTelcell, order, router]);
-
-  // Ամրագրման «hold» հետհաշվարկ (10 րոպե տոմսի ստեղծման պահից)
-  useEffect(() => {
-    if (!order || isSuccess) {
-      setHoldSecondsLeft(null);
-      return;
-    }
-    const reserved = order.tickets.filter((t) => t.status === 'reserved');
-    if (reserved.length === 0) {
-      setHoldSecondsLeft(null);
-      return;
-    }
-    const earliest = Math.min(
-      ...reserved.map((t) => new Date(t.createdAt).getTime())
-    );
-    const expiry = earliest + RESERVATION_HOLD_MS;
-
-    const tick = () => {
-      const left = Math.max(0, Math.floor((expiry - Date.now()) / 1000));
-      setHoldSecondsLeft(left);
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [order, isSuccess]);
-
-  const formatCountdown = (totalSeconds: number) => {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const isHoldExpired = holdSecondsLeft !== null && holdSecondsLeft <= 0;
 
   const formatTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
@@ -1191,59 +1156,23 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                 </div>
               </div>
 
-              {/* Ամրագրման hold հետհաշվարկ */}
-              {holdSecondsLeft !== null && !isHoldExpired && (
-                <div className="mb-4 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                  <p className="text-xs text-amber-800 leading-relaxed">
-                    Տեղերը պահված են Ձեզ համար ևս{' '}
-                    <span className="font-bold tabular-nums">
-                      {formatCountdown(holdSecondsLeft)}
-                    </span>{' '}
-                    րոպե։ Խնդրում ենք ավարտել վճարումը այս ընթացքում։
-                  </p>
-                </div>
-              )}
-
-              {isHoldExpired && (
-                <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-red-700 leading-relaxed">
-                    Ամրագրման {RESERVATION_HOLD_MINUTES} րոպեն լրացել է, և տեղերն
-                    ազատվել են։ Խնդրում ենք վերադառնալ և կրկին ընտրել տեղերը։
-                  </p>
-                </div>
-              )}
-
               <button
                 onClick={handlePayment}
                 disabled={
                   !paymentMethod ||
                   isProcessing ||
-                  isHoldExpired ||
                   isAwaitingVpost
                 }
                 className={`w-full px-6 py-3 rounded-lg font-semibold transition-all ${
-                  paymentMethod && !isProcessing && !isHoldExpired
+                  paymentMethod && !isProcessing && !isAwaitingVpost
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
               >
                 {isProcessing
                   ? 'Վճարում...'
-                  : isHoldExpired
-                    ? 'Ամրագրման ժամկետը լրացել է'
-                    : `Վճարել ${order.totalAmount.toFixed(0)} ֏`}
+                  : `Վճարել ${order.totalAmount.toFixed(0)} ֏`}
               </button>
-
-              {isHoldExpired && (
-                <Link
-                  href={SITE_URL.SCHEDULE}
-                  className="mt-3 block w-full text-center px-6 py-3 rounded-lg font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-all"
-                >
-                  Ընտրել նոր տեղեր
-                </Link>
-              )}
 
               {(isAwaitingVpost || vpostStatusNote) && (
                 <div className="mt-4 p-3 rounded-lg border border-purple-200 bg-purple-50">

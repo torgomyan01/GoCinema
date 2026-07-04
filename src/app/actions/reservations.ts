@@ -86,7 +86,7 @@ export async function createCounterReservation(
       };
     }
 
-    // Ազատենք լրացած ամրագրումները նախքան ստուգելը
+    // Legacy hook է. այլևս ավտոմատ ամրագրում չի չեղարկում։
     await releaseExpiredReservations(data.screeningId);
 
     // 4-աթոռ սահմանաչափ՝ ակտիվ ամրագրումներ + նոր աթոռներ
@@ -149,11 +149,11 @@ export async function createCounterReservation(
       });
     }
 
-    // hold-ը մինչև ցուցադրության ավարտից 1 ժամ անց, որպեսզի ուշացած
-    // հաճախորդին կարողանանք սպասարկել դրամարկղում (QR-ը չի անհետանում)
+    // Legacy/տեղեկատվական hold-ը պահում ենք մինչև ցուցադրության ավարտից 24 ժամ անց։
+    // QR-ը և scanner սպասարկումը դրանից կախված չեն։
     const holdUntil = counterHoldUntil(screening.endTime);
 
-    // Ստեղծում ենք տոմսերը՝ holdUntil = ցուցադրության ավարտ + grace
+    // Ստեղծում ենք տոմսերը՝ QR-ը հաճախորդի մոտ միշտ հասանելի պահելու համար։
     const created = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {

@@ -18,6 +18,7 @@ import {
   Bell,
   CreditCard,
   History,
+  ClipboardList,
   LucideIcon,
 } from 'lucide-react';
 
@@ -64,6 +65,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/screenings',
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
+  },
+  {
+    title: 'Նախապատրաստում',
+    icon: ClipboardList,
+    href: '/admin/preparation',
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
   },
   {
     title: 'Պրեմիերաներ',

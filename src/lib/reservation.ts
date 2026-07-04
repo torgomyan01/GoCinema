@@ -1,18 +1,11 @@
 /**
  * Նստատեղի «hold» տրամաբանություն։
  *
- * Տոմս ընտրելուց հետո այն պահվում է (reserved) որոշակի ժամանակ։ Եթե այդ
- * ընթացքում վճարումը չի հաստատվում, ամրագրումը ավտոմատ ազատվում է և տեղը
- * նորից հասանելի է դառնում այլ օգտատերերի համար։
+ * Տոմս ընտրելուց հետո այն պահվում է (reserved) և ավտոմատ չի չեղարկվում։
+ * Հաճախորդը կարող է վճարել/սպասարկվել դրամարկղում, իսկ QR-ը մնում է հասանելի։
  *
- * Երկու տեսակի ամրագրում.
- *  - Online (վճարում քարտով/Telcell)՝ կարճ hold (RESERVATION_HOLD_MINUTES)։
- *  - Դրամարկղ-ամրագրում (paymentMethod = "counter")՝ hold-ը մինչև
- *    ցուցադրության սկիզբը. հաճախորդը գալիս ու վճարում է դրամարկղում։
- *
- * `holdUntil` դաշտը պահում է ամրագրման ավարտի ճշգրիտ պահը։ Հին (legacy)
- * տոմսերի համար, որտեղ `holdUntil = null`, ընկնում ենք createdAt + 10ր
- * տրամաբանությանը։
+ * `holdUntil` դաշտը legacy/տեղեկատվական է. այն այլևս չի որոշում, թե
+ * տոմսը չեղարկվի՞, QR-ը թաքնվի՞, թե նստատեղը ազատվի՞։
  */
 export const RESERVATION_HOLD_MINUTES = 10;
 export const RESERVATION_HOLD_MS = RESERVATION_HOLD_MINUTES * 60 * 1000;
@@ -20,14 +13,10 @@ export const RESERVATION_HOLD_MS = RESERVATION_HOLD_MINUTES * 60 * 1000;
 /** Order.paymentMethod-ի արժեքը՝ դրամարկղում վճարվող ամրագրումների համար։ */
 export const COUNTER_PAYMENT_METHOD = 'counter';
 
-/**
- * Դրամարկղ-ամրագրման սպասարկման լրացուցիչ ժամկետ՝ ցուցադրության ավարտից հետո։
- * Ուշացած հաճախորդին կարողանանք սպասարկել (QR-ը չի անհետանում, տեղը չի ազատվում)
- * մինչև ցուցադրության ավարտից 1 ժամ անց։
- */
-export const COUNTER_SERVICE_GRACE_MS = 60 * 60 * 1000;
+/** Legacy արժեք. QR/սպասարկման հասանելիության վրա այլևս չի ազդում։ */
+export const COUNTER_SERVICE_GRACE_MS = 24 * 60 * 60 * 1000;
 
-/** Դրամարկղ-ամրագրման hold-ի ավարտը = ցուցադրության ավարտ + grace։ */
+/** Legacy hold-ի ավարտը = ցուցադրության ավարտ + 24 ժամ։ */
 export function counterHoldUntil(screeningEnd: Date | string): Date {
   return new Date(
     new Date(screeningEnd).getTime() + COUNTER_SERVICE_GRACE_MS
@@ -59,35 +48,26 @@ export function isReservationActive(
 }
 
 /**
- * Prisma where-fragment՝ «զբաղված» տոմսերի համար.
- * - paid/used — միշտ
- * - reserved + holdUntil դեռ չի անցել — ակտիվ hold (online կամ դրամարկղ)
- * - reserved + holdUntil = null (legacy) — createdAt-ը դեռ թարմ է
+ * Prisma where-fragment՝ «զբաղված» տոմսերի համար։
+ * Reserved տոմսերն այլևս ժամկետով չեն ազատվում. միայն manual cancelled-ը
+ * կարող է նորից ազատել նստատեղը։
  */
-export function occupiedTicketWhere(now: Date = new Date()) {
+export function occupiedTicketWhere(_now: Date = new Date()) {
   return {
     OR: [
       { status: { in: [...PAID_TICKET_STATUSES] } },
-      { status: 'reserved', holdUntil: { gte: now } },
-      {
-        status: 'reserved',
-        holdUntil: null,
-        createdAt: { gte: reservationCutoff(now) },
-      },
+      { status: 'reserved' },
     ],
   };
 }
 
 /**
- * Prisma where-fragment՝ լրացած (ազատման ենթակա) reserved տոմսերի համար։
+ * Reserved տոմսերի ավտոմատ լրացում/ազատում այլևս չկա։
  */
-export function expiredReservationWhere(now: Date = new Date()) {
+export function expiredReservationWhere(_now: Date = new Date()) {
   return {
     status: 'reserved',
-    OR: [
-      { holdUntil: { lt: now } },
-      { holdUntil: null, createdAt: { lt: reservationCutoff(now) } },
-    ],
+    id: -1,
   };
 }
 

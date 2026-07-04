@@ -176,6 +176,7 @@ model Ticket {
   qrCode      String?   @db.VarChar(500)
   holdUntil   DateTime? // ամրագրման ժամկետի վերջը. online՝ +10ր, դրամարկղ-ամրագրում՝ ցուցադրության սկիզբը
   noShow      Boolean   @default(false) // դրամարկղ-ամրագրում, որը լրացել է առանց վճարման (չի եկել)
+  preparationServedAt DateTime? // նախապատրաստման էջում՝ այս նստատեղի պատվերը սպասարկված է
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -192,6 +193,7 @@ model Ticket {
   @@index([status])
   @@index([orderId])
   @@index([noShow])
+  @@index([preparationServedAt])
   @@map("tickets")
 }
 

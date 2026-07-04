@@ -110,7 +110,7 @@ export async function getScreenings(
 
 export async function getScreeningById(id: number) {
   try {
-    // Ազատենք լրացած ամրագրումները, որպեսզի դրանց տեղերը նորից ազատ երևան
+    // Legacy hook է. reserved տոմսերը ավտոմատ չեն ազատվում։
     await releaseExpiredReservations(id);
 
     const screening = await prisma.screening.findUnique({

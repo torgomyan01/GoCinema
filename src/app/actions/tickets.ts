@@ -6,60 +6,15 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import {
   occupiedTicketWhere,
-  expiredReservationWhere,
   onlineHoldUntil,
-  COUNTER_PAYMENT_METHOD,
 } from '@/lib/reservation';
 
 /**
- * Ազատում է լրացած ամրագրումները՝ դրանք cancelled դարձնելով։
- *  - Online ամրագրումներ՝ holdUntil-ից (≈10ր) հետո։
- *  - Դրամարկղ-ամրագրումներ (order.paymentMethod = "counter")՝ ցուցադրության
- *    ավարտից 1 ժամ անց (holdUntil = endTime + 1ժ), որպեսզի ուշացած հաճախորդին
- *    դեռ կարողանանք սպասարկել դրամարկղում։ Դրանք նշվում են որպես `noShow`,
- *    որպեսզի ադմինը կարողանա տեսնել «ամրագրել է, բայց չի եկել» օգտատերերին։
- * Կանչվում է տեղերի հասանելիությունը ստուգելուց առաջ։
+ * Legacy hook. Ամրագրումները այլևս ավտոմատ չեն չեղարկվում/ազատվում։
+ * Թողնում ենք ֆունկցիան, քանի որ կան call-site-եր, բայց այն ոչինչ չի փոխում։
  */
-export async function releaseExpiredReservations(screeningId?: number) {
-  try {
-    const expired = await prisma.ticket.findMany({
-      where: {
-        ...expiredReservationWhere(),
-        ...(screeningId ? { screeningId } : {}),
-      },
-      select: {
-        id: true,
-        order: { select: { paymentMethod: true } },
-      },
-    });
-
-    if (expired.length === 0) return 0;
-
-    const counterIds = expired
-      .filter((t) => t.order?.paymentMethod === COUNTER_PAYMENT_METHOD)
-      .map((t) => t.id);
-    const otherIds = expired
-      .filter((t) => t.order?.paymentMethod !== COUNTER_PAYMENT_METHOD)
-      .map((t) => t.id);
-
-    if (counterIds.length > 0) {
-      await prisma.ticket.updateMany({
-        where: { id: { in: counterIds } },
-        data: { status: 'cancelled', noShow: true },
-      });
-    }
-    if (otherIds.length > 0) {
-      await prisma.ticket.updateMany({
-        where: { id: { in: otherIds } },
-        data: { status: 'cancelled' },
-      });
-    }
-
-    return expired.length;
-  } catch (error) {
-    console.error('[Release Expired Reservations] Error:', error);
-    return 0;
-  }
+export async function releaseExpiredReservations(_screeningId?: number) {
+  return 0;
 }
 
 export interface CreateTicketData {
@@ -243,7 +198,7 @@ export async function createTicket(data: CreateTicketData) {
       };
     }
 
-    // Ազատենք լրացած ամրագրումները, ապա ստուգենք զբաղվածությունը
+    // Legacy hook է. reserved տոմսերը ավտոմատ չեն ազատվում։
     await releaseExpiredReservations(data.screeningId);
 
     const existingTicket = await prisma.ticket.findFirst({
@@ -308,7 +263,7 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
       };
     }
 
-    // Ազատենք լրացած ամրագրումները, ապա ստուգենք զբաղվածությունը
+    // Legacy hook է. reserved տոմսերը ավտոմատ չեն ազատվում։
     await releaseExpiredReservations(data.screeningId);
 
     const seatIds = data.seats.map((s) => s.seatId);
@@ -361,6 +316,7 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
 /** Ֆիլմի բոլոր ցուցադրությունները՝ տոմսերի ամփոփ վիճակագրությամբ (admin) */
 export async function getScreeningsForMovieAdmin(movieId: number) {
   try {
+    // Legacy hook է. պահում ենք call-ը համատեղելիության համար։
     await releaseExpiredReservations();
 
     const screenings = await prisma.screening.findMany({

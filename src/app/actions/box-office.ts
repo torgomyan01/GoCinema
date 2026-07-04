@@ -297,7 +297,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
       return { success: false, error: 'Բոլոր դաշտերը պետք է ճիշտ լրացված լինեն' };
     }
 
-    // Համոզվել՝ նստատեղը ազատ է (ազատենք լրացած ամրագրումները նախ)
+    // Համոզվել՝ նստատեղը ազատ է։ Reserved տոմսերը ավտոմատ չեն ազատվում։
     await releaseExpiredReservations(screeningId);
     const existing = await prisma.ticket.findFirst({
       where: {

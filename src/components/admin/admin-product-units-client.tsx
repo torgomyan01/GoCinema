@@ -19,6 +19,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import AdminLayout from './admin-layout';
 import {
   getProductUnitsHistory,
+  setProductUnitPekReported,
   type ProductUnitsHistoryStatus,
 } from '@/app/actions/products';
 
@@ -38,6 +39,7 @@ interface HistoryUnit {
   status: string;
   soldAt: Date | string | null;
   verifiedAt: Date | string | null;
+  pekReportedAt: Date | string | null;
   createdAt: Date | string;
   orderItemId: number | null;
   product: {
@@ -101,6 +103,7 @@ export default function AdminProductUnitsClient({
 
   const [previewUnit, setPreviewUnit] = useState<HistoryUnit | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [pekSavingId, setPekSavingId] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -157,6 +160,74 @@ export default function AdminProductUnitsClient({
       setTimeout(() => setCopiedId((id) => (id === unit.id ? null : id)), 1500);
     } catch {
       /* ignore */
+    }
+  };
+
+  const togglePekReported = async (unit: HistoryUnit, reported: boolean) => {
+    const previous = unit.pekReportedAt;
+    setPekSavingId(unit.id);
+    setError(null);
+
+    // Optimistic update — միավորը մնում է ցանկում
+    setUnits((list) =>
+      list.map((u) =>
+        u.id === unit.id
+          ? { ...u, pekReportedAt: reported ? previous ?? new Date() : null }
+          : u
+      )
+    );
+    setPreviewUnit((current) =>
+      current?.id === unit.id
+        ? {
+            ...current,
+            pekReportedAt: reported ? previous ?? new Date() : null,
+          }
+        : current
+    );
+
+    try {
+      const result = await setProductUnitPekReported(unit.id, reported);
+      if (!result.success) {
+        setUnits((list) =>
+          list.map((u) =>
+            u.id === unit.id ? { ...u, pekReportedAt: previous } : u
+          )
+        );
+        setPreviewUnit((current) =>
+          current?.id === unit.id
+            ? { ...current, pekReportedAt: previous }
+            : current
+        );
+        setError(result.error || 'ՊԵԿ կարգավիճակը չփոխվեց');
+        return;
+      }
+
+      setUnits((list) =>
+        list.map((u) =>
+          u.id === unit.id
+            ? { ...u, pekReportedAt: result.pekReportedAt ?? null }
+            : u
+        )
+      );
+      setPreviewUnit((current) =>
+        current?.id === unit.id
+          ? { ...current, pekReportedAt: result.pekReportedAt ?? null }
+          : current
+      );
+    } catch {
+      setUnits((list) =>
+        list.map((u) =>
+          u.id === unit.id ? { ...u, pekReportedAt: previous } : u
+        )
+      );
+      setPreviewUnit((current) =>
+        current?.id === unit.id
+          ? { ...current, pekReportedAt: previous }
+          : current
+      );
+      setError('ՊԵԿ կարգավիճակը փոխելիս սխալ է տեղի ունեցել');
+    } finally {
+      setPekSavingId(null);
     }
   };
 
@@ -280,6 +351,7 @@ export default function AdminProductUnitsClient({
                   <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
                     <th className="px-4 py-3">QR</th>
                     <th className="px-4 py-3">QR տեքստ</th>
+                    <th className="px-4 py-3">ՊԵԿ</th>
                     <th className="px-4 py-3">Ապրանք</th>
                     <th className="px-4 py-3">Կարգավիճակ</th>
                     <th className="px-4 py-3">Ավելացվել է</th>
@@ -288,76 +360,140 @@ export default function AdminProductUnitsClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {units.map((unit) => (
-                    <tr key={unit.id} className="hover:bg-gray-50/80">
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewUnit(unit)}
-                          className="p-1.5 bg-white border border-gray-200 rounded-lg hover:border-amber-400 hover:shadow-sm transition-all"
-                          title="Մեծացնել QR"
-                        >
-                          <QRCodeSVG
-                            value={unit.qrCode}
-                            size={56}
-                            level="M"
-                            includeMargin={false}
-                            bgColor="#ffffff"
-                            fgColor="#111827"
-                          />
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 max-w-[220px]">
-                          <code className="font-mono text-xs text-gray-800 break-all">
-                            {unit.qrCode}
-                          </code>
+                  {units.map((unit) => {
+                    const pekOn = Boolean(unit.pekReportedAt);
+                    const pekBusy = pekSavingId === unit.id;
+
+                    return (
+                      <tr
+                        key={unit.id}
+                        className={`hover:bg-gray-50/80 ${
+                          pekOn ? 'bg-slate-50/80' : ''
+                        }`}
+                      >
+                        <td className="px-4 py-3">
                           <button
                             type="button"
-                            onClick={() => copyQr(unit)}
-                            className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                            title="Պատճենել"
+                            onClick={() => setPreviewUnit(unit)}
+                            className="p-1.5 bg-white border border-gray-200 rounded-lg hover:border-amber-400 hover:shadow-sm transition-all"
+                            title="Մեծացնել QR"
                           >
-                            {copiedId === unit.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
+                            <QRCodeSVG
+                              value={unit.qrCode}
+                              size={56}
+                              level="M"
+                              includeMargin={false}
+                              bgColor="#ffffff"
+                              fgColor="#111827"
+                            />
                           </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">
-                          {unit.product.name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {unit.product.price.toLocaleString('hy-AM')} ֏
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        {unit.status === 'sold' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700">
-                            Վաճառված
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                            Առկա
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                        {formatDate(unit.createdAt)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                        {formatDate(unit.soldAt)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {unit.orderItem?.orderId
-                          ? `#${unit.orderItem.orderId}`
-                          : '—'}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 max-w-[220px]">
+                            <code className="font-mono text-xs text-gray-800 break-all">
+                              {unit.qrCode}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => copyQr(unit)}
+                              className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                              title="Պատճենել"
+                            >
+                              {copiedId === unit.id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1 min-w-[140px]">
+                            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                              <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+                                <input
+                                  type="checkbox"
+                                  role="switch"
+                                  className="peer sr-only"
+                                  checked={pekOn}
+                                  disabled={pekBusy}
+                                  onChange={(e) =>
+                                    togglePekReported(unit, e.target.checked)
+                                  }
+                                  aria-label="ՊԵԿ ուղարկված"
+                                />
+                                <span
+                                  className={`absolute inset-0 rounded-full transition-colors ${
+                                    pekOn ? 'bg-slate-700' : 'bg-gray-200'
+                                  } ${pekBusy ? 'opacity-60' : ''}`}
+                                />
+                                <span
+                                  className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                                    pekOn ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
+                                />
+                              </span>
+                              <span
+                                className={`text-xs font-medium ${
+                                  pekOn ? 'text-slate-800' : 'text-gray-500'
+                                }`}
+                              >
+                                {pekBusy ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : pekOn ? (
+                                  'Դուրս'
+                                ) : (
+                                  'Շրջանառության մեջ'
+                                )}
+                              </span>
+                            </label>
+                            {pekOn && (
+                              <span className="text-[11px] text-slate-500 whitespace-nowrap">
+                                {formatDate(unit.pekReportedAt)}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-900">
+                            {unit.product.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {unit.product.price.toLocaleString('hy-AM')} ֏
+                          </p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            {unit.status === 'sold' ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 w-fit">
+                                Վաճառված
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 w-fit">
+                                Առկա
+                              </span>
+                            )}
+                            {pekOn && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-700 w-fit">
+                                ՊԵԿ · դուրս
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          {formatDate(unit.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          {formatDate(unit.soldAt)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {unit.orderItem?.orderId
+                            ? `#${unit.orderItem.orderId}`
+                            : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -417,6 +553,9 @@ export default function AdminProductUnitsClient({
               {previewUnit.orderItem?.orderId
                 ? ` · Պատվեր #${previewUnit.orderItem.orderId}`
                 : ''}
+              {previewUnit.pekReportedAt
+                ? ' · ՊԵԿ · շրջանառությունից դուրս'
+                : ''}
             </p>
             <div className="flex justify-center p-4 bg-white border border-gray-200 rounded-xl">
               <QRCodeSVG
@@ -443,6 +582,45 @@ export default function AdminProductUnitsClient({
                   <Copy className="w-4 h-4 text-gray-600" />
                 )}
               </button>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">ՊԵԿ ուղարկված</p>
+                <p className="text-xs text-gray-500">
+                  {previewUnit.pekReportedAt
+                    ? `Դուրս · ${formatDate(previewUnit.pekReportedAt)}`
+                    : 'Շրջանառության մեջ'}
+                </p>
+              </div>
+              <label className="inline-flex items-center cursor-pointer">
+                <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    className="peer sr-only"
+                    checked={Boolean(previewUnit.pekReportedAt)}
+                    disabled={pekSavingId === previewUnit.id}
+                    onChange={(e) =>
+                      togglePekReported(previewUnit, e.target.checked)
+                    }
+                    aria-label="ՊԵԿ ուղարկված"
+                  />
+                  <span
+                    className={`absolute inset-0 rounded-full transition-colors ${
+                      previewUnit.pekReportedAt
+                        ? 'bg-slate-700'
+                        : 'bg-gray-200'
+                    }`}
+                  />
+                  <span
+                    className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      previewUnit.pekReportedAt
+                        ? 'translate-x-5'
+                        : 'translate-x-0'
+                    }`}
+                  />
+                </span>
+              </label>
             </div>
           </div>
         </div>

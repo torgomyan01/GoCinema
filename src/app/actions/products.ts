@@ -470,6 +470,7 @@ export async function getProductUnitsHistory(
           status: true,
           soldAt: true,
           verifiedAt: true,
+          pekReportedAt: true,
           createdAt: true,
           orderItemId: true,
           product: {
@@ -533,6 +534,58 @@ export async function getProductUnitsHistory(
       page: 1,
       pageSize: 50,
       products: [] as { id: number; name: string }[],
+    };
+  }
+}
+
+/**
+ * Նշել/հանել ՊԵԿ ուղարկումը։ Միավորը միշտ մնում է բազայում՝
+ * միայն pekReportedAt է լրացվում (շրջանառությունից դուրս)։
+ */
+export async function setProductUnitPekReported(
+  unitId: number,
+  reported: boolean
+) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const unit = await prisma.productUnit.findUnique({
+      where: { id: unitId },
+      select: { id: true, pekReportedAt: true },
+    });
+
+    if (!unit) {
+      return { success: false, error: 'Միավորը չի գտնվել' };
+    }
+
+    const updated = await prisma.productUnit.update({
+      where: { id: unitId },
+      data: {
+        pekReportedAt: reported ? unit.pekReportedAt ?? new Date() : null,
+      },
+      select: {
+        id: true,
+        pekReportedAt: true,
+      },
+    });
+
+    revalidatePath('/admin/product-units');
+
+    return {
+      success: true,
+      pekReportedAt: updated.pekReportedAt,
+      message: reported
+        ? 'Նշված է որպես ՊԵԿ ուղարկված (շրջանառությունից դուրս)'
+        : 'ՊԵԿ նշումը հանվել է',
+    };
+  } catch (error: unknown) {
+    console.error('[Set Product Unit PEK Reported] Error:', error);
+    return {
+      success: false,
+      error: 'ՊԵԿ կարգավիճակը փոխելիս սխալ է տեղի ունեցել',
     };
   }
 }

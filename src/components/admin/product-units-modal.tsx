@@ -1,6 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { motion } from 'framer-motion';
 import {
   QrCode,
@@ -19,6 +25,7 @@ import {
   getProductUnits,
   updateProductUnitQr,
   deleteProductUnit,
+  deleteAllInStockProductUnits,
   verifyProductUnitQr,
   resetProductUnitVerifications,
   type VerifyUnitOutcome,
@@ -83,6 +90,12 @@ export default function ProductUnitsModal({
   const [verifyLog, setVerifyLog] = useState<VerifyLogEntry[]>([]);
   const [sessionScanned, setSessionScanned] = useState<Set<string>>(new Set());
   const scanInputRef = useRef<HTMLInputElement>(null);
+
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [deleteAllPassword, setDeleteAllPassword] = useState('');
+  const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const deleteAllPasswordRef = useRef<HTMLInputElement>(null);
 
   const focusScanInput = useCallback(() => {
     if (activeTab !== 'verify') return;
@@ -323,6 +336,55 @@ export default function ProductUnitsModal({
       setError('Միավորը ջնջելիս սխալ է տեղի ունեցել');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const openDeleteAll = () => {
+    setDeleteAllPassword('');
+    setDeleteAllError(null);
+    setShowDeleteAll(true);
+    setTimeout(() => deleteAllPasswordRef.current?.focus(), 50);
+  };
+
+  const closeDeleteAll = () => {
+    if (isDeletingAll) return;
+    setShowDeleteAll(false);
+    setDeleteAllPassword('');
+    setDeleteAllError(null);
+  };
+
+  const handleDeleteAll = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (isDeletingAll) return;
+
+    const password = deleteAllPassword.trim();
+    if (!password) {
+      setDeleteAllError('Մուտքագրեք ձեր գաղտնաբառը');
+      return;
+    }
+
+    setIsDeletingAll(true);
+    setDeleteAllError(null);
+    setError(null);
+    try {
+      const result = await deleteAllInStockProductUnits(product.id, password);
+      if (result.success) {
+        setShowDeleteAll(false);
+        setDeleteAllPassword('');
+        setVerified(0);
+        setVerifyLog([]);
+        setSessionScanned(new Set());
+        await loadUnits();
+        if (result.stock !== undefined) {
+          onStockUpdated(product.id, result.stock);
+        }
+      } else {
+        setDeleteAllError(result.error || 'Ջնջելիս սխալ');
+      }
+    } catch {
+      setDeleteAllError('Բոլոր միավորները ջնջելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsDeletingAll(false);
     }
   };
 
@@ -745,13 +807,111 @@ export default function ProductUnitsModal({
         </div>
 
         <div className="border-t border-gray-200 px-5 py-3">
-          <p className="text-xs text-gray-500">
-            {activeTab === 'verify'
-              ? '«Ստուգում» ներդիրում սկանավորեք պահեստում գտնվող միավորները։ Նույն QR-ը կրկին ստուգել հնարավոր չէ մինչև «Նոր ստուգում» սեղմելը։'
-              : 'Վաճառված միավորները չեն ջնջվում և QR-ը չի փոխվում՝ հարկային հաշվառման համար։ Պահեստում գտնվող միավորները կարելի է փոխել կամ ջնջել։'}
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-gray-500">
+              {activeTab === 'verify'
+                ? '«Ստուգում» ներդիրում սկանավորեք պահեստում գտնվող միավորները։ Նույն QR-ը կրկին ստուգել հնարավոր չէ մինչև «Նոր ստուգում» սեղմելը։'
+                : 'Վաճառված միավորները չեն ջնջվում և QR-ը չի փոխվում՝ հարկային հաշվառման համար։ Պահեստում գտնվող միավորները կարելի է փոխել կամ ջնջել։'}
+            </p>
+            {activeTab === 'list' && inStock > 0 && (
+              <button
+                type="button"
+                onClick={openDeleteAll}
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Ջնջել բոլոր QR-ները ({inStock})
+              </button>
+            )}
+          </div>
         </div>
       </motion.div>
+
+      {showDeleteAll && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            closeDeleteAll();
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold text-gray-900">
+                  Ջնջել բոլոր QR միավորները՞
+                </h4>
+                <p className="mt-1 text-sm text-gray-600">
+                  «{product.name}» ապրանքի պահեստում գտնվող{' '}
+                  <span className="font-semibold text-red-700">{inStock}</span>{' '}
+                  QR կոդը կջնջվի։ Վաճառված միավորները կմնան։ Այս գործողությունը
+                  չեղարկել հնարավոր չէ։
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={(e) => void handleDeleteAll(e)} className="space-y-3">
+              <div>
+                <label
+                  htmlFor="delete-all-password"
+                  className="mb-1 block text-sm font-medium text-gray-700"
+                >
+                  Հաստատելու համար մուտքագրեք ձեր գաղտնաբառը
+                </label>
+                <input
+                  ref={deleteAllPasswordRef}
+                  id="delete-all-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={deleteAllPassword}
+                  onChange={(e) => {
+                    setDeleteAllPassword(e.target.value);
+                    if (deleteAllError) setDeleteAllError(null);
+                  }}
+                  disabled={isDeletingAll}
+                  placeholder="Գաղտնաբառ"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                />
+              </div>
+
+              {deleteAllError && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {deleteAllError}
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={closeDeleteAll}
+                  disabled={isDeletingAll}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Չեղարկել
+                </button>
+                <button
+                  type="submit"
+                  disabled={isDeletingAll || !deleteAllPassword.trim()}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isDeletingAll ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Հաստատել ջնջումը
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

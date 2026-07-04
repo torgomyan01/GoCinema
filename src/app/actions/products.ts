@@ -7,6 +7,7 @@ import { isQuantityOnlyProduct } from '@/lib/product-units';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isStaffRole } from '@/lib/roles';
+import bcrypt from 'bcryptjs';
 
 async function requireStaff() {
   const session = await getServerSession(authOptions);
@@ -698,6 +699,90 @@ export async function updateProductUnitQr(unitId: number, qrCode: string) {
   } catch (error: unknown) {
     console.error('[Update Product Unit QR] Error:', error);
     return { success: false, error: 'QR կոդը փոխելիս սխալ է տեղի ունեցել' };
+  }
+}
+
+/**
+ * Ապրանքի բոլոր պահեստում գտնվող QR միավորները ջնջել։
+ * Պահանջում է մուտք գործած աշխատակցի գաղտնաբառը։
+ * Վաճառված միավորները չեն ջնջվում (հարկային հաշվառում)։
+ */
+export async function deleteAllInStockProductUnits(
+  productId: number,
+  password: string
+) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const pwd = (password ?? '').trim();
+    if (!pwd) {
+      return { success: false, error: 'Մուտքագրեք ձեր գաղտնաբառը' };
+    }
+
+    const userId = Number(staff.id);
+    if (!Number.isFinite(userId)) {
+      return { success: false, error: 'Օգտատիրոջ տվյալները անվավեր են' };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true },
+    });
+    if (!user?.password) {
+      return { success: false, error: 'Օգտատերը չի գտնվել' };
+    }
+
+    const passwordOk = await bcrypt.compare(pwd, user.password);
+    if (!passwordOk) {
+      return { success: false, error: 'Գաղտնաբառը սխալ է' };
+    }
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, name: true, category: true },
+    });
+    if (!product) {
+      return { success: false, error: 'Արտադրանքը չի գտնվել' };
+    }
+    if (isQuantityOnlyProduct(product.category)) {
+      return { success: false, error: 'Այս ապրանքը QR հաշվառում չունի' };
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const deleted = await tx.productUnit.deleteMany({
+        where: { productId, status: 'in_stock' },
+      });
+      const inStock = await tx.productUnit.count({
+        where: { productId, status: 'in_stock' },
+      });
+      await tx.product.update({
+        where: { id: productId },
+        data: { stock: inStock },
+      });
+      return { deletedCount: deleted.count, stock: inStock };
+    });
+
+    revalidatePath('/admin/products');
+    revalidatePath('/admin/box-office');
+
+    return {
+      success: true,
+      deletedCount: result.deletedCount,
+      stock: result.stock,
+      message:
+        result.deletedCount > 0
+          ? `Ջնջվեց ${result.deletedCount} QR միավոր`
+          : 'Պահեստում ջնջելու միավոր չկար',
+    };
+  } catch (error: unknown) {
+    console.error('[Delete All In-Stock Product Units] Error:', error);
+    return {
+      success: false,
+      error: 'Բոլոր միավորները ջնջելիս սխալ է տեղի ունեցել',
+    };
   }
 }
 

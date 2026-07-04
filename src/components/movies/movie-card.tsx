@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Calendar, Clock, Star, Film, Ticket, Eye } from 'lucide-react';
+import { Calendar, Clock, Film, Ticket, Eye } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
@@ -14,7 +14,6 @@ interface MovieCardProps {
     slug?: string | null;
     image?: string | null;
     duration: number;
-    rating?: number | null;
     ageRating?: string | null;
     genre?: string | null;
     releaseDate: Date | string;
@@ -73,7 +72,7 @@ export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
 
             {/* Top badges */}
             <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
-              <div className="flex flex-col items-start gap-2">
+              <div className="flex justify-between gap-2 w-full">
                 {movie.genre && (
                   <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white shadow-lg ring-1 ring-white/25 backdrop-blur-md">
                     {movie.genre.split(',')[0].trim()}
@@ -89,13 +88,6 @@ export default function MovieCard({ movie, index = 0 }: MovieCardProps) {
                   </span>
                 )}
               </div>
-
-              {movie.rating ? (
-                <span className="flex items-center gap-1 rounded-full bg-yellow-400/95 px-2.5 py-1 text-sm font-bold text-gray-900 shadow-lg">
-                  <Star className="h-3.5 w-3.5 fill-current" />
-                  {movie.rating.toFixed(1)}
-                </span>
-              ) : null}
             </div>
 
             {/* Hover CTA */}

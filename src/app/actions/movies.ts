@@ -8,7 +8,7 @@ export interface CreateMovieData {
   slug?: string;
   image?: string | null;
   duration: number;
-  rating: number;
+  rating?: number;
   ageRating?: string | null;
   genre: string;
   releaseDate: Date | string;
@@ -171,7 +171,7 @@ export async function getMovieBySlug(slug: string) {
 export async function createMovie(data: CreateMovieData) {
   try {
     // Validation
-    if (!data.title || !data.duration || !data.rating || !data.genre || !data.releaseDate) {
+    if (!data.title || !data.duration || !data.genre || !data.releaseDate) {
       return {
         success: false,
         error: 'Բոլոր պարտադիր դաշտերը պետք է լրացված լինեն',
@@ -205,7 +205,7 @@ export async function createMovie(data: CreateMovieData) {
         slug,
         image: data.image || null,
         duration: data.duration,
-        rating: data.rating,
+        rating: data.rating ?? 0,
         ageRating: data.ageRating || null,
         genre: data.genre,
         releaseDate: new Date(data.releaseDate),

@@ -11,7 +11,6 @@ import {
   X,
   Calendar,
   Clock,
-  Star,
   Image as ImageIcon,
   Search,
   ArrowLeft,
@@ -58,7 +57,6 @@ interface Movie {
   slug?: string | null;
   image?: string | null;
   duration: number;
-  rating: number;
   ageRating?: string | null;
   genre: string;
   releaseDate: Date | string;
@@ -86,6 +84,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
     'Կատակերգություն',
     'Մարտաֆիլմ',
     'Թրիլեր',
+    'Հոգեբանական թրիլեր',
     'Սարսափ',
     'Ռոմանտիկ',
     'Արկածային',
@@ -107,7 +106,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
     slug: '',
     image: '',
     duration: '',
-    rating: '',
     ageRating: '',
     genre: '',
     releaseDate: '',
@@ -209,7 +207,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       slug: '',
       image: '',
       duration: '',
-      rating: '',
       ageRating: '',
       genre: '',
       releaseDate: '',
@@ -227,7 +224,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       slug: movie.slug || '',
       image: movie.image || '',
       duration: movie.duration.toString(),
-      rating: movie.rating.toString(),
       ageRating: movie.ageRating || '',
       genre: movie.genre,
       releaseDate: new Date(movie.releaseDate).toISOString().split('T')[0],
@@ -258,7 +254,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           slug: formData.slug || undefined,
           image: formData.image || null,
           duration: parseInt(formData.duration),
-          rating: parseFloat(formData.rating),
           ageRating: formData.ageRating || null,
           genre: formData.genre,
           releaseDate: new Date(formData.releaseDate),
@@ -281,7 +276,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           slug: formData.slug || undefined,
           image: formData.image || null,
           duration: parseInt(formData.duration),
-          rating: parseFloat(formData.rating),
           ageRating: formData.ageRating || null,
           genre: formData.genre,
           releaseDate: new Date(formData.releaseDate),
@@ -314,7 +308,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
         slug: '',
         image: '',
         duration: '',
-        rating: '',
         ageRating: '',
         genre: '',
         releaseDate: '',
@@ -477,10 +470,6 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                         <Clock className="w-4 h-4" />
                         <span>{formatDuration(movie.duration)}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                        <span>{movie.rating}/10</span>
-                      </div>
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">
                           {movie.genre}
@@ -623,41 +612,21 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Տևողություն (րոպե){' '}
-                        <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        value={formData.duration}
-                        onChange={(e) =>
-                          setFormData({ ...formData, duration: e.target.value })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Վարկանիշ (0-10) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        required
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        value={formData.rating}
-                        onChange={(e) =>
-                          setFormData({ ...formData, rating: e.target.value })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Տևողություն (րոպե){' '}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={formData.duration}
+                      onChange={(e) =>
+                        setFormData({ ...formData, duration: e.target.value })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
                   </div>
 
                   <div>
@@ -825,8 +794,8 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                     {producerUsers.length === 0 ? (
                       <p className="text-xs text-gray-500 rounded-lg border border-dashed border-gray-300 px-4 py-3">
                         Ֆիլմարտադրող օգտատերեր չկան։ Օգտատերերի բաժնից որևէ
-                        օգտատիրոջ տվեք «Ֆիլմարտադրող» դերը, ապա այստեղ կկարողանաք
-                        կցել ֆիլմին։
+                        օգտատիրոջ տվեք «Ֆիլմարտադրող» դերը, ապա այստեղ
+                        կկարողանաք կցել ֆիլմին։
                       </p>
                     ) : (
                       <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">

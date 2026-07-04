@@ -17,6 +17,7 @@ import {
   FileBarChart,
   Bell,
   CreditCard,
+  History,
   LucideIcon,
 } from 'lucide-react';
 
@@ -79,9 +80,16 @@ export const adminMenuItems: AdminMenuItem[] = [
     bgColor: 'bg-indigo-50',
   },
   {
-    title: 'Արտադրանքներ',
+    title: 'Ապրանքներ',
     icon: ShoppingCart,
     href: '/admin/products',
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+  },
+  {
+    title: 'Ապրանքների միավորներ',
+    icon: History,
+    href: '/admin/product-units',
     color: 'text-amber-600',
     bgColor: 'bg-amber-50',
   },

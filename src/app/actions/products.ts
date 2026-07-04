@@ -3,7 +3,10 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { deleteUploadedFile } from '@/lib/delete-upload';
-import { isQuantityOnlyProduct } from '@/lib/product-units';
+import {
+  isQuantityOnlyProduct,
+  QUANTITY_ONLY_CATEGORIES,
+} from '@/lib/product-units';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isStaffRole } from '@/lib/roles';
@@ -394,6 +397,142 @@ export async function getProductUnits(
       inStock: 0,
       sold: 0,
       verified: 0,
+    };
+  }
+}
+
+export type ProductUnitsHistoryStatus = 'all' | 'in_stock' | 'sold';
+
+export interface ProductUnitsHistoryOptions {
+  search?: string;
+  status?: ProductUnitsHistoryStatus;
+  productId?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+/** Բոլոր QR միավորների պատմություն (պոպկորն և այլ quantity-only բացառված) */
+export async function getProductUnitsHistory(
+  options?: ProductUnitsHistoryOptions
+) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+      units: [],
+      total: 0,
+      inStock: 0,
+      sold: 0,
+      page: 1,
+      pageSize: 50,
+      products: [] as { id: number; name: string }[],
+    };
+  }
+
+  try {
+    const search = options?.search?.trim() ?? '';
+    const status = options?.status ?? 'all';
+    const productId = options?.productId;
+    const pageSize = Math.min(Math.max(options?.pageSize ?? 50, 1), 100);
+    const page = Math.max(options?.page ?? 1, 1);
+
+    const quantityOnly = [...QUANTITY_ONLY_CATEGORIES];
+
+    const baseWhere: {
+      productId?: number;
+      status?: string;
+      qrCode?: { contains: string };
+      product: { category: { notIn: string[] } };
+    } = {
+      product: { category: { notIn: quantityOnly } },
+    };
+
+    if (productId && Number.isFinite(productId)) {
+      baseWhere.productId = productId;
+    }
+    if (status !== 'all') {
+      baseWhere.status = status;
+    }
+    if (search) {
+      baseWhere.qrCode = { contains: search };
+    }
+
+    const [units, total, inStock, sold, products] = await Promise.all([
+      prisma.productUnit.findMany({
+        where: baseWhere,
+        orderBy: [{ status: 'asc' }, { soldAt: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          qrCode: true,
+          status: true,
+          soldAt: true,
+          verifiedAt: true,
+          createdAt: true,
+          orderItemId: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              price: true,
+            },
+          },
+          orderItem: {
+            select: {
+              id: true,
+              orderId: true,
+              price: true,
+            },
+          },
+        },
+      }),
+      prisma.productUnit.count({ where: baseWhere }),
+      prisma.productUnit.count({
+        where: {
+          status: 'in_stock',
+          product: { category: { notIn: quantityOnly } },
+          ...(productId ? { productId } : {}),
+        },
+      }),
+      prisma.productUnit.count({
+        where: {
+          status: 'sold',
+          product: { category: { notIn: quantityOnly } },
+          ...(productId ? { productId } : {}),
+        },
+      }),
+      prisma.product.findMany({
+        where: { category: { notIn: quantityOnly } },
+        orderBy: [{ category: 'asc' }, { name: 'asc' }],
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    return {
+      success: true,
+      units,
+      total,
+      inStock,
+      sold,
+      page,
+      pageSize,
+      products,
+    };
+  } catch (error: unknown) {
+    console.error('[Get Product Units History] Error:', error);
+    return {
+      success: false,
+      error: 'Պատմությունը բեռնելիս սխալ է տեղի ունեցել',
+      units: [],
+      total: 0,
+      inStock: 0,
+      sold: 0,
+      page: 1,
+      pageSize: 50,
+      products: [] as { id: number; name: string }[],
     };
   }
 }

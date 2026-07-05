@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -20,7 +21,11 @@ import {
   ScanLine,
   RotateCcw,
   List,
+  CheckCircle2,
+  Circle,
+  Copy,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   getProductUnits,
   updateProductUnitQr,
@@ -36,6 +41,11 @@ interface ProductUnitsModalProps {
     id: number;
     name: string;
     stock: number;
+    description?: string | null;
+    price?: number;
+    image?: string | null;
+    category?: string;
+    isActive?: boolean;
   };
   onClose: () => void;
   onStockUpdated: (productId: number, stock: number) => void;
@@ -47,9 +57,31 @@ interface ProductUnitRow {
   status: string;
   soldAt: Date | string | null;
   verifiedAt: Date | string | null;
+  pekReportedAt?: Date | string | null;
   createdAt: Date | string;
   orderItemId: number | null;
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  snack: 'Նախուտեստ',
+  drink: 'Խմիչք',
+  combo: 'Կոմբո',
+  popcorn: 'Պոպկորն',
+  soda: 'Գազավորված խմիչք',
+  candy: 'Քաղցրավենիք',
+  hot_dog: 'Հոթ-դոգ',
+  nachos: 'Նաչոս',
+  coffee: 'Սրճարանային խմիչք',
+  tea: 'Թեյ',
+  juice: 'Հյութ',
+  water: 'Ջուր',
+  chips: 'Չիպս',
+  chocolate: 'Շոկոլադ',
+  ice_cream: 'Պաղպաղակ',
+  sandwich: 'Սենդվիչ',
+  pizza: 'Պիցցա',
+  burger: 'Բուրգեր',
+};
 
 type StatusFilter = 'all' | 'in_stock' | 'sold';
 type ModalTab = 'list' | 'verify';
@@ -86,12 +118,15 @@ export default function ProductUnitsModal({
 
   const [scanInput, setScanInput] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyingQr, setVerifyingQr] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [verifyLog, setVerifyLog] = useState<VerifyLogEntry[]>([]);
   const [sessionScanned, setSessionScanned] = useState<Set<string>>(new Set());
   const scanInputRef = useRef<HTMLInputElement>(null);
 
   const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [previewUnit, setPreviewUnit] = useState<ProductUnitRow | null>(null);
+  const [qrCopied, setQrCopied] = useState(false);
   const [deleteAllPassword, setDeleteAllPassword] = useState('');
   const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
@@ -142,8 +177,8 @@ export default function ProductUnitsModal({
     setError(null);
     try {
       const result = await getProductUnits(product.id, {
-        search: debouncedSearch || undefined,
-        status: statusFilter,
+        search: activeTab === 'list' ? debouncedSearch || undefined : undefined,
+        status: activeTab === 'list' ? statusFilter : 'in_stock',
       });
       if (result.success) {
         setUnits(result.units as ProductUnitRow[]);
@@ -158,7 +193,7 @@ export default function ProductUnitsModal({
     } finally {
       setIsLoading(false);
     }
-  }, [product.id, debouncedSearch, statusFilter]);
+  }, [product.id, debouncedSearch, statusFilter, activeTab]);
 
   useEffect(() => {
     void loadUnits();
@@ -193,6 +228,7 @@ export default function ProductUnitsModal({
     }
 
     setIsVerifying(true);
+    setVerifyingQr(code);
     setError(null);
     setSessionScanned((prev) => new Set(prev).add(code));
 
@@ -214,7 +250,7 @@ export default function ProductUnitsModal({
                   : u
               );
             }
-            return prev;
+            return [result.unit as ProductUnitRow, ...prev];
           });
         }
       } else if (result.outcome) {
@@ -239,6 +275,7 @@ export default function ProductUnitsModal({
       addVerifyLog(code, 'not_found', 'Ստուգելիս սխալ է տեղի ունեցել');
     } finally {
       setIsVerifying(false);
+      setVerifyingQr(null);
       setScanInput('');
       focusScanInput();
     }
@@ -406,6 +443,23 @@ export default function ProductUnitsModal({
       second: '2-digit',
     });
 
+  const formatPrice = (value?: number) =>
+    value != null ? `${Math.round(value).toLocaleString('hy-AM')} ֏` : '—';
+
+  const categoryLabel = (category?: string) =>
+    category ? CATEGORY_LABELS[category] ?? category : '—';
+
+  const copyPreviewQr = async () => {
+    if (!previewUnit) return;
+    try {
+      await navigator.clipboard.writeText(previewUnit.qrCode);
+      setQrCopied(true);
+      window.setTimeout(() => setQrCopied(false), 2000);
+    } catch {
+      setError('QR կոդը պատճենել հնարավոր չեղավ');
+    }
+  };
+
   const logStyle = (outcome: VerifyLogEntry['outcome']) => {
     switch (outcome) {
       case 'verified':
@@ -438,6 +492,100 @@ export default function ProductUnitsModal({
   };
 
   const pendingVerify = Math.max(0, inStock - verified);
+
+  const pendingVerifyUnits = useMemo(
+    () =>
+      units
+        .filter((u) => u.status === 'in_stock' && !u.verifiedAt)
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        ),
+    [units]
+  );
+
+  const verifiedUnits = useMemo(
+    () =>
+      units
+        .filter((u) => u.status === 'in_stock' && u.verifiedAt)
+        .sort((a, b) => {
+          const ta = new Date(a.verifiedAt!).getTime();
+          const tb = new Date(b.verifiedAt!).getTime();
+          return tb - ta;
+        }),
+    [units]
+  );
+
+  const renderVerifyUnitRow = (unit: ProductUnitRow, isVerifiedRow: boolean) => {
+    const isScanningThis = isVerifying && verifyingQr === unit.qrCode;
+    const scannedInSession = sessionScanned.has(unit.qrCode);
+
+    return (
+      <div
+        key={unit.id}
+        className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+          isVerifiedRow
+            ? 'border-emerald-200 bg-emerald-50'
+            : 'border-orange-200 bg-orange-50'
+        }`}
+      >
+        <div className="shrink-0">
+          {isVerifiedRow ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          ) : (
+            <Circle className="h-4 w-4 text-orange-400" />
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPreviewUnit(unit)}
+          className="shrink-0 rounded-md border border-white bg-white p-0.5 shadow-sm transition hover:border-purple-300 hover:shadow-md"
+          title="Մեծացնել QR"
+        >
+          <QRCodeSVG
+            value={unit.qrCode}
+            size={48}
+            level="M"
+            includeMargin={false}
+            bgColor="#ffffff"
+            fgColor="#111827"
+          />
+        </button>
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => setPreviewUnit(unit)}
+            className="truncate text-left font-mono text-sm font-medium text-gray-900 hover:text-purple-700"
+            title="Մանրամասն տեղեկություն"
+          >
+            {unit.qrCode}
+          </button>
+          <p className="text-[11px] text-gray-500">
+            {isVerifiedRow && unit.verifiedAt
+              ? `Ստուգվել՝ ${formatDate(unit.verifiedAt)}`
+              : `Ավելացվել՝ ${formatDate(unit.createdAt)}`}
+            {scannedInSession && !isVerifiedRow && (
+              <span className="ml-1 text-amber-600">· սկանավորվել է</span>
+            )}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleVerifyScan(unit.qrCode)}
+          disabled={isVerifying}
+          title="Սկանավորել այս QR-ը"
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-purple-200 bg-white px-2.5 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-50 disabled:opacity-50"
+        >
+          {isScanningThis ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ScanLine className="h-3.5 w-3.5" />
+          )}
+          Սկան
+        </button>
+      </div>
+    );
+  };
 
   return (
     <motion.div
@@ -624,9 +772,66 @@ export default function ProductUnitsModal({
                   )}
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  Ապարատային սկաները ավտոմատ ստուգում է կոդը (Enter)։ Նույն
-                  միավորը կրկին սկանել հնարավոր չէ մինչև «Նոր ստուգում»։
+                  Ապարատային սկաները ավտոմատ ստուգում է կոդը (Enter)։ Կամ սեղմեք
+                  «Սկան» ցանկի ցանկացած միավորի վրա։
                 </p>
+              </div>
+
+              {/* Չստուգված / Ստուգված ցանկեր */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-orange-200 bg-white">
+                  <div className="flex items-center justify-between border-b border-orange-100 bg-orange-50 px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-orange-800">
+                      <Circle className="h-4 w-4" />
+                      Չստուգված
+                    </span>
+                    <span className="rounded-full bg-orange-200 px-2 py-0.5 text-xs font-bold text-orange-900">
+                      {pendingVerifyUnits.length}
+                    </span>
+                  </div>
+                  <div className="max-h-48 space-y-1.5 overflow-y-auto p-2">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center py-6 text-gray-400">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      </div>
+                    ) : pendingVerifyUnits.length === 0 ? (
+                      <p className="py-6 text-center text-xs text-gray-400">
+                        Բոլոր միավորները ստուգված են
+                      </p>
+                    ) : (
+                      pendingVerifyUnits.map((unit) =>
+                        renderVerifyUnitRow(unit, false)
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-emerald-200 bg-white">
+                  <div className="flex items-center justify-between border-b border-emerald-100 bg-emerald-50 px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Ստուգված
+                    </span>
+                    <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-xs font-bold text-emerald-900">
+                      {verifiedUnits.length}
+                    </span>
+                  </div>
+                  <div className="max-h-48 space-y-1.5 overflow-y-auto p-2">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center py-6 text-gray-400">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      </div>
+                    ) : verifiedUnits.length === 0 ? (
+                      <p className="py-6 text-center text-xs text-gray-400">
+                        Դեռ ստուգված միավորներ չկան
+                      </p>
+                    ) : (
+                      verifiedUnits.map((unit) =>
+                        renderVerifyUnitRow(unit, true)
+                      )
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -697,6 +902,23 @@ export default function ProductUnitsModal({
                     className="rounded-lg border border-gray-200 bg-gray-50 p-3"
                   >
                     <div className="flex items-start justify-between gap-2">
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewUnit(unit)}
+                          className="shrink-0 rounded-md border border-gray-200 bg-white p-0.5 shadow-sm transition hover:border-purple-300 hover:shadow-md"
+                          title="Մեծացնել QR"
+                        >
+                          <QRCodeSVG
+                            value={unit.qrCode}
+                            size={48}
+                            level="M"
+                            includeMargin={false}
+                            bgColor="#ffffff"
+                            fgColor="#111827"
+                          />
+                        </button>
+                      )}
                       <div className="min-w-0 flex-1">
                         {isEditing ? (
                           <input
@@ -711,9 +933,14 @@ export default function ProductUnitsModal({
                             className="w-full rounded border border-purple-300 px-2 py-1 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                           />
                         ) : (
-                          <p className="truncate font-mono text-sm font-medium text-gray-900">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewUnit(unit)}
+                            className="truncate text-left font-mono text-sm font-medium text-gray-900 hover:text-purple-700"
+                            title="Մանրամասն տեղեկություն"
+                          >
                             {unit.qrCode}
-                          </p>
+                          </button>
                         )}
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                           <span
@@ -826,6 +1053,180 @@ export default function ProductUnitsModal({
           </div>
         </div>
       </motion.div>
+
+      {previewUnit && (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => {
+            setPreviewUnit(null);
+            setQrCopied(false);
+          }}
+        >
+          <div
+            className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setPreviewUnit(null);
+                setQrCopied(false);
+              }}
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="relative pr-8">
+              <h3 className="text-lg font-bold text-gray-900">{product.name}</h3>
+              <p className="mt-0.5 text-sm text-gray-500">
+                {categoryLabel(product.category)}
+                {product.isActive === false && ' · Անջատված'}
+              </p>
+            </div>
+
+            {product.image && (
+              <div className="relative mt-4 h-36 w-full overflow-hidden rounded-xl bg-gray-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={product.image}
+                  alt={product.name}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <p className="text-xs text-gray-500">Գին</p>
+                <p className="font-semibold text-gray-900">
+                  {formatPrice(product.price)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <p className="text-xs text-gray-500">Պահեստում</p>
+                <p className="font-semibold text-gray-900">{inStock}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <p className="text-xs text-gray-500">Ստուգված</p>
+                <p className="font-semibold text-emerald-700">{verified}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <p className="text-xs text-gray-500">Վաճառված</p>
+                <p className="font-semibold text-blue-700">{sold}</p>
+              </div>
+            </div>
+
+            {product.description && (
+              <p className="mt-3 text-sm leading-relaxed text-gray-600">
+                {product.description}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-center rounded-xl border border-gray-200 bg-white p-4">
+              <QRCodeSVG
+                value={previewUnit.qrCode}
+                size={220}
+                level="M"
+                includeMargin
+                bgColor="#ffffff"
+                fgColor="#111827"
+              />
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+              <code className="flex-1 break-all rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800">
+                {previewUnit.qrCode}
+              </code>
+              <button
+                type="button"
+                onClick={() => void copyPreviewQr()}
+                className="shrink-0 rounded-lg border border-gray-200 p-2 hover:bg-gray-50"
+                title="Պատճենել QR կոդը"
+              >
+                {qrCopied ? (
+                  <Check className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <Copy className="h-4 w-4 text-gray-600" />
+                )}
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
+              <p className="font-semibold text-gray-800">Միավորի տվյալներ</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                <div>
+                  <span className="text-gray-500">Կարգավիճակ՝ </span>
+                  <span className="font-medium text-gray-900">
+                    {previewUnit.status === 'sold' ? 'Վաճառված' : 'Պահեստում'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Ստուգում՝ </span>
+                  <span className="font-medium text-gray-900">
+                    {previewUnit.verifiedAt ? 'Ստուգված' : 'Չստուգված'}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-gray-500">Ավելացվել՝ </span>
+                  <span className="font-medium text-gray-900">
+                    {formatDate(previewUnit.createdAt)}
+                  </span>
+                </div>
+                {previewUnit.verifiedAt && (
+                  <div className="col-span-2">
+                    <span className="text-gray-500">Ստուգվել՝ </span>
+                    <span className="font-medium text-emerald-700">
+                      {formatDate(previewUnit.verifiedAt)}
+                    </span>
+                  </div>
+                )}
+                {previewUnit.soldAt && (
+                  <div className="col-span-2">
+                    <span className="text-gray-500">Վաճառվել՝ </span>
+                    <span className="font-medium text-blue-700">
+                      {formatDate(previewUnit.soldAt)}
+                    </span>
+                  </div>
+                )}
+                {previewUnit.orderItemId && (
+                  <div className="col-span-2">
+                    <span className="text-gray-500">Պատվերի միավոր ID՝ </span>
+                    <span className="font-medium text-gray-900">
+                      #{previewUnit.orderItemId}
+                    </span>
+                  </div>
+                )}
+                <div className="col-span-2">
+                  <span className="text-gray-500">ՊԵԿ՝ </span>
+                  <span className="font-medium text-gray-900">
+                    {previewUnit.pekReportedAt
+                      ? `Ուղարկված · ${formatDate(previewUnit.pekReportedAt)}`
+                      : 'Շրջանառության մեջ'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {activeTab === 'verify' &&
+              previewUnit.status === 'in_stock' &&
+              !previewUnit.verifiedAt && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleVerifyScan(previewUnit.qrCode);
+                    setPreviewUnit(null);
+                  }}
+                  disabled={isVerifying}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  <ScanLine className="h-4 w-4" />
+                  Սկանավորել և ստուգել
+                </button>
+              )}
+          </div>
+        </div>
+      )}
 
       {showDeleteAll && (
         <div

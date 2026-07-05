@@ -376,6 +376,7 @@ export async function getProductUnits(
           status: true,
           soldAt: true,
           verifiedAt: true,
+          pekReportedAt: true,
           createdAt: true,
           orderItemId: true,
         },

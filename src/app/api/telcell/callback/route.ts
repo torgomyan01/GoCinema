@@ -119,7 +119,11 @@ export async function POST(request: NextRequest) {
         invoice,
       });
       for (const ticket of order.tickets) {
-        if (ticket.status !== 'paid' && ticket.status !== 'used') {
+        if (ticket.status === 'cancelled') {
+          continue;
+        }
+
+        if (ticket.status === 'reserved') {
           // Կոնֆլիկտի ստուգում. այս ընթացքում ուրիշը չի՞ վճարել նույն տեղի համար
           const conflict = await prisma.ticket.findFirst({
             where: {
@@ -167,7 +171,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        if (ticket.status !== 'paid' && ticket.status !== 'used') {
+        if (ticket.status === 'reserved') {
           await prisma.ticket.update({
             where: { id: ticket.id },
             data: { status: 'paid' },

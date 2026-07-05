@@ -29,6 +29,7 @@ import {
   updateScreening,
   deleteScreening,
 } from '@/app/actions/screenings';
+import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 /**
  * Վերադարձնում է ամսաթվի տեղական (local) բանալին` YYYY-MM-DD ձևաչափով։
@@ -614,9 +615,8 @@ export default function AdminScreeningsClient({
   const getAvailableSeats = (screening: Screening) => {
     const totalSeats = screening.hall?.capacity || 0;
     const bookedSeats =
-      screening.tickets?.filter(
-        (t) => t.status === 'paid' || t.status === 'reserved'
-      ).length || 0;
+      screening.tickets?.filter((t) => isOccupiedTicketStatus(t.status))
+        .length || 0;
     return totalSeats - bookedSeats;
   };
 

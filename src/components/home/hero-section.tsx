@@ -19,6 +19,7 @@ import {
 } from '@/app/actions/screenings';
 import { SITE_URL } from '@/utils/consts';
 import { ageRatingClasses } from '@/lib/age-rating';
+import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 interface HeroTicket {
   id: number | null;
@@ -89,9 +90,7 @@ function getAvailableSeats(
   capacity: number,
   tickets: Array<{ status: string }> = []
 ) {
-  const booked = tickets.filter(
-    (t) => t.status === 'paid' || t.status === 'used'
-  ).length;
+  const booked = tickets.filter((t) => isOccupiedTicketStatus(t.status)).length;
   return Math.max(0, capacity - booked);
 }
 

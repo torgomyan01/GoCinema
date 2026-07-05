@@ -112,10 +112,8 @@ function SeatTooltipContent({
       <p className="text-gray-500">
         Ամրագրված՝ {formatDateTime(ticket.createdAt)}
       </p>
-      {ticket.status === 'reserved' && ticket.holdUntil && (
-        <p className="text-amber-700">
-          Վճարման ժամկետ՝ {formatDateTime(ticket.holdUntil)}
-        </p>
+      {ticket.status === 'reserved' && (
+        <p className="text-amber-700">Ամրագրված է, սպասում է վճարման</p>
       )}
       {ticket.status === 'paid' && (
         <p className="text-purple-600">

@@ -21,6 +21,7 @@ import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
 import { getScreenings } from '@/app/actions/screenings';
+import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 interface Screening {
   id: number;
@@ -183,9 +184,8 @@ export default function ScheduleSection() {
   const getAvailableSeats = (screening: Screening) => {
     const capacity = screening.hall?.capacity || 80;
     const bookedTickets =
-      screening.tickets?.filter(
-        (t) => t.status === 'paid' || t.status === 'used'
-      ).length || 0;
+      screening.tickets?.filter((t) => isOccupiedTicketStatus(t.status))
+        .length || 0;
     return capacity - bookedTickets;
   };
 

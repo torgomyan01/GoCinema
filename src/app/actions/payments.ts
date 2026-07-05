@@ -346,16 +346,6 @@ async function markOrderAsFailed(order: {
     },
   });
 
-  // Վճարման ձախողման դեպքում անմիջապես ազատենք ամրագրված տեղերը,
-  // որպեսզի դրանք նորից հասանելի լինեն այլ հաճախորդների համար։
-  await prisma.ticket.updateMany({
-    where: {
-      id: { in: ticketIds },
-      status: 'reserved',
-    },
-    data: { status: 'cancelled' },
-  });
-
   await prisma.order.update({
     where: { id: order.id },
     data: { status: 'pending' },
@@ -484,7 +474,7 @@ export async function createVPostOrderForOrder(
     }
 
     const unpaidTickets = order.tickets.filter(
-      (ticket) => ticket.status !== 'paid' && ticket.status !== 'used'
+      (ticket) => ticket.status === 'reserved'
     );
 
     if (unpaidTickets.length === 0) {
@@ -922,7 +912,7 @@ export async function createTelcellInvoiceForOrder(
     }
 
     const unpaidTickets = order.tickets.filter(
-      (ticket) => ticket.status !== 'paid' && ticket.status !== 'used'
+      (ticket) => ticket.status === 'reserved'
     );
 
     if (unpaidTickets.length === 0) {
@@ -1033,9 +1023,9 @@ export async function createPaymentForOrder(data: CreatePaymentForOrderData) {
       };
     }
 
-    // Check if all tickets are already paid
+    // Check if all payable tickets are already paid
     const unpaidTickets = order.tickets.filter(
-      (ticket) => ticket.status !== 'paid' && ticket.status !== 'used'
+      (ticket) => ticket.status === 'reserved'
     );
 
     if (unpaidTickets.length === 0) {

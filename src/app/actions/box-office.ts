@@ -821,9 +821,23 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       }
 
       if (ticket.orderId) {
+        const remainingTickets = await tx.ticket.findMany({
+          where: {
+            orderId: ticket.orderId,
+            id: { not: ticketId },
+            status: { not: 'cancelled' },
+          },
+          select: { status: true },
+        });
+        const nextOrderStatus =
+          remainingTickets.length === 0
+            ? 'cancelled'
+            : remainingTickets.some((t) => t.status === 'paid' || t.status === 'used')
+              ? 'completed'
+              : 'pending';
         await tx.order.update({
           where: { id: ticket.orderId },
-          data: { status: 'cancelled' },
+          data: { status: nextOrderStatus },
         });
       }
     });

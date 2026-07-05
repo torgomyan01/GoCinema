@@ -33,7 +33,7 @@ function getProductItemBadge(item: {
     };
   }
   return {
-    label: 'Գնել է · Վճարված է',
+    label: 'Սպասում է տրման',
     className: 'bg-blue-100 text-blue-800',
   };
 }

@@ -146,6 +146,7 @@ export async function getMovieReports(params: {
     }
     from.setHours(0, 0, 0, 0);
     to.setHours(23, 59, 59, 999);
+    const now = new Date();
 
     const basis: ReportBasis = params.basis === 'sale' ? 'sale' : 'screening';
 
@@ -165,6 +166,7 @@ export async function getMovieReports(params: {
             select: {
               movieId: true,
               startTime: true,
+              endTime: true,
               movie: { select: { id: true, title: true, image: true } },
             },
           },
@@ -338,7 +340,9 @@ export async function getMovieReports(params: {
         row.revenue += t.price;
       }
       if (t.status === 'used') row.attended += 1;
-      if (t.status === 'paid') row.noShow += 1;
+      if (t.status === 'paid' && new Date(t.screening.endTime) < now) {
+        row.noShow += 1;
+      }
       if (t.status === 'reserved') row.reserved += 1;
       if (t.status === 'cancelled') row.cancelled += 1;
     }
@@ -353,7 +357,9 @@ export async function getMovieReports(params: {
             screening.revenue += ticket.price;
           }
           if (ticket.status === 'used') screening.attended += 1;
-          if (ticket.status === 'paid') screening.noShow += 1;
+          if (ticket.status === 'paid' && new Date(screening.endTime) < now) {
+            screening.noShow += 1;
+          }
           if (ticket.status === 'reserved') screening.reserved += 1;
           if (ticket.status === 'cancelled') screening.cancelled += 1;
         }

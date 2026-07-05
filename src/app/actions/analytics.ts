@@ -41,10 +41,10 @@ export async function getAnalytics() {
       // Total Orders
       prisma.order.count(),
 
-      // Total Revenue (from paid tickets)
+      // Total Revenue (sold tickets: paid + used)
       prisma.ticket.aggregate({
         where: {
-          status: 'paid',
+          status: { in: ['paid', 'used'] },
         },
         _sum: {
           price: true,
@@ -165,7 +165,7 @@ export async function getAnalytics() {
     // Revenue over time (last 30 days)
     const revenueOverTime = await prisma.ticket.findMany({
       where: {
-        status: 'paid',
+        status: { in: ['paid', 'used'] },
         createdAt: {
           gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
         },

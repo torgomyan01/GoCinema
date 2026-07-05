@@ -773,7 +773,7 @@ export default function BoxOfficeClient() {
                     <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
                       <span>{formatDay(s.startTime)}</span>
                       <span>
-                        {s.soldCount}/{s.capacity} վաճառված ·{' '}
+                        {s.soldCount}/{s.capacity} զբաղված ·{' '}
                         {s.basePrice.toLocaleString()} ֏
                       </span>
                     </div>

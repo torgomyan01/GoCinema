@@ -634,7 +634,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     if (item.fulfilledAt) {
       return { label: 'Տրված է', className: 'bg-green-100 text-green-800' };
     }
-    return { label: 'Գնել է · Վճարված է', className: 'bg-blue-100 text-blue-800' };
+    return { label: 'Սպասում է տրման', className: 'bg-blue-100 text-blue-800' };
   };
 
   return (

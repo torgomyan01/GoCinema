@@ -28,6 +28,7 @@ export const MAX_FREE_RESERVED_SEATS = 4;
 
 /** Կարգավիճակներ, որոնք միշտ զբաղեցնում են տեղը (վերջնական վճարված)։ */
 export const PAID_TICKET_STATUSES = ['paid', 'used'] as const;
+export const OCCUPIED_TICKET_STATUSES = ['reserved', 'paid', 'used'] as const;
 
 /** Ամրագրման ժամկետի ստորին սահմանը. այս պահից առաջ ստեղծված reserved-ները լրացած են։ */
 export function reservationCutoff(now: Date = new Date()): Date {
@@ -74,4 +75,9 @@ export function expiredReservationWhere(_now: Date = new Date()) {
 /** Տոմսը հաշվվում է վաճառվա՞ծ (ազատ տեղերի հաշվիչների համար)։ */
 export function isPaidTicketStatus(status: string): boolean {
   return (PAID_TICKET_STATUSES as readonly string[]).includes(status);
+}
+
+/** Տոմսը զբաղեցնո՞ւմ է նստատեղը։ */
+export function isOccupiedTicketStatus(status: string): boolean {
+  return (OCCUPIED_TICKET_STATUSES as readonly string[]).includes(status);
 }

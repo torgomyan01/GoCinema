@@ -24,7 +24,7 @@ export interface CreateCounterReservationData {
 }
 
 /**
- * Քանի՞ ակտիվ (չվճարված) դրամարկղ-ամրագրված աթոռ ունի օգտատերը։
+ * Քանի՞ չվճարված դրամարկղ-ամրագրված աթոռ ունի օգտատերը։
  * Օգտագործվում է 4-աթոռ սահմանաչափը ստուգելու համար։
  */
 export async function getActiveReservationCount(userId: number) {
@@ -33,7 +33,6 @@ export async function getActiveReservationCount(userId: number) {
       where: {
         userId,
         status: 'reserved',
-        holdUntil: { gte: new Date() },
         order: { is: { paymentMethod: COUNTER_PAYMENT_METHOD } },
       },
     });

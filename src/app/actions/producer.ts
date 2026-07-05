@@ -277,12 +277,13 @@ export async function getProducerMovieReport(params: {
         }
       }
 
+      const screeningEnded = new Date(s.endTime) < new Date();
       for (const t of s.tickets) {
         const isSold = t.status === 'paid' || t.status === 'used';
         if (isSold) revenue += t.price;
         if (t.status === 'paid' || t.status === 'used') sold += 1;
         if (t.status === 'used') attended += 1;
-        if (t.status === 'paid') noShow += 1;
+        if (t.status === 'paid' && screeningEnded) noShow += 1;
         if (t.status === 'reserved') reserved += 1;
         if (t.status === 'cancelled') cancelled += 1;
       }

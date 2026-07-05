@@ -175,7 +175,12 @@ export async function returnProductUnitsByOrderItem(
 
   await tx.productUnit.updateMany({
     where: { id: { in: units.map((u) => u.id) } },
-    data: { status: 'in_stock', soldAt: null, orderItemId: null },
+    data: {
+      status: 'in_stock',
+      soldAt: null,
+      orderItemId: null,
+      pekReportedAt: null,
+    },
   });
 
   const productIds = Array.from(new Set(units.map((u) => u.productId)));

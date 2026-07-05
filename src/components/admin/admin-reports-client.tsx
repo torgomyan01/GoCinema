@@ -729,7 +729,8 @@ export default function AdminReportsClient() {
 
           <p className="text-xs text-gray-400">
             «Դիտել են»՝ սկանավորված մուտքով տոմսեր (used)։ «Չներկայացած»՝
-            վաճառված, բայց չսկանավորված (paid)։ «Վաճառված»՝ paid + used։
+            ավարտված ցուցադրության վճարված, բայց չսկանավորված տոմսեր։
+            «Վաճառված»՝ paid + used։
           </p>
         </div>
       )}
@@ -816,7 +817,9 @@ function MovieScreeningDetails({
                         {screening.tickets.map((ticket) => {
                           const hasProducts = ticket.orderItems.length > 0;
                           const isNoShow =
-                            ticket.status === 'paid' || ticket.noShow;
+                            (ticket.status === 'paid' &&
+                              new Date(screening.endTime) < new Date()) ||
+                            ticket.noShow;
                           return (
                             <tr key={ticket.id} className="hover:bg-gray-50/80">
                               <td className="px-3 py-2">

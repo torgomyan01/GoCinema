@@ -189,6 +189,11 @@ async function fetchOrderData(orderId: number) {
 }
 
 export async function getOrderOrTicketByQR(qrData: string) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է', data: null };
+  }
+
   try {
     const { type, id } = normalizeScanInput(qrData);
 
@@ -240,6 +245,11 @@ export async function getOrderOrTicketByQR(qrData: string) {
 }
 
 export async function markTicketAsUsed(ticketId: number) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
   try {
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -295,6 +305,11 @@ export async function markTicketAsUsed(ticketId: number) {
 }
 
 export async function markAllTicketsInOrderAsUsed(orderId: number) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
   try {
     const order = await prisma.order.findUnique({
       where: { id: orderId },

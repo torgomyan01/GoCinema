@@ -71,9 +71,9 @@ export default function AdminAnalyticsClient({
   const usedTicketsCount = usedTickets?._count.id || 0;
   const usedTicketsRevenue = usedTickets?._sum.price || 0;
 
-  // Unused tickets = paid tickets that are not yet used
-  const unusedTicketsCount = paidTicketsCount - usedTicketsCount;
-  const unusedTicketsRevenue = paidTicketsRevenue - usedTicketsRevenue;
+  // Paid tickets are exactly the sold tickets not scanned at entry yet.
+  const unusedTicketsCount = paidTicketsCount;
+  const unusedTicketsRevenue = paidTicketsRevenue;
 
   const statCards = [
     {

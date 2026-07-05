@@ -554,11 +554,18 @@ export async function setProductUnitPekReported(
   try {
     const unit = await prisma.productUnit.findUnique({
       where: { id: unitId },
-      select: { id: true, pekReportedAt: true },
+      select: { id: true, status: true, pekReportedAt: true },
     });
 
     if (!unit) {
       return { success: false, error: 'Միավորը չի գտնվել' };
+    }
+
+    if (reported && unit.status !== 'sold') {
+      return {
+        success: false,
+        error: 'ՊԵԿ ուղարկված կարելի է նշել միայն վաճառված միավորը',
+      };
     }
 
     const updated = await prisma.productUnit.update({

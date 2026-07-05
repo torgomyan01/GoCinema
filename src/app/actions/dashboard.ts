@@ -36,10 +36,10 @@ export async function getDashboardStats() {
         },
       }),
 
-      // Total Revenue (from paid tickets)
+      // Total Revenue (sold tickets: paid + used)
       prisma.ticket.aggregate({
         where: {
-          status: 'paid',
+          status: { in: ['paid', 'used'] },
         },
         _sum: {
           price: true,
@@ -59,7 +59,7 @@ export async function getDashboardStats() {
       // Revenue last month
       prisma.ticket.aggregate({
         where: {
-          status: 'paid',
+          status: { in: ['paid', 'used'] },
           createdAt: {
             gte: startOfLastMonth,
             lte: endOfLastMonth,
@@ -143,10 +143,10 @@ export async function getRecentActivity() {
       time: Date;
     }> = [];
 
-    // Get recent tickets (paid)
+    // Get recent sold tickets (paid + used)
     const recentTickets = await prisma.ticket.findMany({
       where: {
-        status: 'paid',
+        status: { in: ['paid', 'used'] },
       },
       orderBy: { createdAt: 'desc' },
       take: 5,

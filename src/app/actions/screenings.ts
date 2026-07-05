@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
-import { occupiedTicketWhere } from '@/lib/reservation';
+import { isOccupiedTicketStatus, occupiedTicketWhere } from '@/lib/reservation';
 import { releaseExpiredReservations } from '@/app/actions/tickets';
 
 const screeningListInclude = {
@@ -521,8 +521,8 @@ export async function getRandomUpcomingScreening() {
 
     const pick = screenings[Math.floor(Math.random() * screenings.length)];
     const capacity = pick.hall?.capacity ?? 80;
-    const booked = pick.tickets.filter(
-      (t) => t.status === 'paid' || t.status === 'used'
+    const booked = pick.tickets.filter((t) =>
+      isOccupiedTicketStatus(t.status)
     ).length;
 
     return {

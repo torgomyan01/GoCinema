@@ -20,6 +20,7 @@ import ScheduleFilter from './schedule-filter';
 import { getScreenings } from '@/app/actions/screenings';
 import { getMovies } from '@/app/actions/movies';
 import { SITE_URL } from '@/utils/consts';
+import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 interface Movie {
   id: number;
@@ -80,7 +81,7 @@ export default function SchedulePageClient() {
             // Calculate if sold out based on tickets
             isSoldOut:
               (screening.tickets?.filter(
-                (t) => t.status === 'paid' || t.status === 'reserved'
+                (t) => isOccupiedTicketStatus(t.status)
               ).length || 0) >= (screening.hall?.capacity || 0),
           }));
           setAllScreenings(allScreeningsData);
@@ -216,9 +217,8 @@ export default function SchedulePageClient() {
   const getAvailableSeats = (screening: Screening) => {
     const capacity = screening.hall?.capacity || 80;
     const bookedTickets =
-      screening.tickets?.filter(
-        (t) => t.status === 'paid' || t.status === 'reserved'
-      ).length || 0;
+      screening.tickets?.filter((t) => isOccupiedTicketStatus(t.status))
+        .length || 0;
     return capacity - bookedTickets;
   };
 

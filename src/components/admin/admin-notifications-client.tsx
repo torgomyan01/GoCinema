@@ -11,6 +11,7 @@ import {
   Banknote,
   Ban,
   Headphones,
+  Mail,
   Loader2,
   AlertCircle,
 } from 'lucide-react';
@@ -39,7 +40,8 @@ type FilterType =
   | 'online_product'
   | 'box_office'
   | 'cancellation'
-  | 'support';
+  | 'support'
+  | 'contact';
 
 const typeStyles: Record<
   string,
@@ -74,6 +76,12 @@ const typeStyles: Record<
     color: 'text-blue-600',
     bg: 'bg-blue-50',
     label: 'Աջակցություն',
+  },
+  contact: {
+    icon: Mail,
+    color: 'text-sky-600',
+    bg: 'bg-sky-50',
+    label: 'Կոնտակտ',
   },
 };
 
@@ -130,6 +138,7 @@ export default function AdminNotificationsClient() {
       box_office: items.filter((n) => n.type === 'box_office').length,
       cancellation: items.filter((n) => n.type === 'cancellation').length,
       support: items.filter((n) => n.type === 'support').length,
+      contact: items.filter((n) => n.type === 'contact').length,
     };
   }, [items]);
 
@@ -173,6 +182,7 @@ export default function AdminNotificationsClient() {
     { key: 'box_office', label: 'Դրամարկղ' },
     { key: 'cancellation', label: 'Չեղարկում' },
     { key: 'support', label: 'Աջակցություն' },
+    { key: 'contact', label: 'Կոնտակտ' },
   ];
 
   return (

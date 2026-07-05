@@ -19,6 +19,7 @@ import { adminMenuItems } from '@/config/admin-menu';
 import { isAdminRole } from '@/lib/roles';
 import NotificationBell from '@/components/admin/notification-bell';
 import SupportMenuBadge from '@/components/admin/support-menu-badge';
+import ContactMenuBadge from '@/components/admin/contact-menu-badge';
 
 interface AdminLayoutProps {
   user: {
@@ -136,6 +137,9 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
                           <span className="text-sm flex-1">{item.title}</span>
                           {item.href === '/admin/support' && (
                             <SupportMenuBadge />
+                          )}
+                          {item.href === '/admin/contacts' && (
+                            <ContactMenuBadge />
                           )}
                         </Link>
                       </li>

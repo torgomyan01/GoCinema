@@ -12,6 +12,7 @@ import {
   Banknote,
   Ban,
   Headphones,
+  Mail,
   X,
 } from 'lucide-react';
 import {
@@ -46,6 +47,7 @@ const typeStyles: Record<
   box_office: { icon: Banknote, color: 'text-amber-600', bg: 'bg-amber-50' },
   cancellation: { icon: Ban, color: 'text-red-600', bg: 'bg-red-50' },
   support: { icon: Headphones, color: 'text-blue-600', bg: 'bg-blue-50' },
+  contact: { icon: Mail, color: 'text-sky-600', bg: 'bg-sky-50' },
 };
 
 function getTypeStyle(type: string) {

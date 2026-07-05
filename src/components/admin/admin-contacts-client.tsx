@@ -21,6 +21,7 @@ import {
   updateContactStatus,
   deleteContact,
 } from '@/app/actions/contacts';
+import { notifyContactPendingChanged } from '@/components/admin/contact-menu-badge';
 
 interface AdminContactsClientProps {
   user: {
@@ -126,6 +127,7 @@ export default function AdminContactsClient({
         if (result.contact.status === 'new') {
           await updateContactStatus({ id, status: 'read' });
           await loadContacts();
+          notifyContactPendingChanged();
         }
       }
     } catch (err) {
@@ -141,6 +143,7 @@ export default function AdminContactsClient({
       const result = await updateContactStatus({ id, status });
       if (result.success) {
         await loadContacts();
+        notifyContactPendingChanged();
         if (selectedContact?.id === id) {
           setSelectedContact({ ...selectedContact, status });
         }
@@ -161,6 +164,7 @@ export default function AdminContactsClient({
       const result = await deleteContact(id);
       if (result.success) {
         await loadContacts();
+        notifyContactPendingChanged();
         if (selectedContact?.id === id) {
           setIsDetailModalOpen(false);
           setSelectedContact(null);

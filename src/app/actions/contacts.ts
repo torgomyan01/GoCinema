@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { createNotification } from '@/lib/notifications';
 
 export interface CreateContactData {
   name: string;
@@ -31,7 +32,15 @@ export async function createContact(data: CreateContactData) {
       },
     });
 
+    await createNotification({
+      type: 'contact',
+      title: 'Նոր կոնտակտային նամակ',
+      message: `${data.name} (${data.subject}): ${data.message.slice(0, 120)}`,
+      link: '/admin/contacts',
+    });
+
     revalidatePath('/admin/contacts');
+    revalidatePath('/admin/notifications');
 
     return { success: true, contact };
   } catch (error: any) {
@@ -41,6 +50,19 @@ export async function createContact(data: CreateContactData) {
       error: 'Հաղորդագրությունը ուղարկելիս սխալ է տեղի ունեցել',
       contact: null,
     };
+  }
+}
+
+export async function getNewContactsCount() {
+  try {
+    const count = await prisma.contact.count({
+      where: { status: 'new' },
+    });
+
+    return { success: true, count };
+  } catch (error: any) {
+    console.error('[Get New Contacts Count] Error:', error);
+    return { success: false, count: 0 };
   }
 }
 

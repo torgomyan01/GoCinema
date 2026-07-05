@@ -5,7 +5,8 @@ export type NotificationType =
   | 'online_product'
   | 'box_office'
   | 'cancellation'
-  | 'support';
+  | 'support'
+  | 'contact';
 
 export interface CreateNotificationInput {
   type: NotificationType;

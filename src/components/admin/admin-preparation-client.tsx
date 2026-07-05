@@ -237,7 +237,7 @@ export default function AdminPreparationClient({
       grouped.get(seat.row)!.push(seat);
     }
     grouped.forEach((rowSeats) =>
-      rowSeats.sort((a, b) => a.number - b.number)
+      rowSeats.sort((a, b) => b.number - a.number)
     );
     return Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [selected]);

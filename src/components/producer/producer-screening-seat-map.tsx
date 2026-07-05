@@ -51,17 +51,16 @@ const STATUS_LABELS: Record<ProducerSeatTicket['status'], string> = {
   cancelled: 'Չեղարկված',
 };
 
-function seatVisual(
-  seat: ProducerHallSeat
-): { iconClass: string; filled: boolean } {
+function seatVisual(seat: ProducerHallSeat): {
+  iconClass: string;
+  filled: boolean;
+} {
   const status = seat.ticket?.status;
   const isVip = seat.seatType === 'vip';
 
   if (!status || status === 'cancelled') {
     return {
-      iconClass: isVip
-        ? 'text-amber-200'
-        : 'text-gray-200',
+      iconClass: isVip ? 'text-amber-200' : 'text-gray-200',
       filled: false,
     };
   }
@@ -77,11 +76,7 @@ function seatVisual(
   return { iconClass: 'text-gray-300', filled: false };
 }
 
-function SeatTooltipContent({
-  seat,
-}: {
-  seat: ProducerHallSeat;
-}) {
+function SeatTooltipContent({ seat }: { seat: ProducerHallSeat }) {
   const ticket = seat.ticket;
   const seatLabel = `${seat.row}${seat.number}`;
   const seatType =
@@ -142,15 +137,13 @@ export default function ProducerScreeningSeatMap({ hallSeats }: Props) {
       map.set(seat.row, list);
     }
     for (const list of map.values()) {
-      list.sort((a, b) => a.number - b.number);
+      list.sort((a, b) => b.number - a.number);
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [hallSeats]);
 
   const occupiedCount = hallSeats.filter(
-    (s) =>
-      s.ticket &&
-      ['reserved', 'paid', 'used'].includes(s.ticket.status)
+    (s) => s.ticket && ['reserved', 'paid', 'used'].includes(s.ticket.status)
   ).length;
 
   if (hallSeats.length === 0) {
@@ -164,8 +157,8 @@ export default function ProducerScreeningSeatMap({ hallSeats }: Props) {
   return (
     <div className="mt-3">
       <p className="mb-3 text-xs text-gray-500">
-        Զբաղված՝ {occupiedCount} / {hallSeats.length} · Մկնիկը բերեք աթոռի
-        վրա՝ մանրամասները տեսնելու համար
+        Զբաղված՝ {occupiedCount} / {hallSeats.length} · Մկնիկը բերեք աթոռի վրա՝
+        մանրամասները տեսնելու համար
       </p>
 
       <div className="mx-auto w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -178,7 +171,7 @@ export default function ProducerScreeningSeatMap({ hallSeats }: Props) {
         </div>
 
         {/* Նստատեղեր */}
-        <div className="space-y-1.5 overflow-x-auto">
+        <div className="space-y-1.5 ">
           {seatsByRow.map(([row, seats]) => (
             <div key={row} className="flex items-center gap-1.5">
               <span className="w-5 shrink-0 text-center text-xs font-semibold text-gray-400">

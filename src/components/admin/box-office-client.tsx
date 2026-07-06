@@ -27,8 +27,11 @@ import {
   getBoxOfficeScreenings,
   getBoxOfficeSeatMap,
   getBoxOfficeTicketBySeat,
+  lookupBoxOfficeReturnByQr,
+  processBoxOfficeProductReturnExchange,
 } from '@/app/actions/box-office';
 import ProductScanSaleModal from '@/components/admin/product-scan-sale-modal';
+import ProductReturnExchangeModal from '@/components/admin/product-return-exchange-modal';
 import TicketSaleModal from '@/components/admin/box-office-ticket-sale-modal';
 import { type PaymentMethod } from '@/components/admin/box-office-payment-panel';
 import { lookupSaleProductByQr } from '@/app/actions/products';
@@ -152,6 +155,9 @@ export default function BoxOfficeClient() {
 
   // Ինքնուրույն ապրանքների վաճառք (առանց տոմսի)
   const [productSaleOpen, setProductSaleOpen] = useState(false);
+  const [returnExchangeOpen, setReturnExchangeOpen] = useState(false);
+  const [isProcessingReturn, setIsProcessingReturn] = useState(false);
+  const [lastReturnMessage, setLastReturnMessage] = useState<string | null>(null);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [lastOrder, setLastOrder] = useState<{
     id: number;
@@ -210,6 +216,16 @@ export default function BoxOfficeClient() {
     setProductSaleOpen(true);
   };
 
+  const openReturnExchange = () => {
+    setError(null);
+    setReturnExchangeOpen(true);
+  };
+
+  const closeReturnExchange = () => {
+    if (isProcessingReturn) return;
+    setReturnExchangeOpen(false);
+  };
+
   const closeProductSale = () => {
     if (isCreatingOrder) return;
     setProductSaleOpen(false);
@@ -256,6 +272,49 @@ export default function BoxOfficeClient() {
       setError('Ապրանքների վաճառքը չստացվեց');
     } finally {
       setIsCreatingOrder(false);
+    }
+  };
+
+  const handleReturnExchange = async (payload: {
+    returnQrCode: string;
+    mode: 'refund' | 'exchange';
+    units: string[];
+    popcorn: { productId: number; quantity: number }[];
+    payment?: { method: PaymentMethod; amountPaid: number };
+  }) => {
+    if (isProcessingReturn) return;
+    setIsProcessingReturn(true);
+    setError(null);
+    try {
+      const result = await processBoxOfficeProductReturnExchange({
+        returnQrCode: payload.returnQrCode,
+        mode: payload.mode,
+        newUnits: payload.units,
+        newPopcorn: payload.popcorn,
+        paymentMethod: payload.payment?.method,
+        amountPaid: payload.payment?.amountPaid,
+      });
+      if (!result.success) {
+        setError(result.error || 'Վերադարձը/փոխանակումը չստացվեց');
+        return;
+      }
+      const successResult = result as {
+        message?: string;
+        orderId?: number | null;
+      };
+      setLastReturnMessage(
+        successResult.message ?? 'Գործարքը հաջողությամբ ավարտվեց'
+      );
+      setReturnExchangeOpen(false);
+      if (successResult.orderId) {
+        openOrderPrint(successResult.orderId);
+      }
+      void loadProducts();
+    } catch (err) {
+      console.error('Return/exchange error:', err);
+      setError('Վերադարձը/փոխանակումը չստացվեց');
+    } finally {
+      setIsProcessingReturn(false);
     }
   };
 
@@ -550,19 +609,43 @@ export default function BoxOfficeClient() {
             </p>
           </div>
         </div>
-        <button
-          onClick={openProductSale}
-          className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-400"
-        >
-          <ShoppingBag className="h-4 w-4" />
-          Ապրանքների վաճառք
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            onClick={openReturnExchange}
+            className="flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-100"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Վերադարձ / Փոխանակում
+          </button>
+          <button
+            onClick={openProductSale}
+            className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-400"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Ապրանքների վաճառք
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {lastReturnMessage && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 text-sm text-sky-800">
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            <span>{lastReturnMessage}</span>
+          </div>
+          <button
+            onClick={() => setLastReturnMessage(null)}
+            className="text-sm font-semibold text-sky-700 hover:text-sky-900"
+          >
+            Փակել
+          </button>
         </div>
       )}
 
@@ -933,6 +1016,18 @@ export default function BoxOfficeClient() {
           onSubmit={handleCreateProductOrder}
           title="Ապրանքների վաճառք"
           subtitle="Սկանավորեք ապրանքի QR-ը, պոպկորնը՝ ձեռքով"
+        />
+      )}
+
+      {returnExchangeOpen && (
+        <ProductReturnExchangeModal
+          products={products}
+          isSubmitting={isProcessingReturn}
+          error={error}
+          lookupReturn={lookupBoxOfficeReturnByQr}
+          lookupNewUnit={lookupSaleProductByQr}
+          onClose={closeReturnExchange}
+          onSubmit={handleReturnExchange}
         />
       )}
 

@@ -161,6 +161,82 @@ export async function sellProductUnitByQr(
   return unit;
 }
 
+const PEK_REPORTED = 'PEK_REPORTED';
+
+/** Մեկ սկանավորված QR միավոր վերադարձնել պահեստ և թարմացնել պատվերը */
+export async function returnSingleProductUnitByQr(tx: Tx, qrCode: string) {
+  const code = qrCode.trim();
+  if (!code) return null;
+
+  const unit = await tx.productUnit.findUnique({
+    where: { qrCode: code },
+    include: {
+      product: { select: { id: true, name: true } },
+      orderItem: {
+        include: {
+          order: { select: { id: true, totalAmount: true, status: true } },
+        },
+      },
+    },
+  });
+
+  if (!unit || unit.status !== 'sold') {
+    return null;
+  }
+
+  if (unit.pekReportedAt) {
+    throw new Error(PEK_REPORTED);
+  }
+
+  const refundAmount = unit.orderItem?.price ?? 0;
+  const orderId = unit.orderItem?.orderId ?? null;
+
+  await tx.productUnit.update({
+    where: { id: unit.id },
+    data: {
+      status: 'in_stock',
+      soldAt: null,
+      orderItemId: null,
+      pekReportedAt: null,
+    },
+  });
+  await syncProductStock(tx, unit.productId);
+
+  if (unit.orderItem) {
+    const orderItemId = unit.orderItem.id;
+    const nextQty = unit.orderItem.quantity - 1;
+    if (nextQty <= 0) {
+      await tx.orderItem.delete({ where: { id: orderItemId } });
+    } else {
+      await tx.orderItem.update({
+        where: { id: orderItemId },
+        data: { quantity: nextQty },
+      });
+    }
+
+    if (orderId) {
+      const remainingItems = await tx.orderItem.count({ where: { orderId } });
+      const nextTotal = Math.max(0, unit.orderItem.order.totalAmount - refundAmount);
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          totalAmount: nextTotal,
+          status: remainingItems === 0 ? 'cancelled' : unit.orderItem.order.status,
+        },
+      });
+    }
+  }
+
+  return {
+    refundAmount,
+    productName: unit.product.name,
+    qrCode: unit.qrCode,
+    orderId,
+  };
+}
+
+export { PEK_REPORTED };
+
 /** QR միավորները վերադարձնել պահեստ */
 export async function returnProductUnitsByOrderItem(
   tx: Tx,

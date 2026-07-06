@@ -12,7 +12,9 @@ import { createNotification, formatAmd } from '@/lib/notifications';
 import {
   fulfillOrderItemStock,
   isQuantityOnlyProduct,
+  PEK_REPORTED,
   returnOrderItemStock,
+  returnSingleProductUnitByQr,
   sellQuantityStock,
   sellSpecificProductUnits,
   UNIT_STOCK_INSUFFICIENT,
@@ -868,6 +870,368 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
     return {
       success: false,
       error: 'Տոմսը չեղարկելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** Վաճառված QR միավորի տվյալներ՝ վերադարձ/փոխանակման համար */
+export async function lookupBoxOfficeReturnByQr(qrCode: string) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const code = (qrCode ?? '').trim();
+  if (!code) {
+    return { success: false, error: 'QR կոդը դատարկ է' };
+  }
+
+  try {
+    const unit = await prisma.productUnit.findUnique({
+      where: { qrCode: code },
+      include: {
+        product: {
+          select: { id: true, name: true, price: true, category: true },
+        },
+        orderItem: {
+          include: {
+            order: {
+              select: { id: true, createdAt: true, paymentMethod: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!unit) {
+      return { success: false, error: 'QR կոդը բազայում չի գտնվել' };
+    }
+
+    if (isQuantityOnlyProduct(unit.product.category)) {
+      return {
+        success: false,
+        error: 'Պոպկորնը վերադարձվում է պատվերի համարով, ոչ QR-ով',
+      };
+    }
+
+    if (unit.status !== 'sold') {
+      return {
+        success: false,
+        error:
+          unit.status === 'in_stock'
+            ? 'Այս միավորն դեռ չի վաճառվել'
+            : 'Այս միավորի վերադարձը հնարավոր չէ',
+      };
+    }
+
+    if (unit.pekReportedAt) {
+      return {
+        success: false,
+        error: 'ՊԵԿ ուղարկված միավորը չի կարելի վերադարձնել',
+      };
+    }
+
+    const price = unit.orderItem?.price ?? unit.product.price;
+
+    return {
+      success: true,
+      item: {
+        qrCode: unit.qrCode,
+        productId: unit.product.id,
+        productName: unit.product.name,
+        price,
+        orderId: unit.orderItem?.orderId ?? null,
+        soldAt: unit.soldAt,
+        paymentMethod: unit.orderItem?.order.paymentMethod ?? 'cash',
+      },
+    };
+  } catch (error) {
+    console.error('[Lookup Box Office Return] Error:', error);
+    return { success: false, error: 'QR-ը ստուգելիս սխալ է տեղի ունեցել' };
+  }
+}
+
+export interface BoxOfficeReturnExchangeData {
+  returnQrCode: string;
+  mode: 'refund' | 'exchange';
+  newUnits?: string[];
+  newPopcorn?: BoxOfficeProductSelection[];
+  paymentMethod?: BoxOfficePaymentMethod;
+  amountPaid?: number;
+}
+
+/** Վերադարձ կամ փոխանակում՝ վաճառված QR ապրանքի համար */
+export async function processBoxOfficeProductReturnExchange(
+  data: BoxOfficeReturnExchangeData
+) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const returnCode = (data.returnQrCode ?? '').trim();
+  if (!returnCode) {
+    return { success: false, error: 'Սկանավորեք վերադարձվող ապրանքի QR-ը' };
+  }
+
+  const newUnitCodes = Array.from(
+    new Set((data.newUnits ?? []).map((c) => c.trim()).filter(Boolean))
+  );
+  const popcornSelections = (data.newPopcorn ?? []).filter(
+    (p) => p && p.productId > 0 && Number(p.quantity) > 0
+  );
+
+  if (data.mode === 'exchange' && newUnitCodes.length === 0 && popcornSelections.length === 0) {
+    return { success: false, error: 'Փոխանակման համար սկանավորեք նոր ապրանք' };
+  }
+
+  if (newUnitCodes.includes(returnCode)) {
+    return {
+      success: false,
+      error: 'Նոր ապրանքը չի կարող լինել նույն վերադարձվող QR-ը',
+    };
+  }
+
+  try {
+    const walkInUserId = await getOrCreateWalkInUser();
+    let refundAmount = 0;
+    let returnedProductName = '';
+    let newOrderId: number | null = null;
+    let newTotal = 0;
+    let netDue = 0;
+
+    await prisma.$transaction(async (tx) => {
+      const returned = await returnSingleProductUnitByQr(tx, returnCode);
+      if (!returned) {
+        throw new Error('RETURN_NOT_FOUND');
+      }
+
+      refundAmount = returned.refundAmount;
+      returnedProductName = returned.productName;
+
+      if (data.mode === 'refund') {
+        return;
+      }
+
+      const unitsByProduct = new Map<
+        number,
+        { price: number; name: string; unitIds: number[] }
+      >();
+
+      for (const code of newUnitCodes) {
+        const unit = await tx.productUnit.findUnique({
+          where: { qrCode: code },
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                category: true,
+                isActive: true,
+              },
+            },
+          },
+        });
+        if (!unit) {
+          throw new Error(`NOT_FOUND:${code}`);
+        }
+        if (!unit.product.isActive) {
+          throw new Error(`INACTIVE:${unit.product.name}`);
+        }
+        if (isQuantityOnlyProduct(unit.product.category)) {
+          throw new Error(`POPCORN:${unit.product.name}`);
+        }
+        if (unit.status !== 'in_stock') {
+          throw new Error(`SOLD:${code}`);
+        }
+        const group = unitsByProduct.get(unit.product.id) ?? {
+          price: unit.product.price,
+          name: unit.product.name,
+          unitIds: [],
+        };
+        group.unitIds.push(unit.id);
+        unitsByProduct.set(unit.product.id, group);
+        newTotal += unit.product.price;
+      }
+
+      const popcornProducts =
+        popcornSelections.length > 0
+          ? await tx.product.findMany({
+              where: {
+                id: { in: popcornSelections.map((s) => s.productId) },
+                isActive: true,
+              },
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                stock: true,
+                category: true,
+              },
+            })
+          : [];
+
+      for (const sel of popcornSelections) {
+        const product = popcornProducts.find((p) => p.id === sel.productId);
+        if (!product) {
+          throw new Error('PRODUCT_UNAVAILABLE');
+        }
+        if (!isQuantityOnlyProduct(product.category)) {
+          throw new Error(`QR_REQUIRED:${product.name}`);
+        }
+        const qty = Math.floor(Number(sel.quantity));
+        if (qty <= 0) {
+          throw new Error('INVALID_QTY');
+        }
+        if (product.stock < qty) {
+          throw new Error(`STOCK:${product.name}:${product.stock}`);
+        }
+        newTotal += product.price * qty;
+      }
+
+      netDue = newTotal - refundAmount;
+
+      let paymentMethod: BoxOfficePaymentMethod = 'cash';
+      let amountPaid: number | null = null;
+
+      if (netDue > 0) {
+        const payment = resolvePayment(
+          data.paymentMethod,
+          data.amountPaid,
+          netDue
+        );
+        if (!payment.ok) {
+          throw new Error(`PAYMENT:${payment.error}`);
+        }
+        paymentMethod = payment.method;
+        amountPaid = payment.amountPaid;
+      }
+
+      const created = await tx.order.create({
+        data: {
+          userId: walkInUserId,
+          totalAmount: Math.max(0, netDue),
+          status: 'completed',
+          paymentMethod,
+          amountPaid: netDue > 0 ? amountPaid : null,
+        },
+      });
+      newOrderId = created.id;
+
+      for (const [productId, group] of unitsByProduct) {
+        const item = await tx.orderItem.create({
+          data: {
+            orderId: created.id,
+            productId,
+            quantity: group.unitIds.length,
+            price: group.price,
+            fulfilledAt: new Date(),
+          },
+        });
+        await sellSpecificProductUnits(tx, group.unitIds, item.id);
+      }
+
+      for (const sel of popcornSelections) {
+        const product = popcornProducts.find((p) => p.id === sel.productId)!;
+        const qty = Math.floor(Number(sel.quantity));
+        await tx.orderItem.create({
+          data: {
+            orderId: created.id,
+            productId: sel.productId,
+            quantity: qty,
+            price: product.price,
+            fulfilledAt: new Date(),
+          },
+        });
+        await sellQuantityStock(tx, sel.productId, qty);
+      }
+    });
+
+    const refundToCustomer = netDue < 0 ? Math.abs(netDue) : refundAmount;
+    const message =
+      data.mode === 'refund'
+        ? `Վերադարձ՝ «${returnedProductName}» (${formatAmd(refundAmount)})`
+        : netDue > 0
+          ? `Փոխանակում՝ «${returnedProductName}» → նոր ապրանք (${formatAmd(newTotal)}), լրացուցիչ ${formatAmd(netDue)}`
+          : netDue < 0
+            ? `Փոխանակում՝ «${returnedProductName}» → նոր ապրանք (${formatAmd(newTotal)}), վերադարձ հաճախորդին ${formatAmd(Math.abs(netDue))}`
+            : `Փոխանակում՝ «${returnedProductName}» → նոր ապրանք (${formatAmd(newTotal)}), հավասար փոխանակում`;
+
+    await createNotification({
+      type: 'box_office',
+      title:
+        data.mode === 'refund'
+          ? 'Դրամարկղի վերադարձ (ապրանք)'
+          : 'Դրամարկղի փոխանակում (ապրանք)',
+      message,
+      link: '/admin/box-office',
+    });
+
+    revalidatePath('/admin/box-office');
+    revalidatePath('/admin/products');
+    revalidatePath('/admin/product-units');
+    revalidatePath('/admin/notifications');
+
+    return {
+      success: true,
+      mode: data.mode,
+      refundAmount,
+      newTotal,
+      netDue,
+      refundToCustomer:
+        data.mode === 'refund' ? refundAmount : netDue < 0 ? Math.abs(netDue) : 0,
+      orderId: newOrderId,
+      message,
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'RETURN_NOT_FOUND') {
+        return {
+          success: false,
+          error: 'Վաճառված ապրանքը չի գտնվել կամ արդեն վերադարձված է',
+        };
+      }
+      if (error.message === PEK_REPORTED) {
+        return {
+          success: false,
+          error: 'ՊԵԿ ուղարկված միավորը չի կարելի վերադարձնել',
+        };
+      }
+      if (error.message.startsWith('PAYMENT:')) {
+        return { success: false, error: error.message.slice('PAYMENT:'.length) };
+      }
+      if (error.message.startsWith('SOLD:')) {
+        return {
+          success: false,
+          error: `QR «${error.message.slice(5)}» արդեն վաճառված է`,
+        };
+      }
+      if (error.message.startsWith('STOCK:')) {
+        const [, name, stock] = error.message.split(':');
+        return {
+          success: false,
+          error: `«${name}» ապրանքի պաշարը բավարար չէ (առկա է ${stock})`,
+        };
+      }
+      if (error.message === 'PRODUCT_UNAVAILABLE') {
+        return { success: false, error: 'Ընտրված ապրանքը հասանելի չէ' };
+      }
+      if (
+        error.message === UNIT_STOCK_INSUFFICIENT ||
+        error.message === 'STOCK_CONFLICT'
+      ) {
+        return {
+          success: false,
+          error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
+        };
+      }
+    }
+
+    console.error('[Box Office Return/Exchange] Error:', error);
+    return {
+      success: false,
+      error: 'Վերադարձը/փոխանակումը չստացվեց',
     };
   }
 }

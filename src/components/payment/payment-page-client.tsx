@@ -180,9 +180,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     );
     if (!hasPendingCard) return;
 
-    const userId = Number(
-      (session.user as { id?: string | number }).id
-    );
+    const userId = Number((session.user as { id?: string | number }).id);
 
     let cancelled = false;
     setIsAwaitingVpost(true);
@@ -1158,11 +1156,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
               <button
                 onClick={handlePayment}
-                disabled={
-                  !paymentMethod ||
-                  isProcessing ||
-                  isAwaitingVpost
-                }
+                disabled={!paymentMethod || isProcessing || isAwaitingVpost}
                 className={`w-full px-6 py-3 rounded-lg font-semibold transition-all ${
                   paymentMethod && !isProcessing && !isAwaitingVpost
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
@@ -1216,8 +1210,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                             const allPaid = (
                               latest.order as Order
                             ).tickets.every(
-                              (t) =>
-                                t.status === 'paid' || t.status === 'used'
+                              (t) => t.status === 'paid' || t.status === 'used'
                             );
                             if (allPaid) {
                               setIsSuccess(true);

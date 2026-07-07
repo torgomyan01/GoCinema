@@ -1,6 +1,7 @@
 import MainTemplate from '@/components/layout/main-template/main-template';
 import HeroSection from '@/components/home/hero-section';
 import MoviesSection from '@/components/home/movies-section';
+import PackagesSection from '@/components/home/packages-section';
 import ScheduleSection from '@/components/home/schedule-section';
 import FeaturesSection from '@/components/home/features-section';
 import CinemaExperienceSection from '@/components/home/cinema-experience-section';
@@ -46,6 +47,7 @@ export default async function Page() {
     <MainTemplate>
       <HeroSection />
       <MoviesSection />
+      <PackagesSection />
       <CinemaExperienceSection />
       <ScheduleSection />
       <FeaturesSection />

@@ -66,24 +66,13 @@ export default function ScheduleSection() {
     const loadScreenings = async () => {
       setIsLoading(true);
       try {
-        const result = await getScreenings();
+        const now = new Date();
+        const result = await getScreenings(now);
         if (result.success && result.screenings) {
-          // Get next 7 days screenings
-          const now = new Date();
-          const nextWeek = new Date();
-          nextWeek.setDate(nextWeek.getDate() + 7);
-
-          const upcomingScreenings = (result.screenings as Screening[])
-            .filter((screening) => {
-              const startTime = new Date(screening.startTime);
-              return startTime >= now && startTime <= nextWeek;
-            })
-            .sort((a, b) => {
-              return (
-                new Date(a.startTime).getTime() -
-                new Date(b.startTime).getTime()
-              );
-            });
+          const upcomingScreenings = (result.screenings as Screening[]).sort(
+            (a, b) =>
+              new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+          );
 
           setScreenings(upcomingScreenings);
         }

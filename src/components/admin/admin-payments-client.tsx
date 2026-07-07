@@ -142,6 +142,8 @@ export default function AdminPaymentsClient({
         amount: row.amount,
       });
 
+      console.log(result);
+
       if (!result.success) {
         setError(result.error || 'Գանձումը ձախողվեց');
         return;
@@ -283,6 +285,8 @@ export default function AdminPaymentsClient({
       return haystack.includes(q);
     });
   }, [vpostRows, statusFilter, searchQuery]);
+
+  console.log(filteredVPost);
 
   const vpostStats = useMemo(() => {
     const acc = {

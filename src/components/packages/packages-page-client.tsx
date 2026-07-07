@@ -2,9 +2,6 @@
 
 import { motion } from 'framer-motion';
 import {
-  PartyPopper,
-  Briefcase,
-  Heart,
   Film,
   MonitorPlay,
   Volume2,
@@ -19,72 +16,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
-
-interface PackageItem {
-  id: string;
-  icon: typeof PartyPopper;
-  badge: string;
-  title: string;
-  subtitle: string;
-  description: string;
-  features: string[];
-  gradient: string;
-  iconBg: string;
-}
-
-const packages: PackageItem[] = [
-  {
-    id: 'private-party',
-    icon: PartyPopper,
-    badge: 'Ամենապահանջվածը',
-    title: 'Փակ Կինոդիտում',
-    subtitle: 'Private Party',
-    description:
-      'Տարածքի տրամադրում ծննդյան տոների, երեկույթների կամ ընկերական հավաքույթների համար։ Հաճախորդը վարձակալում է ամբողջ դահլիճը 2–3 ժամով և ինքն է ընտրում ֆիլմը կամ տեսանյութը։',
-    features: [
-      'Ամբողջ դահլիճը՝ միայն ձեր հյուրերի համար',
-      'Ֆիլմի կամ սեփական տեսանյութի ընտրություն',
-      '2–3 ժամ վարձակալություն',
-      'Կինոբարի սպասարկում՝ պոպկորն և ըմպելիքներ',
-    ],
-    gradient: 'from-purple-600 to-pink-600',
-    iconBg: 'bg-purple-50 text-purple-600',
-  },
-  {
-    id: 'corporate',
-    icon: Briefcase,
-    badge: 'Բիզնեսի համար',
-    title: 'Կորպորատիվ և Պրեզենտացիոն Փաթեթ',
-    subtitle: 'Business & Presentation',
-    description:
-      'Տեղական բիզնեսները կարող են օգտագործել տարածքը իրենց աշխատակիցների համար սեմինարներ, թիմ-բիլդինգներ կամ պրեզենտացիաներ անելու նպատակով։ Գերժամանակակից 4K պրոյեկտորը և մեծ պրոյեկցիոն էկրանը իդեալական են սլայդներ և գրաֆիկներ ցուցադրելու համար՝ թողնելով շատ պրոֆեսիոնալ տպավորություն։',
-    features: [
-      '4K պրոյեկտոր և մեծ պրոյեկցիոն էկրան',
-      'Իդեալական սլայդների ու գրաֆիկների համար',
-      'Սեմինար, թիմ-բիլդինգ կամ պրեզենտացիա',
-      'Պրոֆեսիոնալ ձայնային համակարգ',
-    ],
-    gradient: 'from-blue-600 to-indigo-600',
-    iconBg: 'bg-blue-50 text-blue-600',
-  },
-  {
-    id: 'vip-date',
-    icon: Heart,
-    badge: 'Հատուկ առիթներ',
-    title: 'Ռոմանտիկ Ժամադրություն',
-    subtitle: 'VIP Date',
-    description:
-      'Դահլիճի վարձակալություն միայն երկու հոգու համար՝ ամուսնության առաջարկությունների կամ հատուկ անակնկալների նպատակով։ Կարող ենք համագործակցել տեղական ծաղկի սրահների հետ և առաջարկել համալիր ծառայություն։',
-    features: [
-      'Ամբողջ դահլիճը՝ միայն երկուսի համար',
-      'Իդեալական ամուսնության առաջարկության համար',
-      'Համագործակցություն ծաղկի սրահների հետ',
-      'Անհատական անակնկալների կազմակերպում',
-    ],
-    gradient: 'from-rose-600 to-red-600',
-    iconBg: 'bg-rose-50 text-rose-600',
-  },
-];
+import { packages } from '@/data/packages';
+import HallGallery from '@/components/packages/hall-gallery';
 
 const amenities = [
   {
@@ -164,6 +97,8 @@ export default function PackagesPageClient() {
         </div>
 
         <div className="max-w-6xl mx-auto space-y-12">
+          <HallGallery />
+
           {/* Packages */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {packages.map((pkg, index) => {

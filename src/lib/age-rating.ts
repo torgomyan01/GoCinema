@@ -19,20 +19,20 @@ export interface AgeRatingOption {
 
 export const AGE_RATING_OPTIONS: AgeRatingOption[] = [
   { value: '0+', label: '0+', description: 'Բոլոր տարիքի համար' },
-  { value: '6+', label: '6+', description: '6 տարեկանից բարձր' },
-  { value: '12+', label: '12+', description: '12 տարեկանից բարձր' },
-  { value: '14+', label: '14+', description: '14 տարեկանից բարձր' },
-  { value: '15+', label: '15+', description: '15 տարեկանից բարձր' },
-  { value: '16+', label: '16+', description: '16 տարեկանից բարձր' },
+  { value: '6+', label: '6+', description: '6 տարեկան և բարձր' },
+  { value: '12+', label: '12+', description: '12 տարեկան և բարձր' },
+  { value: '14+', label: '14+', description: '14 տարեկան և բարձր' },
+  { value: '15+', label: '15+', description: '15 տարեկան և բարձր' },
+  { value: '16+', label: '16+', description: '16 տարեկան և բարձր' },
   {
     value: '18+',
     label: '18+',
-    description: '18 տարեկանից բարձր (մեծահասակների համար)',
+    description: '18 տարեկան և բարձր (մեծահասակների համար)',
   },
   {
     value: '21+',
     label: '21+',
-    description: '21 տարեկանից բարձր (մեծահասակների համար)',
+    description: '21 տարեկան և բարձր (մեծահասակների համար)',
   },
 ];
 

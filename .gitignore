@@ -17,7 +17,6 @@ pids
 *.seed
 *.pid.lock
 
-agent/.env
 agent/package-lock.json
 agent/node_modules
 agent/dist

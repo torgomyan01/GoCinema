@@ -7,12 +7,17 @@
   },
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:local": "npm run agent:stop && concurrently -k -n next,agent -c blue,green \"npm run dev\" \"npm run agent:dev\"",
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start -p 3000",
     "lint": "next lint",
     "lint:fix": "eslint --fix",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "agent:dev": "npm run dev --prefix agent",
+    "agent:start": "npm run start --prefix agent",
+    "agent:stop": "npx --yes kill-port 3100",
+    "agent:install": "npm install --prefix agent"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

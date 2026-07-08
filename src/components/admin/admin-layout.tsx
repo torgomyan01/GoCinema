@@ -64,6 +64,7 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
   const STAFF_ALLOWED_HREFS = [
     '/admin/support',
     '/admin/box-office',
+    '/admin/hdm',
   ];
   const menuItems = isAdminRole(user.role)
     ? adminMenuItems

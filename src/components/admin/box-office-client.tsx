@@ -35,6 +35,13 @@ import ProductReturnExchangeModal from '@/components/admin/product-return-exchan
 import TicketSaleModal from '@/components/admin/box-office-ticket-sale-modal';
 import { type PaymentMethod } from '@/components/admin/box-office-payment-panel';
 import { lookupSaleProductByQr } from '@/app/actions/products';
+import { isQuantityOnlyProduct } from '@/lib/product-units';
+import {
+  checkHdmAgentHealth,
+  isHdmAgentEnabled,
+  printHdmProductSale,
+  printHdmTicketSale,
+} from '@/lib/hdm-agent';
 
 interface ScreeningListItem {
   id: number;
@@ -163,6 +170,20 @@ export default function BoxOfficeClient() {
     id: number;
     total: number;
   } | null>(null);
+  const [fiscalNotice, setFiscalNotice] = useState<{
+    type: 'success' | 'warning';
+    message: string;
+  } | null>(null);
+  const [hdmAgentOnline, setHdmAgentOnline] = useState<boolean | null>(null);
+
+  const refreshHdmAgentStatus = async () => {
+    if (!isHdmAgentEnabled()) {
+      setHdmAgentOnline(null);
+      return;
+    }
+    const online = await checkHdmAgentHealth();
+    setHdmAgentOnline(online);
+  };
 
   const loadScreenings = async () => {
     setIsLoading(true);
@@ -188,6 +209,7 @@ export default function BoxOfficeClient() {
   useEffect(() => {
     void loadScreenings();
     void loadProducts();
+    void refreshHdmAgentStatus();
   }, []);
 
   const setProductQty = (productId: number, qty: number) => {
@@ -262,9 +284,57 @@ export default function BoxOfficeClient() {
         setError(result.error || 'Ապրանքների վաճառքը չստացվեց');
         return;
       }
-      const order = result.order as { id: number };
+      const order = result.order as {
+        id: number;
+        orderItems?: Array<{
+          quantity: number;
+          price: number;
+          product: { name: string; category: string };
+        }>;
+      };
       setLastOrder({ id: order.id, total: result.total ?? 0 });
       openOrderPrint(order.id);
+
+      if (isHdmAgentEnabled() && order.orderItems) {
+        const eMarkQueue = [...payload.units];
+        const lines: Array<{
+          name: string;
+          price: number;
+          qty: number;
+          eMark?: string | null;
+        }> = [];
+
+        for (const item of order.orderItems) {
+          for (let i = 0; i < item.quantity; i += 1) {
+            const needsEmark = !isQuantityOnlyProduct(item.product.category);
+            lines.push({
+              name: item.product.name,
+              price: item.price,
+              qty: 1,
+              eMark: needsEmark ? (eMarkQueue.shift() ?? null) : null,
+            });
+          }
+        }
+
+        const fiscal = await printHdmProductSale({
+          paymentMethod: payload.payment?.method ?? 'cash',
+          total: result.total ?? 0,
+          lines,
+        });
+        if (fiscal.ok && fiscal.fiscal) {
+          setFiscalNotice({
+            type: 'success',
+            message: `Ֆիսկալ կտրոն տպված է · № ${fiscal.fiscal.fiscal}`,
+          });
+        } else {
+          setFiscalNotice({
+            type: 'warning',
+            message: fiscal.error ?? 'Ֆիսկալ կտրոնը չտպվեց',
+          });
+        }
+        void refreshHdmAgentStatus();
+      }
+
       setProductSaleOpen(false);
       void loadProducts();
     } catch (err) {
@@ -572,6 +642,43 @@ export default function BoxOfficeClient() {
       setLastTicket(ticket);
       openPrint(ticket.id);
 
+      if (isHdmAgentEnabled()) {
+        const productsTotal = Object.entries(cart).reduce((sum, [id, qty]) => {
+          const product = products.find((p) => p.id === Number(id));
+          return sum + (product?.price ?? 0) * qty;
+        }, 0);
+        const productLines = Object.entries(cart)
+          .filter(([, qty]) => qty > 0)
+          .map(([id, qty]) => {
+            const product = products.find((p) => p.id === Number(id));
+            return {
+              name: product?.name ?? 'Ապրանք',
+              price: product?.price ?? 0,
+              qty,
+            };
+          });
+        const fiscal = await printHdmTicketSale({
+          movieTitle: seatMap.movie.title,
+          seatLabel: `${selectedSeat.row}${selectedSeat.number}`,
+          ticketPrice: price,
+          paymentMethod: payment.method,
+          total: price + productsTotal,
+          products: productLines,
+        });
+        if (fiscal.ok && fiscal.fiscal) {
+          setFiscalNotice({
+            type: 'success',
+            message: `Ֆիսկալ կտրոն տպված է · № ${fiscal.fiscal.fiscal}`,
+          });
+        } else {
+          setFiscalNotice({
+            type: 'warning',
+            message: fiscal.error ?? 'Ֆիսկալ կտրոնը չտպվեց',
+          });
+        }
+        void refreshHdmAgentStatus();
+      }
+
       // Թարմացնել նստատեղերի քարտեզը՝ նոր զբաղված տեղով
       setSeatMap((prev) =>
         prev
@@ -609,7 +716,33 @@ export default function BoxOfficeClient() {
             </p>
           </div>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {isHdmAgentEnabled() && (
+            <div
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                hdmAgentOnline
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : hdmAgentOnline === false
+                    ? 'bg-amber-50 text-amber-800'
+                    : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  hdmAgentOnline
+                    ? 'bg-emerald-500'
+                    : hdmAgentOnline === false
+                      ? 'bg-amber-500'
+                      : 'bg-gray-400'
+                }`}
+              />
+              {hdmAgentOnline
+                ? 'ՀԴՄ agent'
+                : hdmAgentOnline === false
+                  ? 'ՀԴՄ agent offline'
+                  : 'ՀԴՄ agent…'}
+            </div>
+          )}
           <button
             onClick={openReturnExchange}
             className="flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-100"
@@ -631,6 +764,41 @@ export default function BoxOfficeClient() {
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {fiscalNotice && (
+        <div
+          className={`mb-4 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+            fiscalNotice.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50'
+              : 'border-amber-200 bg-amber-50'
+          }`}
+        >
+          <div
+            className={`flex items-center gap-3 text-sm ${
+              fiscalNotice.type === 'success'
+                ? 'text-emerald-800'
+                : 'text-amber-800'
+            }`}
+          >
+            {fiscalNotice.type === 'success' ? (
+              <CheckCircle2 className="h-5 w-5 shrink-0" />
+            ) : (
+              <AlertCircle className="h-5 w-5 shrink-0" />
+            )}
+            <span>{fiscalNotice.message}</span>
+          </div>
+          <button
+            onClick={() => setFiscalNotice(null)}
+            className={`text-sm font-semibold ${
+              fiscalNotice.type === 'success'
+                ? 'text-emerald-700 hover:text-emerald-900'
+                : 'text-amber-700 hover:text-amber-900'
+            }`}
+          >
+            Փակել
+          </button>
         </div>
       )}
 

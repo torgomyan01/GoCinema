@@ -140,7 +140,7 @@ export default function LoginPageClient() {
             if (callbackUrl && callbackUrl !== '/account') {
               const decodedCallbackUrl = decodeURIComponent(callbackUrl);
               window.location.href = decodedCallbackUrl;
-            } else if (user.role === 'admin') {
+            } else if (hasRole(user.role, ['admin'])) {
               window.location.href = '/admin';
             } else {
               window.location.href = '/account';
@@ -240,9 +240,9 @@ export default function LoginPageClient() {
                         <div className="flex items-center gap-1 mt-1">
                           <Shield className="w-4 h-4 text-gray-400" />
                           <span className="text-sm text-gray-500 capitalize">
-                            {user.role === 'admin'
+                            {hasRole(user.role, ['admin'])
                               ? 'Ադմինիստրատոր'
-                              : 'Օգտատեր'}
+                              : user.role || 'Օգտատեր'}
                           </span>
                         </div>
                       )}

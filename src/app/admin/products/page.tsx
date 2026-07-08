@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
 import AdminProductsClient from '@/components/admin/admin-products-client';
 import { authOptions } from '@/lib/auth';
+import { isAdminRole } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export default async function AdminProductsPage() {
   }
 
   const user = session.user as any;
-  if (user?.role !== 'admin') {
+  if (!isAdminRole(user?.role)) {
     redirect('/account');
   }
 

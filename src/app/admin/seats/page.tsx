@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
 import AdminSeatsClient from '@/components/admin/admin-seats-client';
 import { authOptions } from '@/lib/auth';
+import { isAdminRole } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export default async function AdminSeatsPage() {
   }
 
   const user = session.user as any;
-  if (user?.role !== 'admin') {
+  if (!isAdminRole(user?.role)) {
     redirect('/account');
   }
 

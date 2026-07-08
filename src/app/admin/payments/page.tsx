@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
 import AdminPaymentsClient from '@/components/admin/admin-payments-client';
 import { authOptions } from '@/lib/auth';
+import { isAdminRole } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export default async function AdminPaymentsPage() {
     redirect('/account');
   }
 
-  if (session.user.role !== 'admin') {
+  if (!isAdminRole(session.user.role)) {
     redirect('/account');
   }
 

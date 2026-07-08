@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import { unstable_noStore } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { isAdminRole } from '@/lib/roles';
 import { redirect } from 'next/navigation';
 import AdminLayout from '@/components/admin/admin-layout';
 import AdminUsersClient from '@/components/admin/admin-users-client';
@@ -23,7 +24,7 @@ export default async function AdminUsersPage() {
   }
 
   const user = session.user as any;
-  if (user?.role !== 'admin') {
+  if (!isAdminRole(user?.role)) {
     redirect('/account');
   }
 

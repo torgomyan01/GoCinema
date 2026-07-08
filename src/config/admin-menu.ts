@@ -20,6 +20,7 @@ import {
   History,
   ClipboardList,
   Receipt,
+  ReceiptText,
   LucideIcon,
 } from 'lucide-react';
 
@@ -57,6 +58,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     title: 'ՀԴՄ Agent',
     icon: Receipt,
     href: '/admin/hdm',
+    color: 'text-teal-600',
+    bgColor: 'bg-teal-50',
+  },
+  {
+    title: 'Ֆիսկալ կտրոններ',
+    icon: ReceiptText,
+    href: '/admin/fiscal',
     color: 'text-teal-600',
     bgColor: 'bg-teal-50',
   },

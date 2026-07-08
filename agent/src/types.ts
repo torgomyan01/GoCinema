@@ -66,6 +66,22 @@ export interface HdmPrintReceiptResponse {
   verificationNumber?: string | number;
 }
 
+export interface HdmReturnReceiptRequest {
+  seq: number;
+  crn: string;
+  returnTicketId: number;
+  cashAmountForReturn?: number;
+  cardAmountForReturn?: number;
+  prePaymentAmountForReturn?: number;
+  rrn?: string;
+  terminalId?: string;
+  eMarks?: string[];
+  returnItemList?: Array<{ rpid: number; quantity: number }>;
+}
+
+/** Վերադարձի կտրոնի պատասխանը նույն կառուցվածքն ունի, ինչ վաճառքինը */
+export type HdmReturnReceiptResponse = HdmPrintReceiptResponse;
+
 export interface HdmEmarkCheckRequest {
   seq: number;
   eMark: string;
@@ -108,6 +124,22 @@ export interface AgentPrintReceiptBody {
 export interface AgentPrintReceiptResult {
   ok: true;
   fiscal: HdmPrintReceiptResponse;
+}
+
+/** GoCinema → agent՝ վերադարձի կտրոնի հարցում (լրիվ կամ մասնակի վերադարձ) */
+export interface AgentReturnReceiptBody {
+  crn: string;
+  returnTicketId: number;
+  paymentMethod: PaymentMethod;
+  /** Մասնակի վերադարձի դեպքում՝ վերադարձվող գումարը (բացակայության դեպքում՝ լրիվ) */
+  amount?: number;
+  eMarks?: string[];
+  returnItemList?: Array<{ rpid: number; quantity: number }>;
+}
+
+export interface AgentReturnReceiptResult {
+  ok: true;
+  fiscal: HdmReturnReceiptResponse;
 }
 
 export interface AgentErrorResult {

@@ -20,6 +20,8 @@ import type {
   HdmOperatorsResponse,
   HdmPrintReceiptRequest,
   HdmPrintReceiptResponse,
+  HdmReturnReceiptRequest,
+  HdmReturnReceiptResponse,
 } from './types.js';
 
 /** Spec §4.10 */
@@ -298,6 +300,36 @@ export class HdmClient {
           );
         });
         return retry.body as HdmPrintReceiptResponse;
+      }
+      throw err;
+    }
+  }
+
+  async printReturnReceipt(
+    request: Omit<HdmReturnReceiptRequest, 'seq'>
+  ): Promise<HdmReturnReceiptResponse> {
+    const key = await this.ensureSession();
+
+    const send = (sessionKey: Buffer) =>
+      this.withSocket(async (reader, socket) => {
+        return this.sendOperation(
+          reader,
+          socket,
+          OperationCode.PrintReturnReceipt,
+          { ...request, seq: this.nextSeq() },
+          sessionKey
+        );
+      });
+
+    try {
+      const result = await send(key);
+      return result.body as HdmReturnReceiptResponse;
+    } catch (err) {
+      if (err instanceof HdmProtocolError && err.code === 102) {
+        this.sessionKey = null;
+        const key2 = await this.ensureSession();
+        const retry = await send(key2);
+        return retry.body as HdmReturnReceiptResponse;
       }
       throw err;
     }

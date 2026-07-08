@@ -5,6 +5,8 @@ import { buildPrintReceiptRequest } from './receipt-builder.js';
 import type {
   AgentPrintReceiptBody,
   AgentPrintReceiptResult,
+  AgentReturnReceiptBody,
+  AgentReturnReceiptResult,
   AgentResult,
 } from './types.js';
 
@@ -34,17 +36,28 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 
 function corsHeaders(
   origin: string | undefined,
-  allowOrigins: string[]
+  allowOrigins: string[],
+  req?: http.IncomingMessage
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Agent-Key',
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, X-Agent-Key, Access-Control-Request-Private-Network',
     'Access-Control-Max-Age': '86400',
   };
+
+  // Chrome Private Network Access: HTTPS public site → localhost agent
+  const pna =
+    req?.headers['access-control-request-private-network'] === 'true' ||
+    Boolean(origin?.startsWith('https://'));
+  if (pna) {
+    headers['Access-Control-Allow-Private-Network'] = 'true';
+  }
+
   if (!origin) return headers;
   if (allowOrigins.includes('*') || allowOrigins.includes(origin)) {
     headers['Access-Control-Allow-Origin'] = origin;
-    headers['Vary'] = 'Origin';
+    headers['Vary'] = 'Origin, Access-Control-Request-Private-Network';
   }
   return headers;
 }
@@ -62,7 +75,7 @@ export function createServer(config: AgentConfig): http.Server {
 
   return http.createServer(async (req, res) => {
     const origin = req.headers.origin;
-    const cors = corsHeaders(origin, config.allowOrigins);
+    const cors = corsHeaders(origin, config.allowOrigins, req);
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204, cors);
@@ -159,6 +172,45 @@ export function createServer(config: AgentConfig): http.Server {
         const hdmRequest = buildPrintReceiptRequest(config, body);
         const fiscal = await hdm.printReceipt(hdmRequest);
         const result: AgentPrintReceiptResult = { ok: true, fiscal };
+        json(res, 200, result, cors);
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/v1/return-receipt') {
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as AgentReturnReceiptBody;
+
+        if (!body.crn?.trim() || !Number.isFinite(body.returnTicketId)) {
+          json(
+            res,
+            400,
+            { ok: false, error: 'crn and returnTicketId are required' },
+            cors
+          );
+          return;
+        }
+
+        const isCash = body.paymentMethod !== 'card';
+        const isPartial =
+          Number.isFinite(body.amount) && (body.amount as number) > 0;
+        const fiscal = await hdm.printReturnReceipt({
+          crn: body.crn.trim(),
+          returnTicketId: Math.trunc(body.returnTicketId),
+          ...(isPartial
+            ? {
+                cashAmountForReturn: isCash ? (body.amount as number) : 0,
+                cardAmountForReturn: isCash ? 0 : (body.amount as number),
+                prePaymentAmountForReturn: 0,
+              }
+            : {}),
+          ...(body.eMarks && body.eMarks.length > 0
+            ? { eMarks: body.eMarks }
+            : {}),
+          ...(body.returnItemList && body.returnItemList.length > 0
+            ? { returnItemList: body.returnItemList }
+            : {}),
+        });
+        const result: AgentReturnReceiptResult = { ok: true, fiscal };
         json(res, 200, result, cors);
         return;
       }

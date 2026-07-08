@@ -485,8 +485,18 @@ export async function payReservationAtCounter(input: {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        tickets: true,
-        orderItems: true,
+        tickets: {
+          include: {
+            seat: { select: { row: true, number: true } },
+            screening: { include: { movie: { select: { title: true } } } },
+          },
+        },
+        orderItems: {
+          include: {
+            product: { select: { name: true, category: true } },
+            units: { select: { qrCode: true } },
+          },
+        },
         user: { select: { id: true } },
       },
     });
@@ -587,6 +597,47 @@ export async function payReservationAtCounter(input: {
     });
     revalidatePath('/admin/notifications');
 
+    // Ֆիսկալ տողեր՝ տոմսեր + ապրանքներ (eMark-երը՝ վաճառված միավորների QR-երից)
+    const fiscalLines: Array<{
+      name: string;
+      price: number;
+      qty: number;
+      eMark?: string | null;
+    }> = [];
+    for (const t of reservedTickets) {
+      const seatLabel = t.seat ? `${t.seat.row}${t.seat.number}` : '';
+      const movieTitle = t.screening?.movie?.title ?? 'ֆիլմ';
+      fiscalLines.push({
+        name: `Տոմս · ${movieTitle}${seatLabel ? ` · ${seatLabel}` : ''}`.slice(
+          0,
+          50
+        ),
+        price: t.price,
+        qty: 1,
+      });
+    }
+    for (const item of order.orderItems) {
+      const isQtyOnly = isQuantityOnlyProduct(item.product.category);
+      if (isQtyOnly) {
+        fiscalLines.push({
+          name: item.product.name,
+          price: item.price,
+          qty: item.quantity,
+          eMark: null,
+        });
+      } else {
+        const codes = item.units.map((u) => u.qrCode);
+        for (let i = 0; i < item.quantity; i += 1) {
+          fiscalLines.push({
+            name: item.product.name,
+            price: item.price,
+            qty: 1,
+            eMark: codes[i] ?? null,
+          });
+        }
+      }
+    }
+
     return {
       success: true,
       total: grandTotal,
@@ -594,6 +645,12 @@ export async function payReservationAtCounter(input: {
       change: method === 'cash' ? (amountPaid as number) - grandTotal : 0,
       paidCount: reservedTickets.length,
       message: `${reservedTickets.length} տոմս վճարվեց դրամարկղում`,
+      fiscal: {
+        orderId: order.id,
+        paymentMethod: method,
+        total: grandTotal,
+        lines: fiscalLines,
+      },
     };
   } catch (error: any) {
     console.error('[Pay Reservation At Counter] Error:', error);
@@ -671,6 +728,13 @@ export async function addTicketProducts(data: TicketProductScanInput) {
       { price: number; name: string; unitIds: number[] }
     >();
     let productsTotal = 0;
+    // Ֆիսկալ կտրոնի տողերը (միայն անմիջական վաճառքի դեպքում է ուղարկվում ՀԴՄ)
+    const fiscalLines: Array<{
+      name: string;
+      price: number;
+      qty: number;
+      eMark?: string | null;
+    }> = [];
 
     if (unitCodes.length > 0) {
       const dbUnits = await prisma.productUnit.findMany({
@@ -718,6 +782,12 @@ export async function addTicketProducts(data: TicketProductScanInput) {
         group.unitIds.push(unit.id);
         unitsByProduct.set(unit.product.id, group);
         productsTotal += unit.product.price;
+        fiscalLines.push({
+          name: unit.product.name,
+          price: unit.product.price,
+          qty: 1,
+          eMark: code,
+        });
       }
     }
 
@@ -764,6 +834,12 @@ export async function addTicketProducts(data: TicketProductScanInput) {
         };
       }
       productsTotal += product.price * qty;
+      fiscalLines.push({
+        name: product.name,
+        price: product.price,
+        qty,
+        eMark: null,
+      });
     }
 
     // Վճարումը պահանջվում է միայն վճարված տոմսի դեպքում (անմիջապես վաճառք)
@@ -783,6 +859,8 @@ export async function addTicketProducts(data: TicketProductScanInput) {
       }
       payment = resolved;
     }
+
+    let finalOrderId: number | null = ticket.orderId ?? null;
 
     await prisma.$transaction(async (tx) => {
       let orderId = ticket.orderId;
@@ -847,6 +925,8 @@ export async function addTicketProducts(data: TicketProductScanInput) {
         });
         await sellQuantityStock(tx, sel.productId, qty);
       }
+
+      finalOrderId = orderId;
     });
 
     const seatLabel = ticket.seat
@@ -875,6 +955,16 @@ export async function addTicketProducts(data: TicketProductScanInput) {
       message: isPaidMode
         ? 'Ապրանքները վաճառվեցին տոմսին'
         : 'Ապրանքներն ավելացվեցին պատվերին (վճարումը՝ դրամարկղում)',
+      // Ֆիսկալ տվյալներ՝ միայն անմիջական վաճառքի դեպքում (բրաուզերը ուղարկում է ՀԴՄ)
+      fiscal: isPaidMode
+        ? {
+            orderId: finalOrderId,
+            ticketId,
+            paymentMethod: (payment?.method ?? 'cash') as 'cash' | 'card',
+            total: productsTotal,
+            lines: fiscalLines,
+          }
+        : null,
     };
   } catch (error: unknown) {
     const stockError = mapStockError(error);

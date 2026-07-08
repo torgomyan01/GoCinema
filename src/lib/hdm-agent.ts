@@ -27,8 +27,16 @@ export interface HdmFiscalReceipt {
   rseq: number;
   fiscal: string;
   crn: string;
+  sn?: string;
+  tin?: string;
+  taxpayer?: string;
+  address?: string;
+  time?: number;
+  lottery?: string;
+  prize?: number;
   total: number;
   change: number;
+  emarksCount?: string | number;
   verificationNumber?: string | number;
   qr?: string;
 }
@@ -187,15 +195,15 @@ export async function checkHdmEmark(
   });
 }
 
-/** Տոմսի վաճառք → HDM կտրոն */
-export async function printHdmTicketSale(input: {
+/** Տոմսի վաճառք → HDM print-receipt input */
+export function buildTicketSaleInput(input: {
   movieTitle: string;
   seatLabel: string;
   ticketPrice: number;
   paymentMethod: HdmPaymentMethod;
   total: number;
   products: Array<{ name: string; price: number; qty: number }>;
-}): Promise<HdmAgentResponse<HdmFiscalReceipt>> {
+}): HdmPrintReceiptInput {
   const ticketName = `Տոմս · ${input.movieTitle} · ${input.seatLabel}`;
   const items: HdmReceiptItemInput[] = [
     {
@@ -214,11 +222,55 @@ export async function printHdmTicketSale(input: {
     })),
   ];
 
-  return printHdmReceipt({
+  return {
     paymentMethod: input.paymentMethod,
     total: input.total,
     items,
-  });
+  };
+}
+
+/** Ապրանքների վաճառք → HDM print-receipt input */
+export function buildProductSaleInput(input: {
+  paymentMethod: HdmPaymentMethod;
+  total: number;
+  lines: Array<{
+    name: string;
+    price: number;
+    qty: number;
+    productCode?: string;
+    eMark?: string | null;
+  }>;
+}): HdmPrintReceiptInput {
+  const eMarks = input.lines
+    .map((l) => l.eMark)
+    .filter((code): code is string => Boolean(code?.trim()));
+
+  const items: HdmReceiptItemInput[] = input.lines.map((line, idx) => ({
+    productCode: line.productCode ?? `SKU-${idx + 1}`,
+    productName: line.name,
+    price: line.price,
+    qty: line.qty,
+    unit: 'հատ',
+  }));
+
+  return {
+    paymentMethod: input.paymentMethod,
+    total: input.total,
+    items,
+    eMarks: eMarks.length > 0 ? eMarks : undefined,
+  };
+}
+
+/** Տոմսի վաճառք → HDM կտրոն */
+export async function printHdmTicketSale(input: {
+  movieTitle: string;
+  seatLabel: string;
+  ticketPrice: number;
+  paymentMethod: HdmPaymentMethod;
+  total: number;
+  products: Array<{ name: string; price: number; qty: number }>;
+}): Promise<HdmAgentResponse<HdmFiscalReceipt>> {
+  return printHdmReceipt(buildTicketSaleInput(input));
 }
 
 /** Ապրանքների վաճառք → HDM կտրոն */
@@ -233,22 +285,25 @@ export async function printHdmProductSale(input: {
     eMark?: string | null;
   }>;
 }): Promise<HdmAgentResponse<HdmFiscalReceipt>> {
-  const eMarks = input.lines
-    .map((l) => l.eMark)
-    .filter((code): code is string => Boolean(code?.trim()));
+  return printHdmReceipt(buildProductSaleInput(input));
+}
 
-  const items: HdmReceiptItemInput[] = input.lines.map((line, idx) => ({
-    productCode: line.productCode ?? `SKU-${idx + 1}`,
-    productName: line.name,
-    price: line.price,
-    qty: line.qty,
-    unit: 'հատ',
-  }));
+export interface HdmReturnReceiptInput {
+  crn: string;
+  returnTicketId: number;
+  paymentMethod: HdmPaymentMethod;
+  /** Մասնակի վերադարձի դեպքում՝ վերադարձվող գումարը (բացակայելիս՝ լրիվ վերադարձ) */
+  amount?: number;
+  eMarks?: string[];
+  returnItemList?: Array<{ rpid: number; quantity: number }>;
+}
 
-  return printHdmReceipt({
-    paymentMethod: input.paymentMethod,
-    total: input.total,
-    items,
-    eMarks: eMarks.length > 0 ? eMarks : undefined,
+/** POST /v1/return-receipt — վերադարձի կտրոն */
+export async function printHdmReturn(
+  input: HdmReturnReceiptInput
+): Promise<HdmAgentResponse<HdmFiscalReceipt>> {
+  return agentFetch<HdmFiscalReceipt>('/v1/return-receipt', {
+    method: 'POST',
+    body: JSON.stringify(input),
   });
 }

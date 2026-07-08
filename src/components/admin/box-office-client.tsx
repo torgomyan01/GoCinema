@@ -37,11 +37,12 @@ import { type PaymentMethod } from '@/components/admin/box-office-payment-panel'
 import { lookupSaleProductByQr } from '@/app/actions/products';
 import { isQuantityOnlyProduct } from '@/lib/product-units';
 import {
+  buildProductSaleInput,
+  buildTicketSaleInput,
   checkHdmAgentHealth,
   isHdmAgentEnabled,
-  printHdmProductSale,
-  printHdmTicketSale,
 } from '@/lib/hdm-agent';
+import { submitSaleFiscal } from '@/lib/fiscal-flow';
 
 interface ScreeningListItem {
   id: number;
@@ -316,22 +317,16 @@ export default function BoxOfficeClient() {
           }
         }
 
-        const fiscal = await printHdmProductSale({
-          paymentMethod: payload.payment?.method ?? 'cash',
-          total: result.total ?? 0,
-          lines,
+        const notice = await submitSaleFiscal({
+          input: buildProductSaleInput({
+            paymentMethod: payload.payment?.method ?? 'cash',
+            total: result.total ?? 0,
+            lines,
+          }),
+          source: 'box_office',
+          orderId: order.id,
         });
-        if (fiscal.ok && fiscal.fiscal) {
-          setFiscalNotice({
-            type: 'success',
-            message: `Ֆիսկալ կտրոն տպված է · № ${fiscal.fiscal.fiscal}`,
-          });
-        } else {
-          setFiscalNotice({
-            type: 'warning',
-            message: fiscal.error ?? 'Ֆիսկալ կտրոնը չտպվեց',
-          });
-        }
+        setFiscalNotice(notice);
         void refreshHdmAgentStatus();
       }
 
@@ -657,25 +652,19 @@ export default function BoxOfficeClient() {
               qty,
             };
           });
-        const fiscal = await printHdmTicketSale({
-          movieTitle: seatMap.movie.title,
-          seatLabel: `${selectedSeat.row}${selectedSeat.number}`,
-          ticketPrice: price,
-          paymentMethod: payment.method,
-          total: price + productsTotal,
-          products: productLines,
+        const notice = await submitSaleFiscal({
+          input: buildTicketSaleInput({
+            movieTitle: seatMap.movie.title,
+            seatLabel: `${selectedSeat.row}${selectedSeat.number}`,
+            ticketPrice: price,
+            paymentMethod: payment.method,
+            total: price + productsTotal,
+            products: productLines,
+          }),
+          source: 'box_office',
+          ticketId: ticket.id,
         });
-        if (fiscal.ok && fiscal.fiscal) {
-          setFiscalNotice({
-            type: 'success',
-            message: `Ֆիսկալ կտրոն տպված է · № ${fiscal.fiscal.fiscal}`,
-          });
-        } else {
-          setFiscalNotice({
-            type: 'warning',
-            message: fiscal.error ?? 'Ֆիսկալ կտրոնը չտպվեց',
-          });
-        }
+        setFiscalNotice(notice);
         void refreshHdmAgentStatus();
       }
 

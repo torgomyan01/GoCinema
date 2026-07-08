@@ -65,6 +65,7 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
     '/admin/support',
     '/admin/box-office',
     '/admin/hdm',
+    '/admin/fiscal',
   ];
   const menuItems = isAdminRole(user.role)
     ? adminMenuItems

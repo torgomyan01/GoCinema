@@ -12,29 +12,30 @@ datasource db {
 // ============================================
 
 model User {
-  id               Int       @id @default(autoincrement())
-  email            String?   @unique @db.VarChar(255)
-  name             String?   @db.VarChar(255)
-  phone            String    @unique @db.VarChar(50)
-  password         String    @db.VarChar(255)
-  role             String    @default("user") @db.VarChar(50) // user, admin, moderator, employee, producer (comma-separated roles supported in app code)
-  emailVerified    Boolean   @default(false)
-  phoneVerified    Boolean   @default(false)
-  avatar           String?   @db.VarChar(500)
-  telegramChatId   String?   @db.VarChar(100) // Telegram chat ID for OTP delivery
-  isBlocked        Boolean   @default(false) // արգելափակված է անվճար ամրագրումից (no-show-ի պատճառով)
-  blockedAt        DateTime? // երբ է արգելափակվել
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  email          String?   @unique @db.VarChar(255)
+  name           String?   @db.VarChar(255)
+  phone          String    @unique @db.VarChar(50)
+  password       String    @db.VarChar(255)
+  role           String    @default("user") @db.VarChar(50) // user, admin, moderator, employee, producer (comma-separated roles supported in app code)
+  emailVerified  Boolean   @default(false)
+  phoneVerified  Boolean   @default(false)
+  avatar         String?   @db.VarChar(500)
+  telegramChatId String?   @db.VarChar(100) // Telegram chat ID for OTP delivery
+  isBlocked      Boolean   @default(false) // արգելափակված է անվճար ամրագրումից (no-show-ի պատճառով)
+  blockedAt      DateTime? // երբ է արգելափակվել
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  tickets           Ticket[]
-  payments          Payment[]
-  reviews           Review[]
-  orders            Order[]
-  contacts          Contact[]
+  tickets             Ticket[]
+  payments            Payment[]
+  reviews             Review[]
+  orders              Order[]
+  contacts            Contact[]
   passwordResetTokens PasswordResetToken[]
-  supportRequests   SupportRequest[]
-  producedMovies    Movie[]   @relation("MovieProducers")
+  supportRequests     SupportRequest[]
+  producedMovies      Movie[]              @relation("MovieProducers")
+  fiscalReceipts      FiscalReceipt[]      @relation("CashierFiscalReceipts")
 
   @@index([email])
   @@index([phone])
@@ -79,25 +80,25 @@ model PhoneVerification {
 // ============================================
 
 model Movie {
-  id          Int       @id @default(autoincrement())
-  title       String    @db.VarChar(255)
-  slug        String?   @unique @db.VarChar(255)
-  image       String?   @db.VarChar(500)
-  duration    Int       // minutes
-  rating      Float     @default(0)
-  ageRating   String?   @db.VarChar(10) // 0+, 6+, 12+, 16+, 18+ (null = not specified)
-  genre       String    @db.VarChar(100)
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  slug        String?  @unique @db.VarChar(255)
+  image       String?  @db.VarChar(500)
+  duration    Int // minutes
+  rating      Float    @default(0)
+  ageRating   String?  @db.VarChar(10) // 0+, 6+, 12+, 16+, 18+ (null = not specified)
+  genre       String   @db.VarChar(100)
   releaseDate DateTime
-  description String?   @db.Text
-  trailerUrl  String?   @db.VarChar(500)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  description String?  @db.Text
+  trailerUrl  String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  screenings  Screening[]
-  reviews     Review[]
-  premieres   Premiere[]
-  producers   User[]      @relation("MovieProducers")
+  screenings Screening[]
+  reviews    Review[]
+  premieres  Premiere[]
+  producers  User[]      @relation("MovieProducers")
 
   @@index([slug])
   @@index([genre])
@@ -143,17 +144,17 @@ model Seat {
 // ============================================
 
 model Screening {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   movieId   Int
   hallId    Int
   startTime DateTime
   endTime   DateTime
-  basePrice Float     @default(2000)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  basePrice Float    @default(2000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  movie   Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
-  hall    Hall    @relation(fields: [hallId], references: [id], onDelete: Cascade)
+  movie   Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  hall    Hall     @relation(fields: [hallId], references: [id], onDelete: Cascade)
   tickets Ticket[]
 
   @@index([movieId])
@@ -167,26 +168,27 @@ model Screening {
 // ============================================
 
 model Ticket {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  screeningId Int
-  seatId      Int
-  price       Float
-  status      String    @default("reserved") @db.VarChar(50) // reserved, paid, used, cancelled
-  qrCode      String?   @db.VarChar(500)
-  holdUntil   DateTime? // ամրագրման ժամկետի վերջը. online՝ +10ր, դրամարկղ-ամրագրում՝ ցուցադրության սկիզբը
-  noShow      Boolean   @default(false) // դրամարկղ-ամրագրում, որը լրացել է առանց վճարման (չի եկել)
+  id                  Int       @id @default(autoincrement())
+  userId              Int
+  screeningId         Int
+  seatId              Int
+  price               Float
+  status              String    @default("reserved") @db.VarChar(50) // reserved, paid, used, cancelled
+  qrCode              String?   @db.VarChar(500)
+  holdUntil           DateTime? // ամրագրման ժամկետի վերջը. online՝ +10ր, դրամարկղ-ամրագրում՝ ցուցադրության սկիզբը
+  noShow              Boolean   @default(false) // դրամարկղ-ամրագրում, որը լրացել է առանց վճարման (չի եկել)
   preparationServedAt DateTime? // նախապատրաստման էջում՝ այս նստատեղի պատվերը սպասարկված է
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  screening  Screening  @relation(fields: [screeningId], references: [id], onDelete: Cascade)
-  seat       Seat       @relation(fields: [seatId], references: [id], onDelete: Cascade)
-  payment    Payment?
-  order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  orderId    Int?
-  orderItems OrderItem[]
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  screening      Screening       @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  seat           Seat            @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  payment        Payment?
+  order          Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId        Int?
+  orderItems     OrderItem[]
+  fiscalReceipts FiscalReceipt[]
 
   @@index([userId])
   @@index([screeningId])
@@ -198,16 +200,16 @@ model Ticket {
 }
 
 model Payment {
-  id            Int       @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   userId        Int
-  ticketId      Int       @unique
+  ticketId      Int      @unique
   amount        Float
-  amountPaid    Float?    // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը (մանրը հաշվելու համար)
-  method        String    @db.VarChar(50) // card, bank_transfer, cash
-  status        String    @default("pending") @db.VarChar(50) // pending, completed, failed, refunded
-  transactionId String?   @db.VarChar(255)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  amountPaid    Float? // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը (մանրը հաշվելու համար)
+  method        String   @db.VarChar(50) // card, bank_transfer, cash
+  status        String   @default("pending") @db.VarChar(50) // pending, completed, failed, refunded
+  transactionId String?  @db.VarChar(255)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -219,20 +221,75 @@ model Payment {
 }
 
 // ============================================
+// ՀԴՄ (PEC) ֆիսկալ կտրոններ
+// Ամեն ֆիսկալ գործարք (վաճառք/վերադարձ)՝ ՀԴՄ-ից ստացված ամբողջ պատասխանով։
+// status=failed դեպքում պահվում է requestPayload-ը՝ հետագա վերատպման համար։
+// ============================================
+model FiscalReceipt {
+  id            Int     @id @default(autoincrement())
+  operation     String  @default("sale") @db.VarChar(20) // sale, return
+  source        String  @default("box_office") @db.VarChar(20) // box_office, scanner
+  paymentMethod String  @default("cash") @db.VarChar(20) // cash, card
+  status        String  @default("printed") @db.VarChar(20) // printed, failed
+  errorMessage  String? @db.Text
+  errorCode     Int?
+
+  // ՀԴՄ պատասխանի դաշտերը
+  rseq               Int?
+  fiscalNumber       String?   @db.VarChar(50) // fiscal
+  crn                String?   @db.VarChar(50)
+  sn                 String?   @db.VarChar(50)
+  tin                String?   @db.VarChar(50)
+  taxpayer           String?   @db.VarChar(255)
+  address            String?   @db.VarChar(500)
+  fiscalTime         DateTime? // ՀԴՄ-ի `time` (ms → DateTime)
+  lottery            String?   @db.VarChar(50)
+  prize              Float?
+  total              Float     @default(0)
+  change             Float     @default(0)
+  qr                 String?   @db.Text
+  emarksCount        Int       @default(0)
+  verificationNumber String?   @db.VarChar(50)
+
+  // Վերատպման համար՝ agent-ին ուղարկվող սկզբնական հարցումը
+  requestPayload Json?
+
+  ticketId  Int?
+  orderId   Int?
+  cashierId Int?
+  ticket    Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  order     Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  cashier   User?   @relation("CashierFiscalReceipts", fields: [cashierId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([operation])
+  @@index([source])
+  @@index([ticketId])
+  @@index([orderId])
+  @@index([cashierId])
+  @@index([fiscalNumber])
+  @@index([createdAt])
+  @@map("fiscal_receipts")
+}
+
+// ============================================
 // Products (Snacks, Drinks, etc.)
 // ============================================
 
 model Product {
-  id          Int       @id @default(autoincrement())
-  name        String    @db.VarChar(255)
-  description String?   @db.Text
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
   price       Float
-  image       String?   @db.VarChar(500)
-  category    String    @db.VarChar(50) // snack, drink, combo
-  stock       Int       @default(0) // պահեստի առկա քանակ (հանվում է դրամարկղի վաճառքից)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  image       String?  @db.VarChar(500)
+  category    String   @db.VarChar(50) // snack, drink, combo
+  stock       Int      @default(0) // պահեստի առկա քանակ (հանվում է դրամարկղի վաճառքից)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   orderItems OrderItem[]
   units      ProductUnit[]
@@ -274,18 +331,19 @@ model ProductUnit {
 // ============================================
 
 model Order {
-  id            Int         @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   userId        Int
   totalAmount   Float
-  status        String      @default("pending") @db.VarChar(50) // pending, completed, cancelled
-  paymentMethod String      @default("cash") @db.VarChar(50) // cash, card, counter (օնլայն ամրագրում՝ դրամարկղում վճարելու համար)
-  amountPaid    Float?      // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  status        String   @default("pending") @db.VarChar(50) // pending, completed, cancelled
+  paymentMethod String   @default("cash") @db.VarChar(50) // cash, card, counter (օնլայն ամրագրում՝ դրամարկղում վճարելու համար)
+  amountPaid    Float? // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
-  tickets    Ticket[]
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems     OrderItem[]
+  tickets        Ticket[]
+  fiscalReceipts FiscalReceipt[]
 
   @@index([userId])
   @@index([status])
@@ -295,15 +353,15 @@ model Order {
 model OrderItem {
   id          Int       @id @default(autoincrement())
   orderId     Int
-  ticketId    Int?    // Optional: if null, product belongs to order; if set, product belongs to specific ticket
+  ticketId    Int? // Optional: if null, product belongs to order; if set, product belongs to specific ticket
   productId   Int
-  quantity    Int     @default(1)
-  price       Float   // Price at time of order
+  quantity    Int       @default(1)
+  price       Float // Price at time of order
   fulfilledAt DateTime? // մուտքի ժամանակ պահեստից հանվել է
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  ticket  Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticket  Ticket?       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
   units   ProductUnit[]
 
   @@index([orderId])
@@ -318,13 +376,13 @@ model OrderItem {
 // ============================================
 
 model Review {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   userId    Int
   movieId   Int
-  rating    Int       // 1-10
-  comment   String?   @db.Text
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  rating    Int // 1-10
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
@@ -340,13 +398,13 @@ model Review {
 // ============================================
 
 model FAQ {
-  id        Int       @id @default(autoincrement())
-  question  String    @db.Text
-  answer    String    @db.Text
-  order     Int       @default(0) // For ordering FAQs
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  question  String   @db.Text
+  answer    String   @db.Text
+  order     Int      @default(0) // For ordering FAQs
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([isActive])
   @@index([order])
@@ -358,16 +416,16 @@ model FAQ {
 // ============================================
 
 model Contact {
-  id        Int       @id @default(autoincrement())
-  name      String    @db.VarChar(255)
-  email     String?   @db.VarChar(255)
-  phone     String?   @db.VarChar(50)
-  subject   String    @db.VarChar(255)
-  message   String    @db.Text
-  status    String    @default("new") @db.VarChar(50) // new, read, replied, archived
-  userId    Int?      // Optional: if user is logged in
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  email     String?  @db.VarChar(255)
+  phone     String?  @db.VarChar(50)
+  subject   String   @db.VarChar(255)
+  message   String   @db.Text
+  status    String   @default("new") @db.VarChar(50) // new, read, replied, archived
+  userId    Int? // Optional: if user is logged in
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -382,19 +440,19 @@ model Contact {
 // ============================================
 
 model SupportRequest {
-  id          Int       @id @default(autoincrement())
-  name        String    @db.VarChar(255)
-  phone       String    @db.VarChar(50)
-  email       String?   @db.VarChar(255)
-  subject     String    @db.VarChar(255)
-  message     String    @db.Text
-  status      String    @default("new") @db.VarChar(50) // new, in_progress, resolved, archived
-  adminNote   String?   @db.Text
-  userId      Int?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  phone     String   @db.VarChar(50)
+  email     String?  @db.VarChar(255)
+  subject   String   @db.VarChar(255)
+  message   String   @db.Text
+  status    String   @default("new") @db.VarChar(50) // new, in_progress, resolved, archived
+  adminNote String?  @db.Text
+  userId    Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user        User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   attachments SupportAttachment[]
   messages    SupportMessage[]
 
@@ -405,14 +463,14 @@ model SupportRequest {
 }
 
 model SupportMessage {
-  id          Int      @id @default(autoincrement())
-  requestId   Int
-  senderType  String   @db.VarChar(30) // customer, staff
-  senderName  String   @db.VarChar(255)
-  message     String   @db.Text
-  createdAt   DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  requestId  Int
+  senderType String   @db.VarChar(30) // customer, staff
+  senderName String   @db.VarChar(255)
+  message    String   @db.Text
+  createdAt  DateTime @default(now())
 
-  request     SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
   @@index([senderType])
@@ -421,15 +479,15 @@ model SupportMessage {
 }
 
 model SupportAttachment {
-  id          Int      @id @default(autoincrement())
-  requestId   Int
-  fileName    String   @db.VarChar(255)
-  fileUrl     String   @db.VarChar(500)
-  mimeType    String   @db.VarChar(120)
-  size        Int
-  createdAt   DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  requestId Int
+  fileName  String   @db.VarChar(255)
+  fileUrl   String   @db.VarChar(500)
+  mimeType  String   @db.VarChar(120)
+  size      Int
+  createdAt DateTime @default(now())
 
-  request     SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
   @@map("support_attachments")
@@ -458,13 +516,13 @@ model Notification {
 // ============================================
 
 model Premiere {
-  id          Int       @id @default(autoincrement())
-  movieId     Int
+  id           Int      @id @default(autoincrement())
+  movieId      Int
   premiereDate DateTime
-  description String?   @db.Text
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  description  String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
 

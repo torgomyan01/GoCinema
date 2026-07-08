@@ -39,7 +39,42 @@ import {
   addTicketProducts,
 } from '@/app/actions/scanner';
 import { lookupSaleProductByQr } from '@/app/actions/products';
+import { buildProductSaleInput, isHdmAgentEnabled } from '@/lib/hdm-agent';
+import { submitSaleFiscal } from '@/lib/fiscal-flow';
 import Image from 'next/image';
+
+interface ScannerFiscalData {
+  orderId: number | null;
+  ticketId?: number;
+  paymentMethod: 'cash' | 'card';
+  total: number;
+  lines: Array<{
+    name: string;
+    price: number;
+    qty: number;
+    eMark?: string | null;
+  }>;
+}
+
+async function fireScannerFiscal(
+  fiscal: ScannerFiscalData | null | undefined
+): Promise<string | null> {
+  if (!fiscal || !isHdmAgentEnabled()) return null;
+  if (!fiscal.lines || fiscal.lines.length === 0 || fiscal.total <= 0) {
+    return null;
+  }
+  const notice = await submitSaleFiscal({
+    input: buildProductSaleInput({
+      paymentMethod: fiscal.paymentMethod,
+      total: fiscal.total,
+      lines: fiscal.lines,
+    }),
+    source: 'scanner',
+    orderId: fiscal.orderId ?? undefined,
+    ticketId: fiscal.ticketId ?? undefined,
+  });
+  return notice.message;
+}
 
 interface ReservationSearchResult {
   orderId: number;
@@ -254,13 +289,16 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       if (result.success) {
         setPayCash('');
         setPayMethod('cash');
+        const fiscalMessage = await fireScannerFiscal(
+          (result as { fiscal?: ScannerFiscalData | null }).fiscal
+        );
         await handleScanSuccess(windowId, `ORDER-${orderId}`);
         alert(
           `${result.message}${
             payMethod === 'cash' && result.change
               ? ` • Մանր՝ ${result.change.toLocaleString()} ֏`
               : ''
-          }`
+          }${fiscalMessage ? `\n${fiscalMessage}` : ''}`
         );
       } else {
         setPayError(result.error || 'Վճարումը մշակելիս սխալ է տեղի ունեցել');
@@ -618,8 +656,12 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
         amountPaid: payload.payment?.amountPaid,
       });
       if (result.success) {
+        const fiscalMessage = await fireScannerFiscal(
+          (result as { fiscal?: ScannerFiscalData | null }).fiscal
+        );
         closeProductModal();
         await handleScanSuccess(activeWindow.id, activeWindow.qrCode);
+        if (fiscalMessage) alert(fiscalMessage);
       } else {
         setProductError(result.error || 'Սխալ');
       }

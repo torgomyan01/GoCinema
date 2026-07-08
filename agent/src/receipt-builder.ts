@@ -19,8 +19,11 @@ export function buildPrintReceiptRequest(
 ): Omit<HdmPrintReceiptRequest, 'seq'> {
   const total = roundMoney(body.total);
   const isCash = body.paymentMethod === 'cash';
-  const useExtPOS =
-    body.useExtPOS ?? (body.paymentMethod === 'card' ? cfg.hdm.useExtPos : false);
+  // Spec §4.5.4: useExtPOS=false → ՀԴՄ-ն միացնում է իր ներքին անկանխիկ ծրագիրը
+  // useExtPOS=true → արտաքին POS արդեն վճարված է, տերմինալ չի բացվում
+  const useExtPOS = isCash
+    ? false
+    : (body.useExtPOS ?? cfg.hdm.useExtPos);
 
   const items: HdmReceiptItem[] = body.items.map((item) => {
     const isTicket =
@@ -41,17 +44,27 @@ export function buildPrintReceiptRequest(
 
   const eMarks = (body.eMarks ?? []).filter(Boolean);
 
-  return {
+  const request: Omit<HdmPrintReceiptRequest, 'seq'> = {
     mode: 2,
     items,
     paidAmount: isCash ? total : 0,
     paidAmountCard: isCash ? 0 : total,
     partialAmount: 0,
     prePaymentAmount: 0,
-    useExtPOS: !isCash && useExtPOS,
+    useExtPOS,
     partnerTin: null,
     eMarks: eMarks.length > 0 ? eMarks : undefined,
   };
+
+  // useExtPOS=false դեպքում կարող ենք նշել վճարային համակարգի կոդը։
+  // null → ՀԴՄ սարքում ընտրություն / միակ համակարգ։
+  if (!isCash && !useExtPOS && cfg.hdm.paymentSystem != null) {
+    request.PaymentSystem = cfg.hdm.paymentSystem;
+  } else if (!isCash && !useExtPOS) {
+    request.PaymentSystem = null;
+  }
+
+  return request;
 }
 
 /** Տոմս + ապրանքների միավորված կտրոն */

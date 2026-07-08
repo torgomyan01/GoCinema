@@ -54,7 +54,10 @@ export interface AgentConfig {
     depProduct: number;
     defaultAdgTicket: string;
     defaultAdgProduct: string;
+    /** true = արտաքին POS արդեն վճարված, false = ՀԴՄ ներքին անկանխիկ */
     useExtPos: boolean;
+    /** Վճարային համակարգի կոդ (useExtPOS=false դեպքում), null = ՀԴՄ-ում ընտրություն */
+    paymentSystem: number | null;
   };
 }
 
@@ -92,10 +95,17 @@ export function loadConfig(): AgentConfig {
       ),
       depProduct: intEnv('HDM_DEP_PRODUCT', 2),
       defaultAdgTicket:
-        process.env.HDM_DEFAULT_ADG_TICKET?.trim() || '05213',
+        process.env.HDM_DEFAULT_ADG_TICKET?.trim() || '59.14',
       defaultAdgProduct:
-        process.env.HDM_DEFAULT_ADG_PRODUCT?.trim() || '0104',
-      useExtPos: boolEnv('HDM_USE_EXT_POS', true),
+        process.env.HDM_DEFAULT_ADG_PRODUCT?.trim() || '47.19',
+      // Default false: ՀԴՄ-ն պետք է բացի իր քարտային/անհպում վճարման էկրանը
+      useExtPos: boolEnv('HDM_USE_EXT_POS', false),
+      paymentSystem: (() => {
+        const raw = process.env.HDM_PAYMENT_SYSTEM?.trim();
+        if (!raw) return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+      })(),
     },
   };
 }

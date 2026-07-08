@@ -170,7 +170,21 @@ export function createServer(config: AgentConfig): http.Server {
         }
 
         const hdmRequest = buildPrintReceiptRequest(config, body);
+
+        console.log('\n========== HDM PRINT RECEIPT ==========');
+        console.log('[from app]', JSON.stringify(body, null, 2));
+        console.log('[to HDM]', JSON.stringify(hdmRequest, null, 2));
+        console.log(
+          `[payment] method=${body.paymentMethod} useExtPOS=${hdmRequest.useExtPOS} paidAmount=${hdmRequest.paidAmount} paidAmountCard=${hdmRequest.paidAmountCard} PaymentSystem=${hdmRequest.PaymentSystem ?? 'null'}`
+        );
+        console.log(
+          `[eMarks] count=${hdmRequest.eMarks?.length ?? 0}`,
+          hdmRequest.eMarks ?? []
+        );
+        console.log('=======================================\n');
+
         const fiscal = await hdm.printReceipt(hdmRequest);
+        console.log('[HDM response]', JSON.stringify(fiscal, null, 2));
         const result: AgentPrintReceiptResult = { ok: true, fiscal };
         json(res, 200, result, cors);
         return;

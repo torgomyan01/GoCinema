@@ -35,8 +35,14 @@ const HDM_ERROR_MESSAGES: Record<number, string> = {
   112: 'Այդպիսի օպերատոր չկա — ստուգեք HDM_CASHIER-ը',
   113: 'Օպերատորը ակտիվ չէ',
   121: 'Սխալ օգտվող',
-  151: 'Այդպիսի բաժին գոյություն չունի',
+  151: 'Այդպիսի բաժին գոյություն չունի / օպերատորին կցված չէ',
   152: 'Մուծված գումարը ընդհանուր գումարից պակաս է',
+  155: 'Անհրաժեշտ է համաժամանակեցնել ՀԴՄ-ն',
+  164: 'Անկանխիկ վճարման խափանում',
+  183: 'Սխալ ԱՏԳ/ԱԴԳ կոդ (adgCode) — ստուգեք HDM_DEFAULT_ADG_TICKET / HDM_DEFAULT_ADG_PRODUCT agent/.env-ում (src.am ցանկեր՝ N 1406-Ն / N 875-Ն)',
+  192: 'ԱՏԳ կոդը պարտադիր է',
+  195: 'eMark կոդի ֆորմատի սխալ (պետք է 29–110 նիշ)',
+  196: 'eMark՝ այլ երկրի ծածկագիր',
   400: 'Հարցման սխալ',
   402: 'Սխալ արձանագրության տարբերակ',
   403: 'Չարտոնագրված միացում — ՀԴՄ Auto system IP-ն պետք է լինի այս PC-ի IP-ն',
@@ -129,11 +135,13 @@ export class HdmClient {
   }
 
   private async withSocket<T>(
-    fn: (reader: SocketReader, socket: net.Socket) => Promise<T>
+    fn: (reader: SocketReader, socket: net.Socket) => Promise<T>,
+    options?: { timeoutMs?: number; timeoutMessage?: string }
   ): Promise<T> {
     return new Promise((resolve, reject) => {
       let connected = false;
       const target = `${this.cfg.host}:${this.cfg.port}`;
+      const timeoutMs = options?.timeoutMs ?? 15_000;
       const socket = net.createConnection(
         { host: this.cfg.host, port: this.cfg.port },
         () => {
@@ -144,10 +152,11 @@ export class HdmClient {
           });
         }
       );
-      socket.setTimeout(15_000, () => {
+      socket.setTimeout(timeoutMs, () => {
         const err = connected
           ? new Error(
-              `HDM no response from ${target}. Check: integration mode ON, correct port/password, and HDM "Auto system IP" = this PC IP (not 127.0.0.1)`
+              options?.timeoutMessage ??
+                `HDM no response from ${target}. Check: integration mode ON, correct port/password, and HDM "Auto system IP" = this PC IP (not 127.0.0.1)`
             )
           : new Error(
               `HDM connection timeout to ${target}. Check IP/port and that HDM is on the same Wi‑Fi/LAN`
@@ -301,6 +310,14 @@ export class HdmClient {
   ): Promise<HdmPrintReceiptResponse> {
     const key = await this.ensureSession();
     const body = { ...request, seq: this.nextSeq() };
+    const isCard = Number(request.paidAmountCard) > 0 && !request.useExtPOS;
+    const socketOpts = isCard
+      ? {
+          timeoutMs: 180_000,
+          timeoutMessage:
+            'HDM քարտային վճարման ժամանակը լրացավ (3 րոպե). Ստուգեք՝ ՀԴՄ-ում անկանխիկ էկրանը բացվե՞լ է',
+        }
+      : undefined;
 
     try {
       const result = await this.withSocket(async (reader, socket) => {
@@ -311,7 +328,7 @@ export class HdmClient {
           body,
           key
         );
-      });
+      }, socketOpts);
       return result.body as HdmPrintReceiptResponse;
     } catch (err) {
       if (err instanceof HdmProtocolError && err.code === 102) {
@@ -325,7 +342,7 @@ export class HdmClient {
             { ...request, seq: this.nextSeq() },
             key2
           );
-        });
+        }, socketOpts);
         return retry.body as HdmPrintReceiptResponse;
       }
       throw err;

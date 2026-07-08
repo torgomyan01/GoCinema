@@ -181,6 +181,7 @@ export default function AdminFiscalClient() {
           crn: item.crn,
           returnTicketId: item.rseq,
           paymentMethod: item.paymentMethod === 'card' ? 'card' : 'cash',
+          eMarks: item.eMarks?.length ? item.eMarks : undefined,
         },
         source: 'box_office',
         ticketId: item.ticketId,

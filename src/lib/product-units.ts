@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 
 /**
  * Ապրանքների պաշարի կառավարում։
@@ -82,15 +83,15 @@ export async function sellProductUnits(
   productId: number,
   quantity: number,
   orderItemId: number | null
-) {
+): Promise<string[]> {
   const qty = Math.floor(Number(quantity));
-  if (!Number.isFinite(qty) || qty <= 0) return;
+  if (!Number.isFinite(qty) || qty <= 0) return [];
 
   const units = await tx.productUnit.findMany({
     where: { productId, status: 'in_stock' },
     orderBy: { createdAt: 'asc' },
     take: qty,
-    select: { id: true },
+    select: { id: true, qrCode: true },
   });
 
   if (units.length < qty) {
@@ -103,6 +104,7 @@ export async function sellProductUnits(
   });
 
   await syncProductStock(tx, productId);
+  return units.map((u) => u.qrCode);
 }
 
 /**
@@ -113,13 +115,13 @@ export async function sellSpecificProductUnits(
   tx: Tx,
   unitIds: number[],
   orderItemId: number | null
-) {
+): Promise<string[]> {
   const ids = Array.from(new Set(unitIds.filter((id) => Number.isFinite(id))));
-  if (ids.length === 0) return;
+  if (ids.length === 0) return [];
 
   const units = await tx.productUnit.findMany({
     where: { id: { in: ids } },
-    select: { id: true, productId: true, status: true },
+    select: { id: true, productId: true, status: true, qrCode: true },
   });
 
   if (units.length !== ids.length || units.some((u) => u.status !== 'in_stock')) {
@@ -135,6 +137,8 @@ export async function sellSpecificProductUnits(
   for (const productId of productIds) {
     await syncProductStock(tx, productId);
   }
+
+  return units.map((u) => u.qrCode);
 }
 
 /** Վաճառված կոնկրետ միավորը (QR-ով) նշել sold */
@@ -184,9 +188,8 @@ export async function returnSingleProductUnitByQr(tx: Tx, qrCode: string) {
     return null;
   }
 
-  if (unit.pekReportedAt) {
-    throw new Error(PEK_REPORTED);
-  }
+  // ՊԵԿ ուղարկված միավորը կարելի է վերադարձնել՝ ՀԴՄ վերադարձի կտրոնով (eMark)։
+  // pekReportedAt-ը կմաքրվի ՀԴՄ հաջող պատասխանից հետո։
 
   const refundAmount = unit.orderItem?.price ?? 0;
   const orderId = unit.orderItem?.orderId ?? null;
@@ -237,6 +240,82 @@ export async function returnSingleProductUnitByQr(tx: Tx, qrCode: string) {
 
 export { PEK_REPORTED };
 
+/**
+ * ՀԴՄ-ի հաջող վաճառքից հետո՝ վաճառված միավորները նշել որպես
+ * ՊԵԿ ուղարկված (շրջանառությունից դուրս)։
+ * Կարող է զտվել orderId-ով և/կամ eMark (QR) ցանկով։
+ */
+export async function markProductUnitsPekReported(params: {
+  orderId?: number | null;
+  eMarks?: string[] | null;
+  at?: Date;
+}): Promise<number> {
+  const at = params.at ?? new Date();
+  const codes = Array.from(
+    new Set(
+      (params.eMarks ?? [])
+        .map((c) => (c ?? '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  const or: Prisma.ProductUnitWhereInput[] = [];
+  if (params.orderId && Number.isFinite(params.orderId)) {
+    or.push({ orderItem: { orderId: params.orderId } });
+  }
+  if (codes.length > 0) {
+    or.push({ qrCode: { in: codes } });
+  }
+  if (or.length === 0) return 0;
+
+  const result = await prisma.productUnit.updateMany({
+    where: {
+      status: 'sold',
+      pekReportedAt: null,
+      OR: or,
+    },
+    data: { pekReportedAt: at },
+  });
+
+  return result.count;
+}
+
+/**
+ * ՀԴՄ վերադարձի հաջող պատասխանից հետո՝ ՊԵԿ նշումը հանել
+ * (միավորը կարող է մնալ sold կամ արդեն վերադարձված լինել)։
+ */
+export async function clearProductUnitsPekReported(params: {
+  orderId?: number | null;
+  eMarks?: string[] | null;
+}): Promise<number> {
+  const codes = Array.from(
+    new Set(
+      (params.eMarks ?? [])
+        .map((c) => (c ?? '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  const or: Prisma.ProductUnitWhereInput[] = [];
+  if (params.orderId && Number.isFinite(params.orderId)) {
+    or.push({ orderItem: { orderId: params.orderId } });
+  }
+  if (codes.length > 0) {
+    or.push({ qrCode: { in: codes } });
+  }
+  if (or.length === 0) return 0;
+
+  const result = await prisma.productUnit.updateMany({
+    where: {
+      pekReportedAt: { not: null },
+      OR: or,
+    },
+    data: { pekReportedAt: null },
+  });
+
+  return result.count;
+}
+
 /** QR միավորները վերադարձնել պահեստ */
 export async function returnProductUnitsByOrderItem(
   tx: Tx,
@@ -272,12 +351,12 @@ export async function fulfillOrderItemStock(
   category: string,
   quantity: number,
   orderItemId: number | null
-) {
+): Promise<string[]> {
   if (isQuantityOnlyProduct(category)) {
     await sellQuantityStock(tx, productId, quantity);
-  } else {
-    await sellProductUnits(tx, productId, quantity, orderItemId);
+    return [];
   }
+  return sellProductUnits(tx, productId, quantity, orderItemId);
 }
 
 /** Պատվերի տողի պաշար վերադարձնել՝ ըստ ապրանքի տիպի */

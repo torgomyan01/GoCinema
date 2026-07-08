@@ -193,7 +193,7 @@ export function createServer(config: AgentConfig): http.Server {
         const isCash = body.paymentMethod !== 'card';
         const isPartial =
           Number.isFinite(body.amount) && (body.amount as number) > 0;
-        const fiscal = await hdm.printReturnReceipt({
+        const hdmReturnBody = {
           crn: body.crn.trim(),
           returnTicketId: Math.trunc(body.returnTicketId),
           ...(isPartial
@@ -209,7 +209,19 @@ export function createServer(config: AgentConfig): http.Server {
           ...(body.returnItemList && body.returnItemList.length > 0
             ? { returnItemList: body.returnItemList }
             : {}),
-        });
+        };
+
+        console.log('\n========== HDM RETURN RECEIPT ==========');
+        console.log('[from app]', JSON.stringify(body, null, 2));
+        console.log('[to HDM]', JSON.stringify(hdmReturnBody, null, 2));
+        console.log(
+          `[eMarks] count=${hdmReturnBody.eMarks?.length ?? 0}`,
+          hdmReturnBody.eMarks ?? []
+        );
+        console.log('========================================\n');
+
+        const fiscal = await hdm.printReturnReceipt(hdmReturnBody);
+        console.log('[HDM response]', JSON.stringify(fiscal, null, 2));
         const result: AgentReturnReceiptResult = { ok: true, fiscal };
         json(res, 200, result, cors);
         return;

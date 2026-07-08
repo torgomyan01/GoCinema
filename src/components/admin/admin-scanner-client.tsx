@@ -53,6 +53,7 @@ interface ScannerFiscalData {
     price: number;
     qty: number;
     eMark?: string | null;
+    isTicket?: boolean;
   }>;
 }
 

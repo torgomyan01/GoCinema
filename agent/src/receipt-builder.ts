@@ -22,15 +22,22 @@ export function buildPrintReceiptRequest(
   const useExtPOS =
     body.useExtPOS ?? (body.paymentMethod === 'card' ? cfg.hdm.useExtPos : false);
 
-  const items: HdmReceiptItem[] = body.items.map((item) => ({
-    dep: item.dep ?? cfg.hdm.defaultDep,
-    qty: roundQty(item.qty ?? 1),
-    price: roundMoney(item.price),
-    productCode: item.productCode.slice(0, 50),
-    productName: item.productName.slice(0, 50),
-    adgCode: item.adgCode ?? cfg.hdm.defaultAdgProduct,
-    unit: (item.unit ?? 'հատ').slice(0, 50),
-  }));
+  const items: HdmReceiptItem[] = body.items.map((item) => {
+    const isTicket =
+      item.productCode === 'TICKET' || item.unit === 'տոմս';
+    const defaultDep = isTicket ? cfg.hdm.depTicket : cfg.hdm.depProduct;
+    return {
+      dep: item.dep ?? defaultDep,
+      qty: roundQty(item.qty ?? 1),
+      price: roundMoney(item.price),
+      productCode: item.productCode.slice(0, 50),
+      productName: item.productName.slice(0, 50),
+      adgCode:
+        item.adgCode ??
+        (isTicket ? cfg.hdm.defaultAdgTicket : cfg.hdm.defaultAdgProduct),
+      unit: (item.unit ?? 'հատ').slice(0, 50),
+    };
+  });
 
   const eMarks = (body.eMarks ?? []).filter(Boolean);
 
@@ -72,6 +79,7 @@ export function buildTicketSaleReceipt(
       productName: input.ticketName.slice(0, 50),
       price: input.ticketPrice,
       qty: 1,
+      dep: cfg.hdm.depTicket,
       adgCode: input.ticketAdgCode ?? cfg.hdm.defaultAdgTicket,
       unit: 'տոմս',
     },
@@ -80,6 +88,7 @@ export function buildTicketSaleReceipt(
       productName: p.name,
       price: p.price,
       qty: p.qty,
+      dep: cfg.hdm.depProduct,
       adgCode: p.adgCode ?? cfg.hdm.defaultAdgProduct,
       unit: 'հատ',
     })),

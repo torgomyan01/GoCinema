@@ -42,7 +42,7 @@ import {
   checkHdmAgentHealth,
   isHdmAgentEnabled,
 } from '@/lib/hdm-agent';
-import { submitSaleFiscal } from '@/lib/fiscal-flow';
+import { submitReturnFiscal, submitSaleFiscal } from '@/lib/fiscal-flow';
 
 interface ScreeningListItem {
   id: number;
@@ -76,6 +76,8 @@ interface SeatMap {
 interface CreatedTicket {
   id: number;
   price: number;
+  orderId?: number | null;
+  order?: { id: number } | null;
   seat: { row: string; number: number };
   screening: {
     startTime: Date | string;
@@ -297,7 +299,10 @@ export default function BoxOfficeClient() {
       openOrderPrint(order.id);
 
       if (isHdmAgentEnabled() && order.orderItems) {
-        const eMarkQueue = [...payload.units];
+        const soldCodes =
+          (result as { soldUnitQrCodes?: string[] }).soldUnitQrCodes ??
+          payload.units;
+        const eMarkQueue = [...soldCodes];
         const lines: Array<{
           name: string;
           price: number;
@@ -366,6 +371,23 @@ export default function BoxOfficeClient() {
       const successResult = result as {
         message?: string;
         orderId?: number | null;
+        soldUnitQrCodes?: string[];
+        exchangeSaleLines?: Array<{
+          name: string;
+          price: number;
+          qty: number;
+          eMark: string | null;
+        }>;
+        returnQrCode?: string;
+        returnFiscal?: {
+          crn: string;
+          rseq: number;
+          paymentMethod: 'cash' | 'card';
+          eMarks: string[];
+          amount: number;
+        } | null;
+        newTotal?: number;
+        mode?: 'refund' | 'exchange';
       };
       setLastReturnMessage(
         successResult.message ?? 'Գործարքը հաջողությամբ ավարտվեց'
@@ -374,6 +396,76 @@ export default function BoxOfficeClient() {
       if (successResult.orderId) {
         openOrderPrint(successResult.orderId);
       }
+
+      if (isHdmAgentEnabled()) {
+        const notices: string[] = [];
+
+        if (successResult.returnFiscal) {
+          const returnNotice = await submitReturnFiscal({
+            input: {
+              crn: successResult.returnFiscal.crn,
+              returnTicketId: successResult.returnFiscal.rseq,
+              paymentMethod: successResult.returnFiscal.paymentMethod,
+              amount: successResult.returnFiscal.amount,
+              eMarks: successResult.returnFiscal.eMarks,
+            },
+            source: 'box_office',
+          });
+          notices.push(returnNotice.message);
+        }
+
+        if (
+          successResult.mode === 'exchange' &&
+          successResult.orderId &&
+          ((successResult.exchangeSaleLines?.length ?? 0) > 0 ||
+            (successResult.soldUnitQrCodes?.length ?? 0) > 0 ||
+            payload.units.length > 0 ||
+            payload.popcorn.length > 0)
+        ) {
+          const exchangeLines =
+            successResult.exchangeSaleLines &&
+            successResult.exchangeSaleLines.length > 0
+              ? successResult.exchangeSaleLines
+              : [
+                  ...(successResult.soldUnitQrCodes ?? payload.units).map(
+                    (code) => ({
+                      name: 'Ապրանք',
+                      price: 0,
+                      qty: 1,
+                      eMark: code as string | null,
+                    })
+                  ),
+                  ...payload.popcorn.map((p) => {
+                    const product = products.find((x) => x.id === p.productId);
+                    return {
+                      name: product?.name ?? 'Պոպկորն',
+                      price: product?.price ?? 0,
+                      qty: p.quantity,
+                      eMark: null as string | null,
+                    };
+                  }),
+                ];
+          const saleNotice = await submitSaleFiscal({
+            input: buildProductSaleInput({
+              paymentMethod: payload.payment?.method ?? 'cash',
+              total: successResult.newTotal ?? 0,
+              lines: exchangeLines,
+            }),
+            source: 'box_office',
+            orderId: successResult.orderId,
+          });
+          notices.push(saleNotice.message);
+        }
+
+        if (notices.length > 0) {
+          setFiscalNotice({
+            type: 'warning',
+            message: notices.join(' · '),
+          });
+          void refreshHdmAgentStatus();
+        }
+      }
+
       void loadProducts();
     } catch (err) {
       console.error('Return/exchange error:', err);
@@ -652,6 +744,8 @@ export default function BoxOfficeClient() {
               qty,
             };
           });
+        const soldEmarks =
+          (result as { soldUnitQrCodes?: string[] }).soldUnitQrCodes ?? [];
         const notice = await submitSaleFiscal({
           input: buildTicketSaleInput({
             movieTitle: seatMap.movie.title,
@@ -660,9 +754,11 @@ export default function BoxOfficeClient() {
             paymentMethod: payment.method,
             total: price + productsTotal,
             products: productLines,
+            eMarks: soldEmarks,
           }),
           source: 'box_office',
           ticketId: ticket.id,
+          orderId: ticket.orderId ?? ticket.order?.id ?? null,
         });
         setFiscalNotice(notice);
         void refreshHdmAgentStatus();

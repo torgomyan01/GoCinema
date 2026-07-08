@@ -175,20 +175,47 @@ export class HdmClient {
     const header = decodeResponseHeader(headerBuf);
     const responsePayload = await reader.readExact(header.payloadLen);
 
+    // ՀԴՄ-ը որոշ գործողությունների համար (օր. eMark check) կարող է
+    // վերադարձնել 200 դատարկ body-ով — սա հաջողություն է։
+    if (header.payloadLen === 0) {
+      if (header.code !== RESPONSE_CODE_OK) {
+        throw new HdmProtocolError(hdmErrorMessage(header.code), header.code);
+      }
+      return { headerCode: header.code, body: {} };
+    }
+
     let decoded: unknown = {};
     try {
       decoded = decryptJson(responsePayload, key);
-    } catch {
-      if (header.code !== RESPONSE_CODE_OK) {
+    } catch (decryptErr) {
+      // Որոշ պատասխաններ կարող են գալ չկոդավորված JSON
+      try {
+        const asText = responsePayload.toString('utf8').trim();
+        if (asText.startsWith('{') || asText.startsWith('[')) {
+          decoded = JSON.parse(asText);
+        } else {
+          throw decryptErr;
+        }
+      } catch {
+        console.error('[HDM] decrypt failed', {
+          op,
+          code: header.code,
+          payloadLen: header.payloadLen,
+          payloadHex: responsePayload.subarray(0, 32).toString('hex'),
+          error:
+            decryptErr instanceof Error ? decryptErr.message : String(decryptErr),
+        });
+        if (header.code !== RESPONSE_CODE_OK) {
+          throw new HdmProtocolError(
+            hdmErrorMessage(header.code),
+            header.code
+          );
+        }
         throw new HdmProtocolError(
-          hdmErrorMessage(header.code),
+          `HDM response decrypt failed (code ${header.code}, len ${header.payloadLen})`,
           header.code
         );
       }
-      throw new HdmProtocolError(
-        `HDM response decrypt failed (code ${header.code})`,
-        header.code
-      );
     }
 
     if (header.code !== RESPONSE_CODE_OK) {
@@ -337,16 +364,54 @@ export class HdmClient {
 
   async checkEmark(eMark: string): Promise<HdmEmarkCheckResponse> {
     const key = await this.ensureSession();
-    const result = await this.withSocket(async (reader, socket) => {
-      return this.sendOperation(
-        reader,
-        socket,
-        OperationCode.SingleEmark,
-        { seq: this.nextSeq(), eMark } satisfies HdmEmarkCheckRequest,
-        key
-      );
-    });
-    return result.body as HdmEmarkCheckResponse;
+    const request = {
+      seq: this.nextSeq(),
+      eMark,
+    } satisfies HdmEmarkCheckRequest;
+
+    console.log('\n========== HDM CHECK EMARK ==========');
+    console.log('[to HDM]', JSON.stringify(request, null, 2));
+
+    try {
+      const result = await this.withSocket(async (reader, socket) => {
+        return this.sendOperation(
+          reader,
+          socket,
+          OperationCode.SingleEmark,
+          request,
+          key
+        );
+      });
+      console.log('[HDM response]', JSON.stringify(result.body, null, 2));
+      console.log('=====================================\n');
+      return {
+        ok: true,
+        ...(result.body as HdmEmarkCheckResponse),
+      };
+    } catch (err) {
+      if (err instanceof HdmProtocolError && err.code === 102) {
+        this.sessionKey = null;
+        const key2 = await this.ensureSession();
+        const retry = await this.withSocket(async (reader, socket) => {
+          return this.sendOperation(
+            reader,
+            socket,
+            OperationCode.SingleEmark,
+            { seq: this.nextSeq(), eMark } satisfies HdmEmarkCheckRequest,
+            key2
+          );
+        });
+        console.log('[HDM response retry]', JSON.stringify(retry.body, null, 2));
+        console.log('=====================================\n');
+        return {
+          ok: true,
+          ...(retry.body as HdmEmarkCheckResponse),
+        };
+      }
+      console.error('[HDM check-emark error]', err);
+      console.log('=====================================\n');
+      throw err;
+    }
   }
 
   async ping(): Promise<{ operators: number; loggedIn: boolean }> {

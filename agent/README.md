@@ -76,7 +76,7 @@ npm run build
 AGENT_HOST=127.0.0.1
 AGENT_PORT=3100
 AGENT_API_KEY=<գաղտնի բանալի>
-AGENT_ALLOW_ORIGIN=https://gocinema.am
+AGENT_ALLOW_ORIGIN=https://gocinema.am,https://www.gocinema.am
 
 HDM_HOST=192.168.123.6
 HDM_PORT=8080
@@ -84,8 +84,12 @@ HDM_PASSWORD=...
 HDM_CASHIER=3
 HDM_PIN=...
 HDM_DEFAULT_DEP=1
+HDM_DEP_TICKET=1
+HDM_DEP_PRODUCT=2
 HDM_USE_EXT_POS=true
 ```
+
+Տոմսեր → `HDM_DEP_TICKET` (Բաժին 1), ապրանքներ → `HDM_DEP_PRODUCT` (Բաժին 2)։
 
 ՀԴՄ էկրանում Auto system IP = դրամարկղի PC-ի LAN IP (օր. `192.168.123.2`)։
 

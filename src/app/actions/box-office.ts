@@ -364,7 +364,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
 
     const walkInUserId = await getOrCreateWalkInUser();
 
-    const ticket = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const created = await tx.ticket.create({
         data: {
           userId: walkInUserId,
@@ -382,6 +382,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
       });
 
       // Ապրանքների դեպքում՝ ստեղծել Order + OrderItem-ներ, կապել տոմսին
+      let soldUnitQrCodes: string[] = [];
       if (selections.length > 0) {
         const order = await tx.order.create({
           data: {
@@ -415,13 +416,14 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
         );
         for (const sel of selections) {
           const product = dbProducts.find((p) => p.id === sel.productId)!;
-          await fulfillOrderItemStock(
+          const soldCodes = await fulfillOrderItemStock(
             tx,
             sel.productId,
             product.category,
             Math.floor(Number(sel.quantity)),
             itemByProduct.get(sel.productId) ?? null
           );
+          soldUnitQrCodes = soldUnitQrCodes.concat(soldCodes);
         }
 
         await tx.ticket.update({
@@ -442,7 +444,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
         },
       });
 
-      return tx.ticket.findUnique({
+      const ticketRow = await tx.ticket.findUnique({
         where: { id: created.id },
         include: {
           screening: { include: { movie: true, hall: true } },
@@ -450,7 +452,12 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
           order: { include: { orderItems: { include: { product: true } } } },
         },
       });
+
+      return { ticket: ticketRow, soldUnitQrCodes };
     });
+
+    const ticket = result?.ticket ?? null;
+    const soldUnitQrCodes = result?.soldUnitQrCodes ?? [];
 
     const seatLabel = ticket?.seat
       ? `${ticket.seat.row}${ticket.seat.number}`
@@ -467,7 +474,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
     revalidatePath('/admin/tickets');
     revalidatePath('/admin/notifications');
 
-    return { success: true, ticket, total: grandTotal };
+    return { success: true, ticket, total: grandTotal, soldUnitQrCodes };
   } catch (error) {
     if (
       error instanceof Error &&
@@ -620,7 +627,7 @@ export async function createBoxOfficeProductOrder(
 
     const walkInUserId = await getOrCreateWalkInUser();
 
-    const order = await prisma.$transaction(async (tx) => {
+    const orderResult = await prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
           userId: walkInUserId,
@@ -632,6 +639,7 @@ export async function createBoxOfficeProductOrder(
       });
 
       // QR ապրանքներ՝ մեկ պատվերի տող ամեն ապրանքի համար, կապել կոնկրետ միավորները
+      const soldUnitQrCodes: string[] = [];
       for (const [productId, group] of unitsByProduct) {
         const item = await tx.orderItem.create({
           data: {
@@ -642,7 +650,12 @@ export async function createBoxOfficeProductOrder(
             fulfilledAt: new Date(),
           },
         });
-        await sellSpecificProductUnits(tx, group.unitIds, item.id);
+        const codes = await sellSpecificProductUnits(
+          tx,
+          group.unitIds,
+          item.id
+        );
+        soldUnitQrCodes.push(...codes);
       }
 
       // Պոպկորն՝ քանակով
@@ -661,11 +674,16 @@ export async function createBoxOfficeProductOrder(
         await sellQuantityStock(tx, sel.productId, qty);
       }
 
-      return tx.order.findUnique({
+      const orderRow = await tx.order.findUnique({
         where: { id: created.id },
         include: { orderItems: { include: { product: true } } },
       });
+
+      return { order: orderRow, soldUnitQrCodes };
     });
+
+    const order = orderResult?.order ?? null;
+    const soldUnitQrCodes = orderResult?.soldUnitQrCodes ?? [];
 
     const unitCount = Array.from(unitsByProduct.values()).reduce(
       (sum, g) => sum + g.unitIds.length,
@@ -687,7 +705,7 @@ export async function createBoxOfficeProductOrder(
     revalidatePath('/admin/box-office');
     revalidatePath('/admin/notifications');
 
-    return { success: true, order, total };
+    return { success: true, order, total, soldUnitQrCodes };
   } catch (error) {
     if (
       error instanceof Error &&
@@ -924,13 +942,6 @@ export async function lookupBoxOfficeReturnByQr(qrCode: string) {
       };
     }
 
-    if (unit.pekReportedAt) {
-      return {
-        success: false,
-        error: 'ՊԵԿ ուղարկված միավորը չի կարելի վերադարձնել',
-      };
-    }
-
     const price = unit.orderItem?.price ?? unit.product.price;
 
     return {
@@ -943,6 +954,7 @@ export async function lookupBoxOfficeReturnByQr(qrCode: string) {
         orderId: unit.orderItem?.orderId ?? null,
         soldAt: unit.soldAt,
         paymentMethod: unit.orderItem?.order.paymentMethod ?? 'cash',
+        pekReportedAt: unit.pekReportedAt,
       },
     };
   } catch (error) {
@@ -996,9 +1008,17 @@ export async function processBoxOfficeProductReturnExchange(
     const walkInUserId = await getOrCreateWalkInUser();
     let refundAmount = 0;
     let returnedProductName = '';
+    let originalOrderId: number | null = null;
     let newOrderId: number | null = null;
     let newTotal = 0;
     let netDue = 0;
+    let soldUnitQrCodes: string[] = [];
+    let exchangeSaleLines: Array<{
+      name: string;
+      price: number;
+      qty: number;
+      eMark: string | null;
+    }> = [];
 
     await prisma.$transaction(async (tx) => {
       const returned = await returnSingleProductUnitByQr(tx, returnCode);
@@ -1008,6 +1028,7 @@ export async function processBoxOfficeProductReturnExchange(
 
       refundAmount = returned.refundAmount;
       returnedProductName = returned.productName;
+      originalOrderId = returned.orderId;
 
       if (data.mode === 'refund') {
         return;
@@ -1129,7 +1150,20 @@ export async function processBoxOfficeProductReturnExchange(
             fulfilledAt: new Date(),
           },
         });
-        await sellSpecificProductUnits(tx, group.unitIds, item.id);
+        const codes = await sellSpecificProductUnits(
+          tx,
+          group.unitIds,
+          item.id
+        );
+        soldUnitQrCodes.push(...codes);
+        for (const code of codes) {
+          exchangeSaleLines.push({
+            name: group.name,
+            price: group.price,
+            qty: 1,
+            eMark: code,
+          });
+        }
       }
 
       for (const sel of popcornSelections) {
@@ -1145,6 +1179,12 @@ export async function processBoxOfficeProductReturnExchange(
           },
         });
         await sellQuantityStock(tx, sel.productId, qty);
+        exchangeSaleLines.push({
+          name: product.name,
+          price: product.price,
+          qty,
+          eMark: null,
+        });
       }
     });
 
@@ -1168,6 +1208,43 @@ export async function processBoxOfficeProductReturnExchange(
       link: '/admin/box-office',
     });
 
+    // Գտնել սկզբնական վաճառքի ֆիսկալ կտրոնը՝ ՀԴՄ վերադարձի համար
+    let returnFiscal: {
+      crn: string;
+      rseq: number;
+      paymentMethod: 'cash' | 'card';
+      eMarks: string[];
+      amount: number;
+    } | null = null;
+
+    if (originalOrderId) {
+      const originalReceipt = await prisma.fiscalReceipt.findFirst({
+        where: {
+          orderId: originalOrderId,
+          operation: 'sale',
+          status: 'printed',
+          crn: { not: null },
+          rseq: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          crn: true,
+          rseq: true,
+          paymentMethod: true,
+        },
+      });
+      if (originalReceipt?.crn && originalReceipt.rseq != null) {
+        returnFiscal = {
+          crn: originalReceipt.crn,
+          rseq: originalReceipt.rseq,
+          paymentMethod:
+            originalReceipt.paymentMethod === 'card' ? 'card' : 'cash',
+          eMarks: [returnCode],
+          amount: refundAmount,
+        };
+      }
+    }
+
     revalidatePath('/admin/box-office');
     revalidatePath('/admin/products');
     revalidatePath('/admin/product-units');
@@ -1182,6 +1259,10 @@ export async function processBoxOfficeProductReturnExchange(
       refundToCustomer:
         data.mode === 'refund' ? refundAmount : netDue < 0 ? Math.abs(netDue) : 0,
       orderId: newOrderId,
+      soldUnitQrCodes,
+      exchangeSaleLines,
+      returnQrCode: returnCode,
+      returnFiscal,
       message,
     };
   } catch (error) {

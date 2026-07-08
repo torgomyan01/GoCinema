@@ -29,6 +29,9 @@ export function decrypt3des(ciphertext: Buffer, key: Buffer): Buffer {
   if (key.length !== KEY_LEN) {
     throw new Error(`3DES key must be ${KEY_LEN} bytes`);
   }
+  if (ciphertext.length === 0) {
+    return Buffer.alloc(0);
+  }
   if (ciphertext.length % BLOCK_SIZE !== 0) {
     throw new Error('HDM ciphertext length must be a multiple of 8');
   }
@@ -43,8 +46,11 @@ export function encryptJson(obj: unknown, key: Buffer): Buffer {
 }
 
 export function decryptJson<T = unknown>(ciphertext: Buffer, key: Buffer): T {
+  if (!ciphertext.length) {
+    return {} as T;
+  }
   const plaintext = decrypt3des(ciphertext, key);
-  const text = plaintext.toString('utf8').trim();
+  const text = plaintext.toString('utf8').replace(/\0+$/g, '').trim();
   if (!text) return {} as T;
   return JSON.parse(text) as T;
 }

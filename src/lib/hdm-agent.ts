@@ -195,6 +195,32 @@ export async function checkHdmEmark(
   });
 }
 
+/**
+ * ՀԴՄ eMark՝ 29–110 նիշ (integration manual v0.7.3)։
+ * Մեր բազայում QR = eMark։ Անվավեր երկարությունը բաց ենք թողնում
+ * (ՀԴՄ-ը կմերժի 195-ով), բայց trim ենք անում։
+ */
+export function normalizeEmark(code: string | null | undefined): string | null {
+  const value = (code ?? '').trim();
+  if (!value) return null;
+  if (value.length < 29 || value.length > 110) {
+    return value;
+  }
+  return value;
+}
+
+export function collectValidEmarks(
+  codes: Array<string | null | undefined>
+): string[] {
+  return Array.from(
+    new Set(
+      codes
+        .map((c) => normalizeEmark(c))
+        .filter((c): c is string => Boolean(c))
+    )
+  );
+}
+
 /** Տոմսի վաճառք → HDM print-receipt input */
 export function buildTicketSaleInput(input: {
   movieTitle: string;
@@ -202,7 +228,14 @@ export function buildTicketSaleInput(input: {
   ticketPrice: number;
   paymentMethod: HdmPaymentMethod;
   total: number;
-  products: Array<{ name: string; price: number; qty: number }>;
+  products: Array<{
+    name: string;
+    price: number;
+    qty: number;
+    eMark?: string | null;
+  }>;
+  /** Վաճառված QR ապրանքների eMark-եր (տոմսից բացի) */
+  eMarks?: string[];
 }): HdmPrintReceiptInput {
   const ticketName = `Տոմս · ${input.movieTitle} · ${input.seatLabel}`;
   const items: HdmReceiptItemInput[] = [
@@ -212,6 +245,7 @@ export function buildTicketSaleInput(input: {
       price: input.ticketPrice,
       qty: 1,
       unit: 'տոմս',
+      dep: 1,
     },
     ...input.products.map((p, idx) => ({
       productCode: `PROD-${idx + 1}`,
@@ -219,13 +253,20 @@ export function buildTicketSaleInput(input: {
       price: p.price,
       qty: p.qty,
       unit: 'հատ',
+      dep: 2,
     })),
   ];
+
+  const eMarks = collectValidEmarks([
+    ...(input.eMarks ?? []),
+    ...input.products.map((p) => p.eMark),
+  ]);
 
   return {
     paymentMethod: input.paymentMethod,
     total: input.total,
     items,
+    eMarks: eMarks.length > 0 ? eMarks : undefined,
   };
 }
 
@@ -239,19 +280,29 @@ export function buildProductSaleInput(input: {
     qty: number;
     productCode?: string;
     eMark?: string | null;
+    /** Տոմսի տող՝ Բաժին 1, հակառակ դեպքում Ապրանք՝ Բաժին 2 */
+    isTicket?: boolean;
+    dep?: number;
   }>;
 }): HdmPrintReceiptInput {
-  const eMarks = input.lines
-    .map((l) => l.eMark)
-    .filter((code): code is string => Boolean(code?.trim()));
+  const eMarks = collectValidEmarks(input.lines.map((l) => l.eMark));
 
-  const items: HdmReceiptItemInput[] = input.lines.map((line, idx) => ({
-    productCode: line.productCode ?? `SKU-${idx + 1}`,
-    productName: line.name,
-    price: line.price,
-    qty: line.qty,
-    unit: 'հատ',
-  }));
+  const items: HdmReceiptItemInput[] = input.lines.map((line, idx) => {
+    const isTicket =
+      line.isTicket === true ||
+      line.productCode === 'TICKET' ||
+      line.name.startsWith('Տոմս');
+    return {
+      productCode: isTicket
+        ? 'TICKET'
+        : (line.productCode ?? `SKU-${idx + 1}`),
+      productName: line.name,
+      price: line.price,
+      qty: line.qty,
+      unit: isTicket ? 'տոմս' : 'հատ',
+      dep: line.dep ?? (isTicket ? 1 : 2),
+    };
+  });
 
   return {
     paymentMethod: input.paymentMethod,
@@ -268,7 +319,13 @@ export async function printHdmTicketSale(input: {
   ticketPrice: number;
   paymentMethod: HdmPaymentMethod;
   total: number;
-  products: Array<{ name: string; price: number; qty: number }>;
+  products: Array<{
+    name: string;
+    price: number;
+    qty: number;
+    eMark?: string | null;
+  }>;
+  eMarks?: string[];
 }): Promise<HdmAgentResponse<HdmFiscalReceipt>> {
   return printHdmReceipt(buildTicketSaleInput(input));
 }

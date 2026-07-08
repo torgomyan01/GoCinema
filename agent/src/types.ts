@@ -88,6 +88,7 @@ export interface HdmEmarkCheckRequest {
 }
 
 export interface HdmEmarkCheckResponse {
+  ok?: boolean;
   valid?: boolean;
   message?: string;
   [key: string]: unknown;

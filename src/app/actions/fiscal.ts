@@ -6,6 +6,10 @@ import type { Prisma } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isStaffRole } from '@/lib/roles';
+import {
+  clearProductUnitsPekReported,
+  markProductUnitsPekReported,
+} from '@/lib/product-units';
 
 export type FiscalOperation = 'sale' | 'return';
 export type FiscalSource = 'box_office' | 'scanner';
@@ -70,6 +74,66 @@ function toStr(value: unknown): string | null {
   return s.length > 0 ? s : null;
 }
 
+function collectEmarksFromPayload(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const raw = (payload as { eMarks?: unknown }).eMarks;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((c) => (typeof c === 'string' ? c.trim() : String(c ?? '').trim()))
+    .filter(Boolean);
+}
+
+/**
+ * ՀԴՄ հաջող վաճառքից հետո՝ վաճառված միավորները նշել որպես
+ * ՊԵԿ ուղարկված (շրջանառությունից դուրս)։
+ * Վերադարձի դեպքում՝ հանել ՊԵԿ նշումը։
+ */
+async function syncPekFromFiscal(params: {
+  operation: FiscalOperation;
+  status: 'printed' | 'failed';
+  orderId?: number | null;
+  ticketId?: number | null;
+  requestPayload?: unknown;
+}) {
+  if (params.status !== 'printed') return;
+
+  let orderId = params.orderId ?? null;
+  if (!orderId && params.ticketId) {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: params.ticketId },
+      select: { orderId: true },
+    });
+    orderId = ticket?.orderId ?? null;
+  }
+
+  const eMarks = collectEmarksFromPayload(params.requestPayload);
+  if (!orderId && eMarks.length === 0) return;
+
+  try {
+    if (params.operation === 'sale') {
+      const count = await markProductUnitsPekReported({
+        orderId,
+        eMarks,
+      });
+      if (count > 0) {
+        revalidatePath('/admin/product-units');
+        revalidatePath('/admin/products');
+      }
+    } else if (params.operation === 'return') {
+      const count = await clearProductUnitsPekReported({
+        orderId,
+        eMarks,
+      });
+      if (count > 0) {
+        revalidatePath('/admin/product-units');
+        revalidatePath('/admin/products');
+      }
+    }
+  } catch (error) {
+    console.error('syncPekFromFiscal error:', error);
+  }
+}
+
 /**
  * Պահում է ֆիսկալ գործարքը բազայում (հաջողված կամ ձախողված)։
  * Կանչվում է դրամարկղի/scanner-ի բրաուզերից՝ ՀԴՄ agent-ի պատասխանից հետո։
@@ -123,6 +187,14 @@ export async function recordFiscalReceipt(input: RecordFiscalReceiptInput) {
       select: { id: true, status: true, fiscalNumber: true },
     });
 
+    await syncPekFromFiscal({
+      operation: input.operation,
+      status: input.status,
+      orderId: input.orderId,
+      ticketId: input.ticketId,
+      requestPayload: input.requestPayload,
+    });
+
     revalidatePath('/admin/fiscal');
     return { success: true as const, id: created.id };
   } catch (error) {
@@ -154,6 +226,7 @@ export interface FiscalReceiptListItem {
   cashierName: string | null;
   createdAt: string;
   fiscalTime: string | null;
+  eMarks: string[];
 }
 
 /** Ֆիսկալ կտրոնների ցանկը՝ ադմին էջի համար */
@@ -177,27 +250,38 @@ export async function getFiscalReceipts(options?: {
       include: { cashier: { select: { name: true } } },
     });
 
-    const items: FiscalReceiptListItem[] = rows.map((r) => ({
-      id: r.id,
-      operation: r.operation,
-      source: r.source,
-      paymentMethod: r.paymentMethod,
-      status: r.status,
-      errorMessage: r.errorMessage,
-      errorCode: r.errorCode,
-      rseq: r.rseq,
-      fiscalNumber: r.fiscalNumber,
-      crn: r.crn,
-      total: r.total,
-      change: r.change,
-      qr: r.qr,
-      verificationNumber: r.verificationNumber,
-      ticketId: r.ticketId,
-      orderId: r.orderId,
-      cashierName: r.cashier?.name ?? null,
-      createdAt: r.createdAt.toISOString(),
-      fiscalTime: r.fiscalTime ? r.fiscalTime.toISOString() : null,
-    }));
+    const items: FiscalReceiptListItem[] = rows.map((r) => {
+      const payload = r.requestPayload as { eMarks?: unknown } | null;
+      const eMarks = Array.isArray(payload?.eMarks)
+        ? payload.eMarks
+            .map((c) =>
+              typeof c === 'string' ? c.trim() : String(c ?? '').trim()
+            )
+            .filter(Boolean)
+        : [];
+      return {
+        id: r.id,
+        operation: r.operation,
+        source: r.source,
+        paymentMethod: r.paymentMethod,
+        status: r.status,
+        errorMessage: r.errorMessage,
+        errorCode: r.errorCode,
+        rseq: r.rseq,
+        fiscalNumber: r.fiscalNumber,
+        crn: r.crn,
+        total: r.total,
+        change: r.change,
+        qr: r.qr,
+        verificationNumber: r.verificationNumber,
+        ticketId: r.ticketId,
+        orderId: r.orderId,
+        cashierName: r.cashier?.name ?? null,
+        createdAt: r.createdAt.toISOString(),
+        fiscalTime: r.fiscalTime ? r.fiscalTime.toISOString() : null,
+        eMarks,
+      };
+    });
 
     const failedCount = await prisma.fiscalReceipt.count({
       where: { status: 'failed' },
@@ -261,6 +345,20 @@ export async function applyFiscalReprintResult(
   }
 
   try {
+    const existing = await prisma.fiscalReceipt.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        operation: true,
+        orderId: true,
+        ticketId: true,
+        requestPayload: true,
+      },
+    });
+    if (!existing) {
+      return { success: false as const, error: 'Կտրոնը չի գտնվել' };
+    }
+
     const f = fiscal ?? {};
     const fiscalTime =
       typeof f.time === 'number' && Number.isFinite(f.time)
@@ -290,6 +388,14 @@ export async function applyFiscalReprintResult(
         verificationNumber: toStr(f.verificationNumber),
         cashierId,
       },
+    });
+
+    await syncPekFromFiscal({
+      operation: (existing.operation === 'return' ? 'return' : 'sale') as FiscalOperation,
+      status: 'printed',
+      orderId: existing.orderId,
+      ticketId: existing.ticketId,
+      requestPayload: existing.requestPayload,
     });
 
     revalidatePath('/admin/fiscal');

@@ -48,6 +48,10 @@ export interface AgentConfig {
     cashier: number;
     pin: string | number | null;
     defaultDep: number;
+    /** Տոմսերի բաժին (ՀԴՄ dep id) */
+    depTicket: number;
+    /** Ապրանքների բաժին (ՀԴՄ dep id) */
+    depProduct: number;
     defaultAdgTicket: string;
     defaultAdgProduct: string;
     useExtPos: boolean;
@@ -62,7 +66,10 @@ export function loadConfig(): AgentConfig {
     );
   }
 
-  const allowOrigins = (process.env.AGENT_ALLOW_ORIGIN ?? 'https://gocinema.am')
+  const allowOrigins = (
+    process.env.AGENT_ALLOW_ORIGIN ??
+    'https://gocinema.am,https://www.gocinema.am'
+  )
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
@@ -79,6 +86,11 @@ export function loadConfig(): AgentConfig {
       cashier: intEnv('HDM_CASHIER', 1),
       pin: parseHdmPin(process.env.HDM_PIN),
       defaultDep: intEnv('HDM_DEFAULT_DEP', 1),
+      depTicket: intEnv(
+        'HDM_DEP_TICKET',
+        Number(process.env.HDM_DEFAULT_DEP?.trim()) || 1
+      ),
+      depProduct: intEnv('HDM_DEP_PRODUCT', 2),
       defaultAdgTicket:
         process.env.HDM_DEFAULT_ADG_TICKET?.trim() || '05213',
       defaultAdgProduct:

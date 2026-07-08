@@ -603,6 +603,7 @@ export async function payReservationAtCounter(input: {
       price: number;
       qty: number;
       eMark?: string | null;
+      isTicket?: boolean;
     }> = [];
     for (const t of reservedTickets) {
       const seatLabel = t.seat ? `${t.seat.row}${t.seat.number}` : '';
@@ -614,6 +615,7 @@ export async function payReservationAtCounter(input: {
         ),
         price: t.price,
         qty: 1,
+        isTicket: true,
       });
     }
     for (const item of order.orderItems) {

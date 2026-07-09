@@ -19,6 +19,7 @@ import {
 } from '@/app/actions/screenings';
 import { SITE_URL } from '@/utils/consts';
 import { ageRatingClasses } from '@/lib/age-rating';
+import { formatPrice } from '@/lib/format';
 import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 interface HeroTicket {
@@ -240,7 +241,7 @@ function HeroTicketCard({
         </div>
 
         <div className="text-center text-sm font-bold text-red-400">
-          {ticket.basePrice.toLocaleString('hy-AM')} ֏
+          {formatPrice(ticket.basePrice)} ֏
         </div>
 
         <Link

@@ -810,7 +810,7 @@ export default function BookingPageClient({
       </div>
 
       {/* ── Mobile Bottom Bar ── */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-[100000]">
         <AnimatePresence>
           {selectedSeats.length > 0 && summaryExpanded && (
             <motion.div
@@ -918,7 +918,7 @@ export default function BookingPageClient({
         )}
 
         {/* Bottom action bar */}
-        <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 safe-area-bottom">
+        <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 safe-area-bottom ">
           {selectedSeats.length > 0 ? (
             <>
               {/* Price + toggle */}

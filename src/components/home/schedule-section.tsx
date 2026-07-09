@@ -21,6 +21,7 @@ import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
 import { getScreenings } from '@/app/actions/screenings';
+import { formatPrice } from '@/lib/format';
 import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 interface Screening {
@@ -274,7 +275,7 @@ export default function ScheduleSection() {
         </div>
 
         <div className="text-xs font-semibold text-red-600 mb-2">
-          {screening.basePrice.toLocaleString('hy-AM')} ֏
+          {formatPrice(screening.basePrice)} ֏
         </div>
 
         {!isPastDate && (

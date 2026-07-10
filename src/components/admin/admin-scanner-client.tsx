@@ -483,40 +483,6 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     }
   };
 
-  const handleTicketCheckedChange = (
-    windowId: string,
-    ticketId: string,
-    checked: boolean
-  ) => {
-    setWindows((prevWindows) =>
-      prevWindows.map((w) => {
-        if (w.id === windowId) {
-          const checkedTickets = new Set(w.checkedTickets || []);
-          if (checked) {
-            checkedTickets.add(ticketId);
-          } else {
-            checkedTickets.delete(ticketId);
-          }
-
-          // Also save checkedTickets per QR code for persistence
-          const qrCheckedTickets = w.qrCheckedTickets || {};
-          if (w.qrCode) {
-            const qrTickets = new Set(qrCheckedTickets[w.qrCode] || []);
-            if (checked) {
-              qrTickets.add(ticketId);
-            } else {
-              qrTickets.delete(ticketId);
-            }
-            qrCheckedTickets[w.qrCode] = Array.from(qrTickets);
-          }
-
-          return { ...w, checkedTickets, qrCheckedTickets };
-        }
-        return w;
-      })
-    );
-  };
-
   const openScanModal = (ticket: any) => {
     setEntryError(null);
     setScanModalTicket(ticket);
@@ -661,6 +627,50 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       setEntryError('Մուտքը հաստատելիս սխալ է տեղի ունեցել');
     } finally {
       setIsCompletingEntry(false);
+    }
+  };
+
+  const handleMarkTicketUsed = async (ticketId: number) => {
+    const win = activeWindow;
+    if (!win || !win.scannedData || !win.qrCode) return;
+
+    const ticket =
+      win.scannedData.type === 'order'
+        ? (win.scannedData.data.tickets ?? []).find(
+            (t: any) => Number(t.id) === ticketId
+          )
+        : win.scannedData.data;
+
+    if (!ticket) return;
+    if (ticket.status === 'used') return;
+    if (ticket.status !== 'paid') {
+      alert('Տոմսը նախ պետք է վճարվի դրամարկղում');
+      return;
+    }
+
+    // Եթե կան չսկանավորված QR ապրանքներ՝ բացում ենք սկան-մոդալը (մուտքն այնտեղ է հաստատվում)
+    if (ticketNeedsQrScan(ticket)) {
+      openScanModal(ticket);
+      return;
+    }
+
+    try {
+      const result = await markTicketAsUsed(ticketId);
+      if (result.success) {
+        const fiscalMessage = await runEntryFiscal(
+          win.id,
+          (result as { fiscal?: ScannerFiscalData | null }).fiscal,
+          false,
+          ticketId
+        );
+        await handleScanSuccess(win.id, win.qrCode);
+        if (fiscalMessage) alert(fiscalMessage);
+      } else {
+        alert(result.error || 'Տոմսը նշելիս սխալ է տեղի ունեցել');
+      }
+    } catch (err) {
+      console.error('Error marking ticket as used:', err);
+      alert('Տոմսը նշելիս սխալ է տեղի ունեցել');
     }
   };
 
@@ -1211,25 +1221,32 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                       <Ticket className="w-5 h-5" />
                       Տոմսեր ({activeWindow.scannedData.data.tickets.length})
                     </h4>
-                    {activeWindow.checkedTickets && (
-                      <div className="text-sm text-gray-600 flex items-center gap-4">
-                        <span className="flex items-center gap-1">
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                          Մուտք գործած:{' '}
-                          <span className="font-semibold text-green-600">
-                            {activeWindow.checkedTickets.size}
+                    {(() => {
+                      const usedCount =
+                        activeWindow.scannedData.data.tickets.filter(
+                          (t: any) => t.status === 'used'
+                        ).length;
+                      const total =
+                        activeWindow.scannedData.data.tickets.length;
+                      return (
+                        <div className="text-sm text-gray-600 flex items-center gap-4">
+                          <span className="flex items-center gap-1">
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            Մուտք գործած:{' '}
+                            <span className="font-semibold text-green-600">
+                              {usedCount}
+                            </span>
                           </span>
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <XCircle className="w-4 h-4 text-gray-400" />
-                          Չի մուտք գործել:{' '}
-                          <span className="font-semibold text-gray-600">
-                            {activeWindow.scannedData.data.tickets.length -
-                              activeWindow.checkedTickets.size}
+                          <span className="flex items-center gap-1">
+                            <XCircle className="w-4 h-4 text-gray-400" />
+                            Չի մուտք գործել:{' '}
+                            <span className="font-semibold text-gray-600">
+                              {total - usedCount}
+                            </span>
                           </span>
-                        </span>
-                      </div>
-                    )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {activeWindow.scannedData.data.tickets.map(
@@ -1241,16 +1258,12 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                           formatTime={formatTime}
                           getStatusBadge={getStatusBadge}
                           getSeatTypeLabel={getSeatTypeLabel}
-                          onCheckedChange={(ticketId, checked) =>
-                            handleTicketCheckedChange(
-                              activeWindow.id,
-                              ticketId,
-                              checked
-                            )
-                          }
-                          isChecked={
-                            activeWindow.checkedTickets?.has(ticket.id) || false
-                          }
+                          onCheckedChange={(ticketId, checked) => {
+                            if (checked) {
+                              void handleMarkTicketUsed(Number(ticketId));
+                            }
+                          }}
+                          isChecked={ticket.status === 'used'}
                           onAddProducts={openProductModal}
                           entryMode
                           onScanPreOrderProducts={openScanModal}
@@ -1335,28 +1348,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                   );
                 })()}
 
-                {/* Action Button */}
-                {activeWindow.scannedData.data.tickets.some(
-                  (t: any) => t.status === 'paid'
-                ) && (
-                  <button
-                    onClick={() => handleMarkAsUsed(activeWindow.id)}
-                    disabled={activeWindow.isMarking}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                  >
-                    {activeWindow.isMarking ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Նշվում է...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-5 h-5" />
-                        Նշել բոլոր տոմսերը որպես օգտագործված
-                      </>
-                    )}
-                  </button>
-                )}
+                {/* Ամեն տոմս մուտք է գործում առանձին՝ քարտի վրայի նշման միջոցով */}
               </div>
             ) : (
               <div className="space-y-4">

@@ -69,8 +69,11 @@ export default function TicketCard({
     setChecked(isChecked);
   }, [isChecked]);
 
+  // Մուտքի ռեժիմում միայն վճարված տոմսը կարելի է նշել որպես մուտք գործած
+  const checkboxDisabled = isUsed || (entryMode && ticket.status !== 'paid');
+
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isUsed) return;
+    if (checkboxDisabled) return;
     const newChecked = e.target.checked;
     setChecked(newChecked);
     if (onCheckedChange) {
@@ -88,7 +91,7 @@ export default function TicketCard({
                 type="checkbox"
                 checked={checked || isUsed}
                 onChange={handleCheckboxChange}
-                disabled={isUsed}
+                disabled={checkboxDisabled}
                 className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-70"
               />
               <span className="ml-2 text-sm text-gray-600">

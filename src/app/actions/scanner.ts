@@ -804,15 +804,9 @@ export async function completeTicketEntry(input: {
       }
     }
 
+    // ՀԴՄ-ին ուղարկում ենք ՄԻԱՅՆ ապրանքները (QR/eMark)։ Տոմսը արդեն վճարված է
+    // (օնլայն/ամրագրման վճարում)՝ մուտքի պահին ՀԴՄ կրկին չի ուղարկվում։
     const fiscalLines: EntryFiscalLine[] = [];
-    const seatLabel = ticket.seat ? `${ticket.seat.row}${ticket.seat.number}` : '';
-    const movieTitle = ticket.screening?.movie?.title ?? 'ֆիլմ';
-    fiscalLines.push({
-      name: `Տոմս · ${movieTitle}${seatLabel ? ` · ${seatLabel}` : ''}`.slice(0, 50),
-      price: ticket.price,
-      qty: 1,
-      isTicket: true,
-    });
 
     await prisma.$transaction(async (tx) => {
       for (const line of qrLines) {
@@ -850,14 +844,14 @@ export async function completeTicketEntry(input: {
       success: true,
       message: 'Մուտքը հաստատված է',
       fiscal:
-        fiscalLines.length > 0
+        productLines.length > 0
           ? {
               orderId: ticket.orderId,
               ticketId,
               paymentMethod,
-              total: ticket.price + productsTotal,
-              lines: fiscalLines,
-              needsFulfillmentConfirm: productLines.length > 0,
+              total: productsTotal,
+              lines: productLines,
+              needsFulfillmentConfirm: true,
             }
           : null,
     };
@@ -1115,15 +1109,9 @@ export async function markTicketAsUsed(ticketId: number) {
       };
     }
 
+    // ՀԴՄ-ին ուղարկում ենք ՄԻԱՅՆ ապրանքները (QR/eMark)։ Վճարված տոմսը
+    // մուտքի պահին ՀԴՄ կրկին չի ուղարկվում։
     const fiscalLines: EntryFiscalLine[] = [];
-    const seatLabel = ticket.seat ? `${ticket.seat.row}${ticket.seat.number}` : '';
-    const movieTitle = ticket.screening?.movie?.title ?? 'ֆիլմ';
-    fiscalLines.push({
-      name: `Տոմս · ${movieTitle}${seatLabel ? ` · ${seatLabel}` : ''}`.slice(0, 50),
-      price: ticket.price,
-      qty: 1,
-      isTicket: true,
-    });
 
     await prisma.$transaction(async (tx) => {
       await fulfillTicketProducts(tx, ticketId, fiscalLines);
@@ -1148,14 +1136,14 @@ export async function markTicketAsUsed(ticketId: number) {
       success: true,
       message: 'Տոմսը հաջողությամբ նշվեց որպես օգտագործված',
       fiscal:
-        fiscalLines.length > 0
+        productLines.length > 0
           ? {
               orderId: ticket.orderId,
               ticketId,
               paymentMethod,
-              total: ticket.price + productsTotal,
-              lines: fiscalLines,
-              needsFulfillmentConfirm: productLines.length > 0,
+              total: productsTotal,
+              lines: productLines,
+              needsFulfillmentConfirm: true,
             }
           : null,
     };
@@ -1207,23 +1195,12 @@ export async function markAllTicketsInOrderAsUsed(orderId: number) {
       };
     }
 
+    // ՀԴՄ-ին ուղարկում ենք ՄԻԱՅՆ ապրանքները (QR/eMark)։ Վճարված տոմսերը
+    // մուտքի պահին ՀԴՄ կրկին չեն ուղարկվում։
     const fiscalLines: EntryFiscalLine[] = [];
-    let ticketsTotal = 0;
 
     await prisma.$transaction(async (tx) => {
       for (const t of paidTickets) {
-        const seatLabel = t.seat ? `${t.seat.row}${t.seat.number}` : '';
-        const movieTitle = t.screening?.movie?.title ?? 'ֆիլմ';
-        fiscalLines.push({
-          name: `Տոմս · ${movieTitle}${seatLabel ? ` · ${seatLabel}` : ''}`.slice(
-            0,
-            50
-          ),
-          price: t.price,
-          qty: 1,
-          isTicket: true,
-        });
-        ticketsTotal += t.price;
         await fulfillTicketProducts(tx, t.id, fiscalLines);
       }
       await tx.ticket.updateMany({
@@ -1249,13 +1226,13 @@ export async function markAllTicketsInOrderAsUsed(orderId: number) {
       success: true,
       message: `${paidTickets.length} տոմս հաջողությամբ նշվեց որպես օգտագործված`,
       fiscal:
-        fiscalLines.length > 0
+        productLines.length > 0
           ? {
               orderId,
               paymentMethod,
-              total: ticketsTotal + productsTotal,
-              lines: fiscalLines,
-              needsFulfillmentConfirm: productLines.length > 0,
+              total: productsTotal,
+              lines: productLines,
+              needsFulfillmentConfirm: true,
             }
           : null,
     };

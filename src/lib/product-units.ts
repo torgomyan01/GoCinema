@@ -88,7 +88,7 @@ export async function sellProductUnits(
   if (!Number.isFinite(qty) || qty <= 0) return [];
 
   const units = await tx.productUnit.findMany({
-    where: { productId, status: 'in_stock' },
+    where: { productId, status: 'in_stock', orderItemId: null },
     orderBy: { createdAt: 'asc' },
     take: qty,
     select: { id: true, qrCode: true },
@@ -342,6 +342,68 @@ export async function returnProductUnitsByOrderItem(
   for (const productId of productIds) {
     await syncProductStock(tx, productId);
   }
+}
+
+/** Մուտքի ժամանակ ամրագրված ապրանքի QR-ները կցել պատվերի տողին (դեռ չվաճառված) */
+export async function clearOrderItemQrReservations(
+  tx: Tx,
+  orderItemId: number
+) {
+  await tx.productUnit.updateMany({
+    where: { orderItemId, status: 'in_stock' },
+    data: { orderItemId: null },
+  });
+}
+
+export async function reserveProductUnitsForOrderItem(
+  tx: Tx,
+  orderItemId: number,
+  unitIds: number[]
+) {
+  const ids = Array.from(new Set(unitIds.filter((id) => Number.isFinite(id))));
+  if (ids.length === 0) return;
+
+  const units = await tx.productUnit.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, status: true, orderItemId: true },
+  });
+
+  if (
+    units.length !== ids.length ||
+    units.some(
+      (u) =>
+        u.status !== 'in_stock' ||
+        (u.orderItemId != null && u.orderItemId !== orderItemId)
+    )
+  ) {
+    throw new Error(UNIT_STOCK_INSUFFICIENT);
+  }
+
+  await tx.productUnit.updateMany({
+    where: { id: { in: ids }, status: 'in_stock' },
+    data: { orderItemId },
+  });
+}
+
+/** Կցված QR միավորները վաճառել մուտքի ժամանակ */
+export async function sellReservedProductUnits(
+  tx: Tx,
+  orderItemId: number
+): Promise<string[]> {
+  const units = await tx.productUnit.findMany({
+    where: { orderItemId, status: 'in_stock' },
+    select: { id: true, qrCode: true },
+  });
+
+  if (units.length === 0) return [];
+
+  await sellSpecificProductUnits(
+    tx,
+    units.map((u) => u.id),
+    orderItemId
+  );
+
+  return units.map((u) => u.qrCode);
 }
 
 /** Պատվերի տողի պաշարից հանել՝ ըստ ապրանքի տիպի */

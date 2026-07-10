@@ -9,7 +9,18 @@ import {
   DollarSign,
   ShoppingCart,
   Plus,
+  ScanLine,
+  Check,
+  Trash2,
 } from 'lucide-react';
+import { formatPrice } from '@/lib/format';
+import { isQuantityOnlyProduct } from '@/lib/product-units';
+import {
+  getQrOrderItems,
+  isTicketQrReady,
+  ticketNeedsQrScan,
+  ticketQrScanProgress,
+} from '@/lib/preorder-entry';
 
 interface TicketCardProps {
   ticket: any;
@@ -21,21 +32,10 @@ interface TicketCardProps {
   isChecked?: boolean;
   onAddProducts?: (ticketId: number, status: string) => void;
   orderStatus?: string;
-}
-
-function getProductItemBadge(item: {
-  fulfilledAt?: string | Date | null;
-}) {
-  if (item.fulfilledAt) {
-    return {
-      label: 'Տրված է',
-      className: 'bg-green-100 text-green-800',
-    };
-  }
-  return {
-    label: 'Սպասում է տրման',
-    className: 'bg-blue-100 text-blue-800',
-  };
+  entryMode?: boolean;
+  onScanPreOrderProducts?: (ticket: any) => void;
+  onRemoveOrderItem?: (orderItem: any, ticketId: number) => void;
+  removingOrderItemId?: number | null;
 }
 
 export default function TicketCard({
@@ -47,6 +47,10 @@ export default function TicketCard({
   onCheckedChange,
   isChecked = false,
   onAddProducts,
+  entryMode = false,
+  onScanPreOrderProducts,
+  onRemoveOrderItem,
+  removingOrderItemId = null,
 }: TicketCardProps) {
   const statusBadge = getStatusBadge(ticket.status);
   const [checked, setChecked] = useState(isChecked);
@@ -56,6 +60,10 @@ export default function TicketCard({
     !isUsed &&
     Boolean(onAddProducts);
   const isUnpaid = ticket.status === 'reserved';
+  const needsQrScan = entryMode && ticketNeedsQrScan(ticket);
+  const qrReady = entryMode && isTicketQrReady(ticket);
+  const qrProgress = entryMode ? ticketQrScanProgress(ticket) : null;
+  const hasQrProducts = entryMode && getQrOrderItems(ticket).length > 0;
 
   useEffect(() => {
     setChecked(isChecked);
@@ -125,7 +133,7 @@ export default function TicketCard({
             <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
               <DollarSign className="w-4 h-4 text-green-600" />
               <span className="font-medium text-gray-900">
-                Գին: {ticket.price?.toLocaleString('hy-AM')} ֏
+                Գին: {formatPrice(ticket.price ?? 0)} ֏
               </span>
             </div>
           </div>
@@ -139,44 +147,79 @@ export default function TicketCard({
 
       {(ticket.orderItems?.length > 0 || canAddProducts) && (
         <div className="mt-3 pt-3 border-t border-gray-200">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2">
             <div className="text-xs font-medium text-gray-700 flex items-center gap-1">
               <ShoppingCart className="w-3 h-3" />
-              Ապրանքներ:
+              Ապրանքներ
             </div>
-            {canAddProducts && (
-              <button
-                type="button"
-                onClick={() => onAddProducts?.(Number(ticket.id), ticket.status)}
-                className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {isUnpaid ? 'Սկանավորել ապրանք' : 'Ավելացնել'}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {needsQrScan && onScanPreOrderProducts && (
+                <button
+                  type="button"
+                  onClick={() => onScanPreOrderProducts(ticket)}
+                  className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700"
+                >
+                  <ScanLine className="h-3.5 w-3.5" />
+                  Սկանավորել ({qrProgress?.done}/{qrProgress?.total})
+                </button>
+              )}
+              {qrReady && hasQrProducts && (
+                <span className="flex items-center gap-1 text-xs font-semibold text-green-600">
+                  <Check className="h-3.5 w-3.5" />
+                  QR պատրաստ
+                </span>
+              )}
+              {canAddProducts && (
+                <button
+                  type="button"
+                  onClick={() => onAddProducts?.(Number(ticket.id), ticket.status)}
+                  className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {isUnpaid ? 'Ավելացնել' : 'Ավելացնել'}
+                </button>
+              )}
+            </div>
           </div>
           {ticket.orderItems?.length > 0 ? (
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {ticket.orderItems.map((item: any) => {
-                const badge = getProductItemBadge(item);
+                const canRemove =
+                  entryMode &&
+                  ticket.status === 'reserved' &&
+                  Boolean(onRemoveOrderItem);
+
                 return (
                   <div
                     key={item.id}
                     className="flex items-center justify-between text-sm gap-2"
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="text-gray-700 truncate">
-                        {item.product.name} x{item.quantity}
-                      </span>
-                      <span
-                        className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.className}`}
-                      >
-                        {badge.label}
+                    <span className="text-gray-700 truncate min-w-0">
+                      {item.product.name} x{item.quantity}
+                      {isQuantityOnlyProduct(item.product?.category ?? '') && (
+                        <span className="ml-1 text-[10px] text-gray-400">
+                          (առանց QR)
+                        </span>
+                      )}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {canRemove && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onRemoveOrderItem?.(item, Number(ticket.id))
+                          }
+                          disabled={removingOrderItemId === item.id}
+                          className="rounded-md p-1 text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                          title="Հեռացնել պատվերից"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <span className="text-gray-600 font-medium">
+                        {formatPrice(item.price * item.quantity)} ֏
                       </span>
                     </div>
-                    <span className="text-gray-600 font-medium shrink-0">
-                      {(item.price * item.quantity).toLocaleString('hy-AM')} ֏
-                    </span>
                   </div>
                 );
               })}

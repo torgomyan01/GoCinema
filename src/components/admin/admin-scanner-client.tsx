@@ -23,11 +23,14 @@ import {
   Maximize2,
   ArrowRight,
   Info,
+  ScanLine,
+  Trash2,
 } from 'lucide-react';
 import { Search, Banknote } from 'lucide-react';
 import QRScanner from './qr-scanner';
 import TicketCard from './ticket-card';
 import ProductScanSaleModal from './product-scan-sale-modal';
+import TicketPreOrderScanModal from './ticket-preorder-scan-modal';
 import PaymentPanel, { type PaymentMethod } from './box-office-payment-panel';
 import { getBoxOfficeProducts } from '@/app/actions/box-office';
 import {
@@ -37,10 +40,20 @@ import {
   findReservations,
   payReservationAtCounter,
   addTicketProducts,
+  lookupPreOrderProductQrForTicket,
+  completeTicketEntry,
+  attachTicketPreOrderQrs,
+  removeTicketOrderItem,
+  confirmTicketEntryFulfillment,
+  confirmOrderEntryFulfillment,
 } from '@/app/actions/scanner';
 import { lookupSaleProductByQr } from '@/app/actions/products';
 import { buildProductSaleInput, isHdmAgentEnabled } from '@/lib/hdm-agent';
-import { submitSaleFiscal } from '@/lib/fiscal-flow';
+import { submitSaleFiscal, type FiscalNotice } from '@/lib/fiscal-flow';
+import {
+  ticketNeedsQrScan,
+  ticketQrScanProgress,
+} from '@/lib/preorder-entry';
 import Image from 'next/image';
 
 interface ScannerFiscalData {
@@ -55,16 +68,17 @@ interface ScannerFiscalData {
     eMark?: string | null;
     isTicket?: boolean;
   }>;
+  needsFulfillmentConfirm?: boolean;
 }
 
 async function fireScannerFiscal(
   fiscal: ScannerFiscalData | null | undefined
-): Promise<string | null> {
+): Promise<FiscalNotice | null> {
   if (!fiscal || !isHdmAgentEnabled()) return null;
   if (!fiscal.lines || fiscal.lines.length === 0 || fiscal.total <= 0) {
     return null;
   }
-  const notice = await submitSaleFiscal({
+  return submitSaleFiscal({
     input: buildProductSaleInput({
       paymentMethod: fiscal.paymentMethod,
       total: fiscal.total,
@@ -74,7 +88,6 @@ async function fireScannerFiscal(
     orderId: fiscal.orderId ?? undefined,
     ticketId: fiscal.ticketId ?? undefined,
   });
-  return notice.message;
 }
 
 interface ReservationSearchResult {
@@ -150,6 +163,13 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const [productModalStatus, setProductModalStatus] = useState<string>('paid');
   const [isAddingProducts, setIsAddingProducts] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
+
+  const [scanModalTicket, setScanModalTicket] = useState<any | null>(null);
+  const [isCompletingEntry, setIsCompletingEntry] = useState(false);
+  const [entryError, setEntryError] = useState<string | null>(null);
+  const [removingOrderItemId, setRemovingOrderItemId] = useState<number | null>(
+    null
+  );
 
   // Load windows from localStorage on mount
   useEffect(() => {
@@ -290,7 +310,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       if (result.success) {
         setPayCash('');
         setPayMethod('cash');
-        const fiscalMessage = await fireScannerFiscal(
+        const fiscalNotice = await fireScannerFiscal(
           (result as { fiscal?: ScannerFiscalData | null }).fiscal
         );
         await handleScanSuccess(windowId, `ORDER-${orderId}`);
@@ -299,7 +319,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
             payMethod === 'cash' && result.change
               ? ` • Մանր՝ ${result.change.toLocaleString()} ֏`
               : ''
-          }${fiscalMessage ? `\n${fiscalMessage}` : ''}`
+          }${fiscalNotice?.message ? `\n${fiscalNotice.message}` : ''}`
         );
       } else {
         setPayError(result.error || 'Վճարումը մշակելիս սխալ է տեղի ունեցել');
@@ -438,6 +458,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
             data: result.data,
           },
           isLoading: false,
+          isMarking: false,
           qrCode: qrData,
           checkedTickets:
             restoredCheckedTickets.size > 0
@@ -496,29 +517,203 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     );
   };
 
+  const openScanModal = (ticket: any) => {
+    setEntryError(null);
+    setScanModalTicket(ticket);
+  };
+
+  const closeScanModal = () => {
+    setScanModalTicket(null);
+    setEntryError(null);
+  };
+
+  const handleRemoveOrderItem = async (orderItem: any, _ticketId: number) => {
+    if (!activeWindow?.qrCode) return;
+
+    const label = `${orderItem.product?.name ?? 'Ապրանք'} x${orderItem.quantity}`;
+    if (
+      !window.confirm(
+        `Հեռացնե՞լ «${label}»-ը պատվերից։\nԳումարը կնվազի վճարման ընդհանուրից։`
+      )
+    ) {
+      return;
+    }
+
+    setRemovingOrderItemId(orderItem.id);
+    try {
+      const result = await removeTicketOrderItem(orderItem.id);
+      if (result.success) {
+        setScanModalTicket((prev: any | null) => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            orderItems: (prev.orderItems ?? []).filter(
+              (i: { id: number }) => i.id !== orderItem.id
+            ),
+          };
+          return ticketNeedsQrScan(updated) ? updated : null;
+        });
+        await handleScanSuccess(activeWindow.id, activeWindow.qrCode);
+        if (result.message) alert(result.message);
+      } else {
+        alert(result.error || 'Ապրանքը հեռացնելիս սխալ է տեղի ունեցել');
+      }
+    } catch (err) {
+      console.error('Error removing order item:', err);
+      alert('Ապրանքը հեռացնելիս սխալ է տեղի ունեցել');
+    } finally {
+      setRemovingOrderItemId(null);
+    }
+  };
+
+  const runEntryFiscal = async (
+    windowId: string,
+    fiscal: ScannerFiscalData | null | undefined,
+    isOrder: boolean,
+    orderOrTicketId: number
+  ) => {
+    if (!fiscal) return null;
+
+    const notice = await fireScannerFiscal(fiscal);
+    if (fiscal.needsFulfillmentConfirm) {
+      const shouldConfirm = !isHdmAgentEnabled() || notice?.type === 'success';
+      if (shouldConfirm) {
+        if (isOrder) {
+          await confirmOrderEntryFulfillment(orderOrTicketId);
+        } else {
+          await confirmTicketEntryFulfillment(orderOrTicketId);
+        }
+      }
+    }
+    return notice?.message ?? null;
+  };
+
+  const handleAttachReservedQrs = async (
+    items: Array<{ orderItemId: number; qrCodes: string[]; quantity: number }>
+  ) => {
+    if (!scanModalTicket || !activeWindow?.qrCode) return;
+
+    setIsCompletingEntry(true);
+    setEntryError(null);
+    try {
+      const result = await attachTicketPreOrderQrs({
+        ticketId: Number(scanModalTicket.id),
+        items,
+      });
+
+      if (result.success) {
+        closeScanModal();
+        await handleScanSuccess(activeWindow.id, activeWindow.qrCode);
+        alert(result.message || 'QR-ները կցվեցին');
+      } else {
+        setEntryError(result.error || 'QR-ները կցելիս սխալ է տեղի ունեցել');
+      }
+    } catch (err) {
+      console.error('Error attaching reserved QRs:', err);
+      setEntryError('QR-ները կցելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsCompletingEntry(false);
+    }
+  };
+
+  const handleScanModalComplete = (
+    items: Array<{ orderItemId: number; qrCodes: string[]; quantity: number }>
+  ) => {
+    if (scanModalTicket?.status === 'reserved') {
+      void handleAttachReservedQrs(items);
+    } else {
+      void handleCompleteTicketEntry(items);
+    }
+  };
+
+  const handleCompleteTicketEntry = async (
+    items: Array<{ orderItemId: number; qrCodes: string[]; quantity: number }>
+  ) => {
+    if (!scanModalTicket || !activeWindow?.qrCode) return;
+
+    setIsCompletingEntry(true);
+    setEntryError(null);
+    try {
+      const result = await completeTicketEntry({
+        ticketId: Number(scanModalTicket.id),
+        items,
+      });
+
+      if (result.success) {
+        const fiscalMessage = await runEntryFiscal(
+          activeWindow.id,
+          (result as { fiscal?: ScannerFiscalData | null }).fiscal,
+          false,
+          Number(scanModalTicket.id)
+        );
+        closeScanModal();
+        await handleScanSuccess(activeWindow.id, activeWindow.qrCode);
+        alert(
+          `${result.message || 'Մուտքը հաստատված է'}${
+            fiscalMessage ? `\n${fiscalMessage}` : ''
+          }`
+        );
+      } else {
+        setEntryError(result.error || 'Մուտքը հաստատելիս սխալ է տեղի ունեցել');
+      }
+    } catch (err) {
+      console.error('Error completing ticket entry:', err);
+      setEntryError('Մուտքը հաստատելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsCompletingEntry(false);
+    }
+  };
+
   const handleMarkAsUsed = async (windowId: string) => {
     const window = windows.find((w) => w.id === windowId);
     if (!window || !window.scannedData) return;
+
+    const isOrder = window.scannedData.type === 'order';
+
+    if (!isOrder) {
+      const ticket = window.scannedData.data;
+      if (ticketNeedsQrScan(ticket)) {
+        openScanModal(ticket);
+        return;
+      }
+    } else {
+      const pending = (window.scannedData.data.tickets ?? []).filter(
+        (t: any) => t.status === 'paid' && ticketNeedsQrScan(t)
+      );
+      if (pending.length > 0) {
+        updateWindow(windowId, {
+          error: `Նախ սկանավորեք ապրանքների QR-ները (${pending.length} տոմս)`,
+        });
+        return;
+      }
+    }
 
     updateWindow(windowId, { isMarking: true, error: null });
 
     try {
       let result;
-      if (window.scannedData.type === 'order') {
+      if (isOrder) {
         result = await markAllTicketsInOrderAsUsed(window.scannedData.data.id);
       } else {
         result = await markTicketAsUsed(window.scannedData.data.id);
       }
 
       if (result.success) {
-        // Reload the data
-        const qrData =
-          window.scannedData.type === 'order'
-            ? `ORDER-${window.scannedData.data.id}`
-            : `TICKET-${window.scannedData.data.id}`;
+        const fiscalMessage = await runEntryFiscal(
+          windowId,
+          (result as { fiscal?: ScannerFiscalData | null }).fiscal,
+          isOrder,
+          window.scannedData.data.id
+        );
+
+        const qrData = isOrder
+          ? `ORDER-${window.scannedData.data.id}`
+          : `TICKET-${window.scannedData.data.id}`;
         await handleScanSuccess(windowId, qrData);
         alert(
-          result.message || 'Տոմս(եր)ը հաջողությամբ նշվեց(ին) որպես օգտագործված'
+          `${result.message || 'Տոմս(եր)ը հաջողությամբ նշվեց(ին) որպես օգտագործված'}${
+            fiscalMessage ? `\n${fiscalMessage}` : ''
+          }`
         );
       } else {
         updateWindow(windowId, {
@@ -657,12 +852,12 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
         amountPaid: payload.payment?.amountPaid,
       });
       if (result.success) {
-        const fiscalMessage = await fireScannerFiscal(
+        const fiscalNotice = await fireScannerFiscal(
           (result as { fiscal?: ScannerFiscalData | null }).fiscal
         );
         closeProductModal();
         await handleScanSuccess(activeWindow.id, activeWindow.qrCode);
-        if (fiscalMessage) alert(fiscalMessage);
+        if (fiscalNotice?.message) alert(fiscalNotice.message);
       } else {
         setProductError(result.error || 'Սխալ');
       }
@@ -671,13 +866,6 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     } finally {
       setIsAddingProducts(false);
     }
-  };
-
-  const getProductItemBadge = (item: { fulfilledAt?: string | Date | null }) => {
-    if (item.fulfilledAt) {
-      return { label: 'Տրված է', className: 'bg-green-100 text-green-800' };
-    }
-    return { label: 'Սպասում է տրման', className: 'bg-blue-100 text-blue-800' };
   };
 
   return (
@@ -1064,6 +1252,10 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                             activeWindow.checkedTickets?.has(ticket.id) || false
                           }
                           onAddProducts={openProductModal}
+                          entryMode
+                          onScanPreOrderProducts={openScanModal}
+                          onRemoveOrderItem={handleRemoveOrderItem}
+                          removingOrderItemId={removingOrderItemId}
                         />
                       )
                     )}
@@ -1080,17 +1272,17 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                     (sum: number, t: any) => sum + (t.price || 0),
                     0
                   );
-                  const productsTotal =
-                    activeWindow.scannedData.data.tickets.reduce(
-                      (sum: number, t: any) =>
-                        sum +
-                        (t.orderItems?.reduce(
-                          (s: number, item: any) =>
-                            s + item.price * item.quantity,
-                          0
-                        ) || 0),
-                      0
-                    );
+                  // Միայն ամրագրված տոմսերի ապրանքները (վճարվածներինը արդեն վճարված են)
+                  const productsTotal = reserved.reduce(
+                    (sum: number, t: any) =>
+                      sum +
+                      (t.orderItems?.reduce(
+                        (s: number, item: any) =>
+                          s + item.price * item.quantity,
+                        0
+                      ) || 0),
+                    0
+                  );
                   const grandTotal = ticketsTotal + productsTotal;
                   return (
                     <div className="rounded-xl border-2 border-amber-200 bg-amber-50/60 p-4 space-y-3">
@@ -1337,97 +1529,104 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                   </div>
                 )}
 
-                {/* Products */}
+                {/* Products + QR scan */}
                 {(() => {
-                  const ticketData = activeWindow.scannedData.data;
-                  const ticketProducts =
-                    ticketData.orderItems ??
-                    ticketData.order?.orderItems?.filter(
-                      (item: { ticketId?: number | null }) =>
-                        item.ticketId === ticketData.id || item.ticketId == null
-                    ) ??
-                    [];
+                  const ticketData = {
+                    ...activeWindow.scannedData.data,
+                    orderItems:
+                      activeWindow.scannedData.data.orderItems ??
+                      activeWindow.scannedData.data.order?.orderItems?.filter(
+                        (item: { ticketId?: number | null }) =>
+                          item.ticketId === activeWindow.scannedData.data.id ||
+                          item.ticketId == null
+                      ) ??
+                      [],
+                  };
                   const canAdd =
                     (ticketData.status === 'paid' ||
                       ticketData.status === 'reserved') &&
                     activeWindow.scannedData.type === 'ticket';
+                  const needsScan = ticketNeedsQrScan(ticketData);
+                  const progress = ticketQrScanProgress(ticketData);
 
-                  if (ticketProducts.length === 0 && !canAdd) return null;
+                  if (ticketData.orderItems.length === 0 && !canAdd) return null;
 
                   return (
                     <div className="p-4 border border-gray-200 rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center justify-between mb-3 gap-2">
                         <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                           <ShoppingCart className="w-5 h-5 text-purple-600" />
-                          Ապրանքներ ({ticketProducts.length})
+                          Ապրանքներ
                         </h4>
-                        {canAdd && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openProductModal(
-                                Number(ticketData.id),
-                                ticketData.status
-                              )
-                            }
-                            className="flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
-                          >
-                            <Plus className="w-4 h-4" />
-                            {ticketData.status === 'reserved'
-                              ? 'Սկանավորել'
-                              : 'Ավելացնել'}
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {needsScan && (
+                            <button
+                              type="button"
+                              onClick={() => openScanModal(ticketData)}
+                              className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700"
+                            >
+                              <ScanLine className="h-3.5 w-3.5" />
+                              Սկանավորել ({progress.done}/{progress.total})
+                            </button>
+                          )}
+                          {canAdd && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openProductModal(
+                                  Number(ticketData.id),
+                                  ticketData.status
+                                )
+                              }
+                              className="flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Ավելացնել
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {ticketProducts.length > 0 ? (
-                        <>
-                          <div className="space-y-2 mb-3">
-                            {ticketProducts.map((item: any) => {
-                              const badge = getProductItemBadge(item);
-                              return (
-                                <div
-                                  key={item.id}
-                                  className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded gap-2"
-                                >
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="text-gray-900 font-medium truncate">
-                                      {item.product.name}
-                                    </span>
-                                    <span className="text-gray-500 shrink-0">
-                                      x{item.quantity}
-                                    </span>
-                                    <span
-                                      className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.className}`}
+                      {ticketData.orderItems.length > 0 ? (
+                        <div className="space-y-2">
+                          {ticketData.orderItems.map((item: any) => {
+                            const canRemove = ticketData.status === 'reserved';
+
+                            return (
+                              <div
+                                key={item.id}
+                                className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded gap-2"
+                              >
+                                <span className="text-gray-900 font-medium truncate">
+                                  {item.product.name} x{item.quantity}
+                                </span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {canRemove && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRemoveOrderItem(
+                                          item,
+                                          Number(ticketData.id)
+                                        )
+                                      }
+                                      disabled={removingOrderItemId === item.id}
+                                      className="rounded-md p-1 text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                                      title="Հեռացնել պատվերից"
                                     >
-                                      {badge.label}
-                                    </span>
-                                  </div>
-                                  <span className="text-gray-700 font-medium shrink-0">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  <span className="text-gray-700 font-medium">
                                     {(item.price * item.quantity).toLocaleString(
                                       'hy-AM'
                                     )}{' '}
                                     ֏
                                   </span>
                                 </div>
-                              );
-                            })}
-                          </div>
-                          <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-900">
-                              Ընդհանուր:
-                            </span>
-                            <span className="text-lg font-bold text-green-600">
-                              {ticketProducts
-                                .reduce(
-                                  (sum: number, item: any) =>
-                                    sum + item.price * item.quantity,
-                                  0
-                                )
-                                .toLocaleString('hy-AM')}{' '}
-                              ֏
-                            </span>
-                          </div>
-                        </>
+                              </div>
+                            );
+                          })}
+                        </div>
                       ) : (
                         <p className="text-sm text-gray-400">Ապրանքներ չկան</p>
                       )}
@@ -1454,23 +1653,38 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
 
                 {/* Action Button */}
                 {activeWindow.scannedData.data.status === 'paid' && (
-                  <button
-                    onClick={() => handleMarkAsUsed(activeWindow.id)}
-                    disabled={activeWindow.isMarking}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                  >
-                    {activeWindow.isMarking ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Նշվում է...
-                      </>
+                  <>
+                    {ticketNeedsQrScan(activeWindow.scannedData.data) ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openScanModal(activeWindow.scannedData.data)
+                        }
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-violet-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-violet-700 transition-all shadow-lg"
+                      >
+                        <ScanLine className="w-5 h-5" />
+                        Սկանավորել ապրանքները և մուտք
+                      </button>
                     ) : (
-                      <>
-                        <Check className="w-5 h-5" />
-                        Նշել տոմսը որպես օգտագործված
-                      </>
+                      <button
+                        onClick={() => handleMarkAsUsed(activeWindow.id)}
+                        disabled={activeWindow.isMarking}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                      >
+                        {activeWindow.isMarking ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Նշվում է...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-5 h-5" />
+                            Մուտք
+                          </>
+                        )}
+                      </button>
                     )}
-                  </button>
+                  </>
                 )}
 
                 {activeWindow.scannedData.data.status === 'used' && (
@@ -1484,6 +1698,20 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           </div>
         </div>
       ) : null}
+
+      {scanModalTicket && (
+        <TicketPreOrderScanModal
+          ticket={scanModalTicket}
+          isSubmitting={isCompletingEntry}
+          error={entryError}
+          mode={scanModalTicket.status === 'reserved' ? 'attach' : 'entry'}
+          onClose={closeScanModal}
+          lookupScan={(qrCode) =>
+            lookupPreOrderProductQrForTicket(Number(scanModalTicket.id), qrCode)
+          }
+          onComplete={handleScanModalComplete}
+        />
+      )}
 
       {productModalTicketId !== null && (
         <ProductScanSaleModal

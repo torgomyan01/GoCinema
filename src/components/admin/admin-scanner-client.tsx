@@ -36,6 +36,7 @@ import { getBoxOfficeProducts } from '@/app/actions/box-office';
 import {
   getOrderOrTicketByQR,
   markTicketAsUsed,
+  unmarkTicketAsUsed,
   markAllTicketsInOrderAsUsed,
   findReservations,
   payReservationAtCounter,
@@ -50,10 +51,7 @@ import {
 import { lookupSaleProductByQr } from '@/app/actions/products';
 import { buildProductSaleInput, isHdmAgentEnabled } from '@/lib/hdm-agent';
 import { submitSaleFiscal, type FiscalNotice } from '@/lib/fiscal-flow';
-import {
-  ticketNeedsQrScan,
-  ticketQrScanProgress,
-} from '@/lib/preorder-entry';
+import { ticketNeedsQrScan, ticketQrScanProgress } from '@/lib/preorder-entry';
 import Image from 'next/image';
 
 interface ScannerFiscalData {
@@ -90,6 +88,14 @@ async function fireScannerFiscal(
   });
 }
 
+interface ReservationSearchTicket {
+  id: number;
+  status: string;
+  seatLabel: string;
+  movieTitle: string | null;
+  startTime: string | Date | null;
+}
+
 interface ReservationSearchResult {
   orderId: number;
   qrCode: string;
@@ -100,8 +106,11 @@ interface ReservationSearchResult {
   startTime: string | Date | null;
   seatCount: number;
   reservedCount: number;
+  paidCount: number;
+  usedCount: number;
   totalAmount: number;
   status: string;
+  tickets: ReservationSearchTicket[];
 }
 
 interface AdminScannerClientProps {
@@ -258,7 +267,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       if (result.success) {
         setSearchResults(result.results as ReservationSearchResult[]);
         if (result.results.length === 0) {
-          setSearchError('Ամրագրումներ չեն գտնվել');
+          setSearchError('Պատվերներ չեն գտնվել');
         }
       } else {
         setSearchError(result.error || 'Որոնելիս սխալ է տեղի ունեցել');
@@ -630,9 +639,9 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     }
   };
 
-  const handleMarkTicketUsed = async (ticketId: number) => {
+  const handleMarkTicketUsed = async (ticketId: number): Promise<boolean> => {
     const win = activeWindow;
-    if (!win || !win.scannedData || !win.qrCode) return;
+    if (!win || !win.scannedData || !win.qrCode) return false;
 
     const ticket =
       win.scannedData.type === 'order'
@@ -641,17 +650,17 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           )
         : win.scannedData.data;
 
-    if (!ticket) return;
-    if (ticket.status === 'used') return;
+    if (!ticket) return false;
+    if (ticket.status === 'used') return true;
     if (ticket.status !== 'paid') {
       alert('Տոմսը նախ պետք է վճարվի դրամարկղում');
-      return;
+      return false;
     }
 
     // Եթե կան չսկանավորված QR ապրանքներ՝ բացում ենք սկան-մոդալը (մուտքն այնտեղ է հաստատվում)
     if (ticketNeedsQrScan(ticket)) {
       openScanModal(ticket);
-      return;
+      return false;
     }
 
     try {
@@ -665,13 +674,54 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
         );
         await handleScanSuccess(win.id, win.qrCode);
         if (fiscalMessage) alert(fiscalMessage);
-      } else {
-        alert(result.error || 'Տոմսը նշելիս սխալ է տեղի ունեցել');
+        return true;
       }
+      alert(result.error || 'Տոմսը նշելիս սխալ է տեղի ունեցել');
+      return false;
     } catch (err) {
       console.error('Error marking ticket as used:', err);
       alert('Տոմսը նշելիս սխալ է տեղի ունեցել');
+      return false;
     }
+  };
+
+  const handleUnmarkTicketUsed = async (ticketId: number): Promise<boolean> => {
+    const win = activeWindow;
+    if (!win || !win.scannedData || !win.qrCode) return false;
+
+    const ticket =
+      win.scannedData.type === 'order'
+        ? (win.scannedData.data.tickets ?? []).find(
+            (t: any) => Number(t.id) === ticketId
+          )
+        : win.scannedData.data;
+
+    if (!ticket) return false;
+    if (ticket.status !== 'used') return true;
+
+    try {
+      const result = await unmarkTicketAsUsed(ticketId);
+      if (result.success) {
+        await handleScanSuccess(win.id, win.qrCode);
+        return true;
+      }
+      alert(result.error || 'Տոմսը վերադարձնելիս սխալ է տեղի ունեցել');
+      return false;
+    } catch (err) {
+      console.error('Error unmarking ticket as used:', err);
+      alert('Տոմսը վերադարձնելիս սխալ է տեղի ունեցել');
+      return false;
+    }
+  };
+
+  const handleTicketEntryChange = async (
+    ticketId: number,
+    checked: boolean
+  ): Promise<boolean> => {
+    if (checked) {
+      return handleMarkTicketUsed(ticketId);
+    }
+    return handleUnmarkTicketUsed(ticketId);
   };
 
   const handleMarkAsUsed = async (windowId: string) => {
@@ -821,7 +871,8 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const activeWindow = windows.find((w) => w.id === activeWindowId);
 
   const productModalTicket = useMemo(() => {
-    if (productModalTicketId === null || !activeWindow?.scannedData) return null;
+    if (productModalTicketId === null || !activeWindow?.scannedData)
+      return null;
     const { type, data } = activeWindow.scannedData;
     if (type === 'order') {
       return (
@@ -958,10 +1009,10 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
               onError={(err) => updateWindow(activeWindow.id, { error: err })}
             />
 
-            {/* Ամրագրման որոնում (առանց QR-ի) */}
+            {/* Պատվերների որոնում (առանց QR-ի) */}
             <div className="mt-5 pt-5 border-t border-gray-100">
               <p className="text-sm font-semibold text-gray-700 mb-2">
-                Չվճարված ամրագրում (առանց QR)
+                Պատվերների որոնում (առանց QR)
               </p>
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -973,7 +1024,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSearch();
                     }}
-                    placeholder="Հեռախոս կամ պատվերի համար (#)"
+                    placeholder="Հեռախոս, անուն կամ պատվերի համար (#)"
                     className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>
@@ -998,11 +1049,11 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                       onClick={() => handleSelectResult(r)}
                       className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors"
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-gray-900 text-sm">
                           Պատվեր #{r.orderId}
                         </span>
-                        <span className="text-sm font-bold text-green-600">
+                        <span className="text-sm font-bold text-green-600 shrink-0">
                           {r.totalAmount.toLocaleString('hy-AM')} ֏
                         </span>
                       </div>
@@ -1021,9 +1072,43 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                           ? ` • ${formatDate(r.startTime)} ${formatTime(r.startTime)}`
                           : ''}
                       </div>
-                      <div className="text-xs text-purple-600 mt-0.5 font-medium">
-                        {r.reservedCount} չվճարված / {r.seatCount} աթոռ
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {r.tickets.map((ticket) => {
+                          const badge = getStatusBadge(ticket.status);
+                          return (
+                            <span
+                              key={ticket.id}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badge.color}`}
+                            >
+                              {ticket.seatLabel
+                                ? `Աթոռ ${ticket.seatLabel}`
+                                : `Տոմս #${ticket.id}`}
+                              <span className="opacity-80">•</span>
+                              {badge.label}
+                            </span>
+                          );
+                        })}
                       </div>
+                      {(r.reservedCount > 0 ||
+                        r.paidCount > 0 ||
+                        r.usedCount > 0) && (
+                        <div className="text-xs text-gray-500 mt-1.5">
+                          {r.reservedCount > 0 && (
+                            <span>{r.reservedCount} չվճարված</span>
+                          )}
+                          {r.reservedCount > 0 && r.paidCount > 0 && ' • '}
+                          {r.paidCount > 0 && (
+                            <span>{r.paidCount} վճարված</span>
+                          )}
+                          {(r.reservedCount > 0 || r.paidCount > 0) &&
+                            r.usedCount > 0 &&
+                            ' • '}
+                          {r.usedCount > 0 && (
+                            <span>{r.usedCount} մուտք գործած</span>
+                          )}
+                          <span> / {r.seatCount} աթոռ</span>
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1258,11 +1343,9 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                           formatTime={formatTime}
                           getStatusBadge={getStatusBadge}
                           getSeatTypeLabel={getSeatTypeLabel}
-                          onCheckedChange={(ticketId, checked) => {
-                            if (checked) {
-                              void handleMarkTicketUsed(Number(ticketId));
-                            }
-                          }}
+                          onCheckedChange={async (ticketId, checked) =>
+                            handleTicketEntryChange(Number(ticketId), checked)
+                          }
                           isChecked={ticket.status === 'used'}
                           onAddProducts={openProductModal}
                           entryMode
@@ -1339,8 +1422,8 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                         ) : (
                           <>
                             <Banknote className="w-5 h-5" />
-                            Ստանալ վճարումը ({grandTotal.toLocaleString('hy-AM')}{' '}
-                            ֏)
+                            Ստանալ վճարումը (
+                            {grandTotal.toLocaleString('hy-AM')} ֏)
                           </>
                         )}
                       </button>
@@ -1541,7 +1624,8 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                   const needsScan = ticketNeedsQrScan(ticketData);
                   const progress = ticketQrScanProgress(ticketData);
 
-                  if (ticketData.orderItems.length === 0 && !canAdd) return null;
+                  if (ticketData.orderItems.length === 0 && !canAdd)
+                    return null;
 
                   return (
                     <div className="p-4 border border-gray-200 rounded-lg">
@@ -1609,9 +1693,9 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                                     </button>
                                   )}
                                   <span className="text-gray-700 font-medium">
-                                    {(item.price * item.quantity).toLocaleString(
-                                      'hy-AM'
-                                    )}{' '}
+                                    {(
+                                      item.price * item.quantity
+                                    ).toLocaleString('hy-AM')}{' '}
                                     ֏
                                   </span>
                                 </div>

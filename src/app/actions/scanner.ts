@@ -1160,6 +1160,88 @@ export async function markTicketAsUsed(ticketId: number) {
   }
 }
 
+async function unfulfillTicketProducts(tx: TxClient, ticketId: number) {
+  const items = await tx.orderItem.findMany({
+    where: { ticketId, fulfilledAt: { not: null } },
+    include: {
+      product: { select: { id: true, category: true } },
+      units: {
+        where: { status: 'sold' },
+        select: { id: true },
+      },
+    },
+  });
+
+  for (const item of items) {
+    const soldUnitIds = item.units.map((unit) => unit.id);
+
+    await returnOrderItemStock(
+      tx,
+      item.id,
+      item.product.id,
+      item.product.category,
+      item.quantity
+    );
+
+    if (
+      !isQuantityOnlyProduct(item.product.category) &&
+      soldUnitIds.length > 0
+    ) {
+      await reserveProductUnitsForOrderItem(tx, item.id, soldUnitIds);
+    }
+
+    await tx.orderItem.update({
+      where: { id: item.id },
+      data: { fulfilledAt: null },
+    });
+  }
+}
+
+export async function unmarkTicketAsUsed(ticketId: number) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, status: true },
+    });
+
+    if (!ticket) {
+      return { success: false, error: 'Տոմսը չի գտնվել' };
+    }
+
+    if (ticket.status !== 'used') {
+      return { success: false, error: 'Տոմսը օգտագործված չէ' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await unfulfillTicketProducts(tx, ticketId);
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: { status: 'paid', preparationServedAt: null },
+      });
+    });
+
+    revalidatePath('/admin/scanner');
+    revalidatePath('/admin/tickets');
+    revalidatePath('/admin/preparation');
+
+    return {
+      success: true,
+      message: 'Տոմսը հաջողությամբ վերադարձվեց որպես վճարված',
+    };
+  } catch (error: unknown) {
+    console.error('[Unmark Ticket As Used] Error:', error);
+    return {
+      success: false,
+      error: 'Տոմսը վերադարձնելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
 export async function markAllTicketsInOrderAsUsed(orderId: number) {
   const staff = await requireStaff();
   if (!staff) {
@@ -1250,7 +1332,7 @@ export async function markAllTicketsInOrderAsUsed(orderId: number) {
 }
 
 /**
- * Որոնում է չվճարված ամրագրումներ (դրամարկղում վճարվող)՝ ըստ պատվերի համարի
+ * Որոնում է պատվերներ (ամրագրումներ և գնված տոմսեր)՝ ըստ պատվերի համարի
  * կամ հաճախորդի հեռախոսահամարի։ Օգտագործվում է մուտքի էջում, երբ հաճախորդը
  * չունի QR կամ չի կարող սկանավորել։
  */
@@ -1266,10 +1348,7 @@ export async function findReservations(query: string) {
       return { success: false, error: 'Մուտքագրեք որոնման տվյալ', results: [] };
     }
 
-    const where: any = {
-      paymentMethod: COUNTER_PAYMENT_METHOD,
-      tickets: { some: { status: 'reserved' } },
-    };
+    const where: any = {};
 
     // ORDER-N / TICKET-N / մաքուր թիվ → ըստ պատվերի, հակառակ դեպքում՝ ըստ
     // հեռախոսի կամ անվան
@@ -1296,6 +1375,9 @@ export async function findReservations(query: string) {
           ],
         },
       };
+      where.tickets = {
+        some: { status: { in: ['reserved', 'paid', 'used'] } },
+      };
     }
 
     const orders = await prisma.order.findMany({
@@ -1303,35 +1385,52 @@ export async function findReservations(query: string) {
       include: {
         user: { select: { id: true, name: true, phone: true, isBlocked: true } },
         tickets: {
+          where: { status: { not: 'cancelled' } },
           include: {
             seat: { select: { row: true, number: true } },
             screening: {
               include: { movie: { select: { title: true } } },
             },
           },
+          orderBy: [{ screening: { startTime: 'asc' } }, { id: 'asc' }],
         },
       },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
 
-    const results = orders.map((order) => {
-      const reserved = order.tickets.filter((t) => t.status === 'reserved');
-      const firstScreening = order.tickets[0]?.screening;
-      return {
-        orderId: order.id,
-        qrCode: `ORDER-${order.id}`,
-        userName: order.user?.name || null,
-        userPhone: order.user?.phone || null,
-        isBlocked: order.user?.isBlocked || false,
-        movieTitle: firstScreening?.movie?.title || null,
-        startTime: firstScreening?.startTime || null,
-        seatCount: order.tickets.length,
-        reservedCount: reserved.length,
-        totalAmount: order.totalAmount,
-        status: order.status,
-      };
-    });
+    const results = orders
+      .filter((order) => order.tickets.length > 0)
+      .map((order) => {
+        const reserved = order.tickets.filter((t) => t.status === 'reserved');
+        const paid = order.tickets.filter((t) => t.status === 'paid');
+        const used = order.tickets.filter((t) => t.status === 'used');
+        const firstScreening = order.tickets[0]?.screening;
+        return {
+          orderId: order.id,
+          qrCode: `ORDER-${order.id}`,
+          userName: order.user?.name || null,
+          userPhone: order.user?.phone || null,
+          isBlocked: order.user?.isBlocked || false,
+          movieTitle: firstScreening?.movie?.title || null,
+          startTime: firstScreening?.startTime || null,
+          seatCount: order.tickets.length,
+          reservedCount: reserved.length,
+          paidCount: paid.length,
+          usedCount: used.length,
+          totalAmount: order.totalAmount,
+          status: order.status,
+          tickets: order.tickets.map((ticket) => ({
+            id: ticket.id,
+            status: ticket.status,
+            seatLabel: ticket.seat
+              ? `${ticket.seat.row}-${ticket.seat.number}`
+              : '',
+            movieTitle: ticket.screening?.movie?.title || null,
+            startTime: ticket.screening?.startTime || null,
+          })),
+        };
+      });
 
     return { success: true, results };
   } catch (error: any) {

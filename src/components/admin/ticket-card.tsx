@@ -28,8 +28,12 @@ interface TicketCardProps {
   formatTime: (date: Date | string) => string;
   getStatusBadge: (status: string) => { label: string; color: string };
   getSeatTypeLabel: (seatType: string) => string;
-  onCheckedChange?: (ticketId: string, checked: boolean) => void;
+  onCheckedChange?: (
+    ticketId: string,
+    checked: boolean
+  ) => Promise<boolean> | boolean;
   isChecked?: boolean;
+  isMarking?: boolean;
   onAddProducts?: (ticketId: number, status: string) => void;
   orderStatus?: string;
   entryMode?: boolean;
@@ -46,6 +50,7 @@ export default function TicketCard({
   getSeatTypeLabel,
   onCheckedChange,
   isChecked = false,
+  isMarking = false,
   onAddProducts,
   entryMode = false,
   onScanPreOrderProducts,
@@ -53,8 +58,11 @@ export default function TicketCard({
   removingOrderItemId = null,
 }: TicketCardProps) {
   const statusBadge = getStatusBadge(ticket.status);
-  const [checked, setChecked] = useState(isChecked);
   const isUsed = ticket.status === 'used';
+  const isPaid = ticket.status === 'paid';
+  const [isPending, setIsPending] = useState(false);
+  const canToggleEntry =
+    (isPaid || isUsed) && Boolean(onCheckedChange);
   const canAddProducts =
     (ticket.status === 'paid' || ticket.status === 'reserved') &&
     !isUsed &&
@@ -66,18 +74,22 @@ export default function TicketCard({
   const hasQrProducts = entryMode && getQrOrderItems(ticket).length > 0;
 
   useEffect(() => {
-    setChecked(isChecked);
-  }, [isChecked]);
+    setIsPending(false);
+  }, [ticket.status]);
 
-  // Մուտքի ռեժիմում միայն վճարված տոմսը կարելի է նշել որպես մուտք գործած
-  const checkboxDisabled = isUsed || (entryMode && ticket.status !== 'paid');
+  const checkboxDisabled = !canToggleEntry || isPending || isMarking;
 
-  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (checkboxDisabled) return;
-    const newChecked = e.target.checked;
-    setChecked(newChecked);
-    if (onCheckedChange) {
-      onCheckedChange(ticket.id, newChecked);
+  const handleCheckboxChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (checkboxDisabled || !onCheckedChange) return;
+
+    const checked = e.target.checked;
+    setIsPending(true);
+    try {
+      await onCheckedChange(ticket.id, checked);
+    } finally {
+      setIsPending(false);
     }
   };
 
@@ -89,13 +101,17 @@ export default function TicketCard({
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={checked || isUsed}
+                checked={isUsed || isChecked}
                 onChange={handleCheckboxChange}
                 disabled={checkboxDisabled}
                 className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-70"
               />
               <span className="ml-2 text-sm text-gray-600">
-                {isUsed ? 'Մուտք է գործել' : checked ? 'Մուտք է գործել' : 'Չի մուտք գործել'}
+                {isUsed
+                  ? 'Մուտք է գործել'
+                  : isPending || isMarking
+                    ? 'Նշվում է...'
+                    : 'Չի մուտք գործել'}
               </span>
             </label>
           </div>
@@ -175,7 +191,9 @@ export default function TicketCard({
               {canAddProducts && (
                 <button
                   type="button"
-                  onClick={() => onAddProducts?.(Number(ticket.id), ticket.status)}
+                  onClick={() =>
+                    onAddProducts?.(Number(ticket.id), ticket.status)
+                  }
                   className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />

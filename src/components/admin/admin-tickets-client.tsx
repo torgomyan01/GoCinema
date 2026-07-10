@@ -20,7 +20,7 @@ import AdminLayout from './admin-layout';
 import AdminTicketCard from './ticket-card';
 import { getAllTicketsForAdmin } from '@/app/actions/tickets';
 import { getScreenings } from '@/app/actions/screenings';
-import { markTicketAsUsed } from '@/app/actions/scanner';
+import { markTicketAsUsed, unmarkTicketAsUsed } from '@/app/actions/scanner';
 
 type ViewMode = 'list' | 'screenings';
 
@@ -157,30 +157,46 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
     }
   };
 
-  const handleCheckedChange = async (ticketId: string, checked: boolean) => {
+  const handleCheckedChange = async (
+    ticketId: string,
+    checked: boolean
+  ): Promise<boolean> => {
     const idNum = Number(ticketId);
-    if (!checked || Number.isNaN(idNum)) return;
+    if (Number.isNaN(idNum)) return false;
 
     setMarkingIds((prev) => new Set(prev).add(idNum));
     try {
-      const result = await markTicketAsUsed(idNum);
+      const result = checked
+        ? await markTicketAsUsed(idNum)
+        : await unmarkTicketAsUsed(idNum);
       if (result.success) {
         setTickets((prev) =>
           prev.map((t) =>
             t.id === idNum
               ? {
                   ...t,
-                  status: 'used',
+                  status: checked ? 'used' : 'paid',
                 }
               : t
           )
         );
-      } else {
-        alert(result.error || 'Տոմսը օգտագործված նշելու ժամանակ սխալ տեղի ունեցավ');
+        return true;
       }
+      alert(
+        result.error ||
+          (checked
+            ? 'Տոմսը օգտագործված նշելու ժամանակ սխալ տեղի ունեցավ'
+            : 'Տոմսը վճարված վերադարձնելիս սխալ տեղի ունեցավ')
+      );
+      return false;
     } catch (err) {
-      console.error('[Admin Tickets] mark used error:', err);
-      alert('Տոմսը օգտագործված նշելու ժամանակ սխալ տեղի ունեցավ');
+      console.error('[Admin Tickets] entry toggle error:', err);
+      alert(
+        checked
+          ? 'Տոմսը օգտագործված նշելու ժամանակ սխալ տեղի ունեցավ'
+          : 'Տոմսը վճարված վերադարձնելիս սխալ տեղի ունեցավ'
+      );
+      return false;
     } finally {
       setMarkingIds((prev) => {
         const next = new Set(prev);
@@ -1030,6 +1046,7 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
                   getSeatTypeLabel={getSeatTypeLabel}
                   onCheckedChange={handleCheckedChange}
                   isChecked={ticket.status === 'used'}
+                  isMarking={markingIds.has(ticket.id)}
                 />
               ))}
             </div>

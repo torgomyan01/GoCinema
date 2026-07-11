@@ -106,22 +106,19 @@ export default function SupportWidget() {
     }
   }, []);
 
-  const loadFullChat = useCallback(
-    async (requestId: number) => {
-      const result = await getSupportRequestById(requestId);
-      if (result.success && result.request) {
-        const req = result.request as any;
-        setMeta({ id: req.id, subject: req.subject, status: req.status });
-        setMessages(req.messages as ChatMessage[]);
-        return req.messages as ChatMessage[];
-      }
-      localStorage.removeItem(STORAGE_KEY);
-      setMeta(null);
-      setMessages([]);
-      return null;
-    },
-    []
-  );
+  const loadFullChat = useCallback(async (requestId: number) => {
+    const result = await getSupportRequestById(requestId);
+    if (result.success && result.request) {
+      const req = result.request as any;
+      setMeta({ id: req.id, subject: req.subject, status: req.status });
+      setMessages(req.messages as ChatMessage[]);
+      return req.messages as ChatMessage[];
+    }
+    localStorage.removeItem(STORAGE_KEY);
+    setMeta(null);
+    setMessages([]);
+    return null;
+  }, []);
 
   const pollMessages = useCallback(
     async (requestId: number, open: boolean) => {
@@ -131,7 +128,9 @@ export default function SupportWidget() {
         mergeMessages(result.messages as ChatMessage[]);
       }
       if (result.status) {
-        setMeta((prev) => (prev ? { ...prev, status: result.status as string } : prev));
+        setMeta((prev) =>
+          prev ? { ...prev, status: result.status as string } : prev
+        );
       }
       if (open) {
         // viewing -> everything is read
@@ -255,7 +254,9 @@ export default function SupportWidget() {
       if (!result.success) {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         setDraft(text);
-        setError(result.error || 'Հաղորդագրությունը ուղարկելիս սխալ է տեղի ունեցել');
+        setError(
+          result.error || 'Հաղորդագրությունը ուղարկելիս սխալ է տեղի ունեցել'
+        );
         return;
       }
       await pollMessages(meta.id, true);
@@ -284,7 +285,7 @@ export default function SupportWidget() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-red-600 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-red-950/30 transition hover:bg-red-500"
+          className="fixed bottom-12 right-5 z-50 shadow-xl flex items-center gap-2 rounded-full bg-red-600 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-red-950/30 transition hover:bg-red-500"
           aria-label="Աջակցություն"
         >
           <Headphones className="h-5 w-5" />
@@ -342,7 +343,8 @@ export default function SupportWidget() {
                   <>
                     <p className="text-xs text-gray-500">
                       Յուրաքանչյուր հեռախոսահամարի համար մեկ աջակցության չատ է։
-                      Նույն համարով կրկին գրելիս հաղորդագրությունը կգնա նույն չատ։
+                      Նույն համարով կրկին գրելիս հաղորդագրությունը կգնա նույն
+                      չատ։
                     </p>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <input
@@ -523,7 +525,9 @@ export default function SupportWidget() {
                   <button
                     type="button"
                     onClick={() => void handleSend()}
-                    disabled={isSubmitting || (!draft.trim() && files.length === 0)}
+                    disabled={
+                      isSubmitting || (!draft.trim() && files.length === 0)
+                    }
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-white transition hover:bg-red-500 disabled:opacity-50"
                     aria-label="Ուղարկել"
                   >

@@ -36,6 +36,7 @@ model User {
   supportRequests     SupportRequest[]
   producedMovies      Movie[]              @relation("MovieProducers")
   fiscalReceipts      FiscalReceipt[]      @relation("CashierFiscalReceipts")
+  expenses            Expense[]            @relation("ExpenseCreatedBy")
 
   @@index([email])
   @@index([phone])
@@ -530,4 +531,27 @@ model Premiere {
   @@index([premiereDate])
   @@index([isActive])
   @@map("premieres")
+}
+
+// ============================================
+// Expenses (Admin)
+// ============================================
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255) // ինչի համար է ծախսը
+  amount      Float // գումարը (֏)
+  category    String   @default("other") @db.VarChar(50) // rent, utilities, salary, supplies, maintenance, marketing, other
+  spentBy     String   @db.VarChar(255) // ծախս վերցնողի անունը
+  note        String?  @db.Text
+  expenseDate DateTime // ո՞ր օրվա ծախսն է
+  createdById Int? // ո՞վ է գրանցել (ադմին)
+  createdBy   User?    @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([expenseDate])
+  @@index([category])
+  @@index([createdById])
+  @@map("expenses")
 }

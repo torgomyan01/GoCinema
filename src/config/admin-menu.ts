@@ -21,6 +21,7 @@ import {
   ClipboardList,
   Receipt,
   ReceiptText,
+  Wallet,
   LucideIcon,
 } from 'lucide-react';
 
@@ -130,6 +131,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/payments',
     color: 'text-emerald-600',
     bgColor: 'bg-emerald-50',
+  },
+  {
+    title: 'Ծախսեր',
+    icon: Wallet,
+    href: '/admin/expenses',
+    color: 'text-rose-600',
+    bgColor: 'bg-rose-50',
   },
   {
     title: 'Ծանուցումներ',

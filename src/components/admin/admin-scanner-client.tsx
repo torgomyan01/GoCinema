@@ -47,6 +47,9 @@ import {
   removeTicketOrderItem,
   confirmTicketEntryFulfillment,
   confirmOrderEntryFulfillment,
+  getCustomerTicketsForScanner,
+  mergeReservedTicketsIntoOrder,
+  type CustomerScannerTicketRow,
 } from '@/app/actions/scanner';
 import { lookupSaleProductByQr } from '@/app/actions/products';
 import { buildProductSaleInput, isHdmAgentEnabled } from '@/lib/hdm-agent';
@@ -179,6 +182,20 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const [removingOrderItemId, setRemovingOrderItemId] = useState<number | null>(
     null
   );
+
+  const [customerTicketsModalOpen, setCustomerTicketsModalOpen] =
+    useState(false);
+  const [customerTickets, setCustomerTickets] = useState<
+    CustomerScannerTicketRow[]
+  >([]);
+  const [customerTicketsLoading, setCustomerTicketsLoading] = useState(false);
+  const [customerTicketsError, setCustomerTicketsError] = useState<
+    string | null
+  >(null);
+  const [selectedMergeTicketIds, setSelectedMergeTicketIds] = useState<
+    Set<number>
+  >(new Set());
+  const [isMergingTickets, setIsMergingTickets] = useState(false);
 
   // Load windows from localStorage on mount
   useEffect(() => {
@@ -870,6 +887,32 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
 
   const activeWindow = windows.find((w) => w.id === activeWindowId);
 
+  const customerPayContext = useMemo(() => {
+    if (!activeWindow?.scannedData) return null;
+    const { type, data } = activeWindow.scannedData;
+    const userId = data.user?.id ?? data.userId ?? null;
+    let targetOrderId: number | null = null;
+    if (type === 'order') {
+      targetOrderId = data.id;
+    } else {
+      targetOrderId = data.order?.id ?? data.orderId ?? null;
+    }
+    if (!userId) return null;
+    return {
+      userId: Number(userId),
+      targetOrderId:
+        targetOrderId != null && Number.isFinite(Number(targetOrderId))
+          ? Number(targetOrderId)
+          : null,
+    };
+  }, [activeWindow?.scannedData]);
+
+  const selectedMergeTotal = useMemo(() => {
+    return customerTickets
+      .filter((ticket) => selectedMergeTicketIds.has(ticket.id))
+      .reduce((sum, ticket) => sum + ticket.price + ticket.productsTotal, 0);
+  }, [customerTickets, selectedMergeTicketIds]);
+
   const productModalTicket = useMemo(() => {
     if (productModalTicketId === null || !activeWindow?.scannedData)
       return null;
@@ -894,6 +937,76 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const closeProductModal = () => {
     setProductModalTicketId(null);
     setProductError(null);
+  };
+
+  const openCustomerTicketsModal = async () => {
+    if (!customerPayContext) return;
+    setCustomerTicketsModalOpen(true);
+    setCustomerTicketsLoading(true);
+    setCustomerTicketsError(null);
+    setSelectedMergeTicketIds(new Set());
+    try {
+      const result = await getCustomerTicketsForScanner({
+        userId: customerPayContext.userId,
+        targetOrderId: customerPayContext.targetOrderId,
+      });
+      if (result.success) {
+        setCustomerTickets(result.tickets);
+      } else {
+        setCustomerTicketsError(result.error);
+      }
+    } catch (err) {
+      console.error('Error loading customer tickets:', err);
+      setCustomerTicketsError('Տոմսերը բեռնելիս սխալ է տեղի ունեցել');
+    } finally {
+      setCustomerTicketsLoading(false);
+    }
+  };
+
+  const closeCustomerTicketsModal = () => {
+    setCustomerTicketsModalOpen(false);
+    setCustomerTickets([]);
+    setCustomerTicketsError(null);
+    setSelectedMergeTicketIds(new Set());
+  };
+
+  const toggleMergeTicket = (ticketId: number) => {
+    setSelectedMergeTicketIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) next.delete(ticketId);
+      else next.add(ticketId);
+      return next;
+    });
+  };
+
+  const handleMergeTicketsIntoOrder = async () => {
+    if (!customerPayContext?.targetOrderId || !activeWindowId) return;
+    const ticketIds = Array.from(selectedMergeTicketIds);
+    if (ticketIds.length === 0) return;
+
+    setIsMergingTickets(true);
+    setCustomerTicketsError(null);
+    try {
+      const result = await mergeReservedTicketsIntoOrder({
+        targetOrderId: customerPayContext.targetOrderId,
+        ticketIds,
+      });
+      if (result.success) {
+        closeCustomerTicketsModal();
+        await handleScanSuccess(
+          activeWindowId,
+          `ORDER-${customerPayContext.targetOrderId}`
+        );
+        alert(result.message || 'Տոմսերը ավելացվեցին պատվերին');
+      } else {
+        setCustomerTicketsError(result.error);
+      }
+    } catch (err) {
+      console.error('Error merging tickets:', err);
+      setCustomerTicketsError('Տոմսերը միավորելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsMergingTickets(false);
+    }
   };
 
   const handleSubmitScannerProducts = async (payload: {
@@ -1177,9 +1290,21 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
 
           {/* Scanned Data */}
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              Տոմսի/Պատվերի Տեղեկություն
-            </h2>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                Տոմսի/Պատվերի Տեղեկություն
+              </h2>
+              {customerPayContext && (
+                <button
+                  type="button"
+                  onClick={() => void openCustomerTicketsModal()}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors shrink-0"
+                >
+                  <Ticket className="w-4 h-4" />
+                  Հաճախորդի տոմսեր
+                </button>
+              )}
+            </div>
             {!activeWindow.scannedData ? (
               <div className="text-center py-12 text-gray-500">
                 <QrCode className="w-16 h-16 mx-auto mb-4 opacity-30" />
@@ -1810,6 +1935,182 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           }
         />
       )}
+
+      {customerTicketsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Հաճախորդի բոլոր տոմսերը
+                </h3>
+                {customerPayContext?.targetOrderId && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Ընտրեք չվճարված տոմսերը՝ ավելացնելու պատվեր #
+                    {customerPayContext.targetOrderId}-ին և վճարել միասին
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={closeCustomerTicketsModal}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Փակել"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {customerTicketsLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-500">
+                  <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : customerTicketsError && customerTickets.length === 0 ? (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {customerTicketsError}
+                </div>
+              ) : customerTickets.length === 0 ? (
+                <p className="text-center py-12 text-gray-500">
+                  Ակտիվ տոմսեր չկան
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {customerTickets.map((ticket) => {
+                    const badge = getStatusBadge(ticket.status);
+                    const isSelected = selectedMergeTicketIds.has(ticket.id);
+                    return (
+                      <label
+                        key={ticket.id}
+                        className={`flex items-start gap-3 p-4 rounded-lg border transition-colors ${
+                          ticket.canAdd
+                            ? isSelected
+                              ? 'border-purple-400 bg-purple-50 cursor-pointer'
+                              : 'border-gray-200 hover:border-purple-200 cursor-pointer'
+                            : ticket.inTargetOrder
+                              ? 'border-purple-200 bg-purple-50/50'
+                              : 'border-gray-100 bg-gray-50'
+                        }`}
+                      >
+                        {ticket.canAdd ? (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleMergeTicket(ticket.id)}
+                            className="mt-1 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          />
+                        ) : (
+                          <span className="mt-1 w-4" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-900">
+                              {ticket.movieTitle}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs font-medium ${badge.color}`}
+                            >
+                              {badge.label}
+                            </span>
+                            {ticket.inTargetOrder && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                Այս պատվերում
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5" />
+                              {formatDate(ticket.startTime)}{' '}
+                              {formatTime(ticket.startTime)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5" />
+                              Աթոռ {ticket.seatLabel}
+                            </span>
+                            {ticket.orderId != null && (
+                              <span>Պատվեր #{ticket.orderId}</span>
+                            )}
+                          </div>
+                          <div className="mt-2 text-sm font-medium text-gray-900">
+                            {(ticket.price + ticket.productsTotal).toLocaleString(
+                              'hy-AM'
+                            )}{' '}
+                            ֏
+                            {ticket.productsTotal > 0 && (
+                              <span className="text-gray-500 font-normal ml-1">
+                                (տոմս {ticket.price.toLocaleString('hy-AM')} +
+                                ապրանքներ{' '}
+                                {ticket.productsTotal.toLocaleString('hy-AM')})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 border-t border-gray-200 space-y-3">
+              {customerTicketsError && customerTickets.length > 0 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {customerTicketsError}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-gray-600">
+                  {selectedMergeTicketIds.size > 0 ? (
+                    <>
+                      Ընտրված՝ {selectedMergeTicketIds.size} տոմս,{' '}
+                      <span className="font-semibold text-gray-900">
+                        {selectedMergeTotal.toLocaleString('hy-AM')} ֏
+                      </span>
+                    </>
+                  ) : customerPayContext?.targetOrderId ? (
+                    'Նշեք տոմսերը, որոնք ավելացնել եք այս պատվերին'
+                  ) : (
+                    'Միասին վճարման համար բացեք պատվերի QR կոդը'
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={closeCustomerTicketsModal}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Փակել
+                  </button>
+                  {customerPayContext?.targetOrderId && (
+                    <button
+                      type="button"
+                      onClick={() => void handleMergeTicketsIntoOrder()}
+                      disabled={
+                        isMergingTickets || selectedMergeTicketIds.size === 0
+                      }
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isMergingTickets ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Ավելացվում է...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          Ավելացնել պատվերին
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {productError && productModalTicketId !== null && (
         <div className="fixed bottom-4 left-1/2 z-[60] -translate-x-1/2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
           {productError}

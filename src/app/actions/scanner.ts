@@ -1704,6 +1704,242 @@ export async function payReservationAtCounter(input: {
   }
 }
 
+export interface CustomerScannerTicketRow {
+  id: number;
+  orderId: number | null;
+  status: string;
+  price: number;
+  productsTotal: number;
+  movieTitle: string;
+  startTime: string;
+  seatLabel: string;
+  inTargetOrder: boolean;
+  canAdd: boolean;
+}
+
+async function recalculateOrderTotalInTx(tx: TxClient, orderId: number) {
+  const tickets = await tx.ticket.findMany({
+    where: { orderId, status: { not: 'cancelled' } },
+    select: { price: true },
+  });
+  const items = await tx.orderItem.findMany({
+    where: { orderId },
+    select: { price: true, quantity: true },
+  });
+  const total =
+    tickets.reduce((sum, ticket) => sum + (ticket.price || 0), 0) +
+    items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  await tx.order.update({
+    where: { id: orderId },
+    data: { totalAmount: total },
+  });
+
+  return total;
+}
+
+async function finalizeOrderAfterTicketMove(tx: TxClient, orderId: number) {
+  const ticketCount = await tx.ticket.count({
+    where: { orderId, status: { not: 'cancelled' } },
+  });
+  const itemCount = await tx.orderItem.count({ where: { orderId } });
+
+  if (ticketCount === 0 && itemCount === 0) {
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: 'cancelled', totalAmount: 0 },
+    });
+    return 0;
+  }
+
+  return recalculateOrderTotalInTx(tx, orderId);
+}
+
+/** Հաճախորդի բոլոր տոմսերը scanner-ի մոդալի համար */
+export async function getCustomerTicketsForScanner(input: {
+  userId: number;
+  targetOrderId?: number | null;
+}): Promise<{
+  success: boolean;
+  error: string | null;
+  tickets: CustomerScannerTicketRow[];
+}> {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է', tickets: [] };
+  }
+
+  const userId = Number(input.userId);
+  const targetOrderId = input.targetOrderId
+    ? Number(input.targetOrderId)
+    : null;
+
+  if (!Number.isFinite(userId)) {
+    return { success: false, error: 'Սխալ օգտատեր', tickets: [] };
+  }
+
+  try {
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        userId,
+        status: { in: ['reserved', 'paid', 'used'] },
+      },
+      include: {
+        screening: {
+          include: { movie: { select: { title: true } } },
+        },
+        seat: { select: { row: true, number: true } },
+        orderItems: { select: { price: true, quantity: true } },
+      },
+      orderBy: [{ screening: { startTime: 'asc' } }, { id: 'asc' }],
+    });
+
+    const rows: CustomerScannerTicketRow[] = tickets.map((ticket) => {
+      const productsTotal = ticket.orderItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+      const inTargetOrder =
+        targetOrderId != null && ticket.orderId === targetOrderId;
+      return {
+        id: ticket.id,
+        orderId: ticket.orderId,
+        status: ticket.status,
+        price: ticket.price,
+        productsTotal,
+        movieTitle: ticket.screening.movie.title,
+        startTime: ticket.screening.startTime.toISOString(),
+        seatLabel: `${ticket.seat.row}${ticket.seat.number}`,
+        inTargetOrder,
+        canAdd:
+          ticket.status === 'reserved' &&
+          targetOrderId != null &&
+          ticket.orderId !== targetOrderId,
+      };
+    });
+
+    return { success: true, error: null, tickets: rows };
+  } catch (error) {
+    console.error('[Get Customer Tickets For Scanner] Error:', error);
+    return {
+      success: false,
+      error: 'Տոմսերը բեռնելիս սխալ է տեղի ունեցել',
+      tickets: [],
+    };
+  }
+}
+
+/** Չվճարված տոմսերը միավորել մեկ պատվերի մեջ՝ միասին վճարելու համար */
+export async function mergeReservedTicketsIntoOrder(input: {
+  targetOrderId: number;
+  ticketIds: number[];
+}): Promise<{ success: boolean; error: string | null; message?: string }> {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const targetOrderId = Number(input.targetOrderId);
+  const ticketIds = Array.from(
+    new Set(
+      (input.ticketIds ?? [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )
+  );
+
+  if (!Number.isFinite(targetOrderId) || ticketIds.length === 0) {
+    return { success: false, error: 'Ընտրեք առնվազն մեկ տոմս' };
+  }
+
+  try {
+    const targetOrder = await prisma.order.findUnique({
+      where: { id: targetOrderId },
+      select: { id: true, userId: true, status: true },
+    });
+
+    if (!targetOrder) {
+      return { success: false, error: 'Պատվերը չի գտնվել' };
+    }
+    if (targetOrder.status === 'cancelled') {
+      return { success: false, error: 'Պատվերը չեղարկված է' };
+    }
+
+    const tickets = await prisma.ticket.findMany({
+      where: { id: { in: ticketIds } },
+      select: { id: true, orderId: true, userId: true, status: true },
+    });
+
+    if (tickets.length !== ticketIds.length) {
+      return { success: false, error: 'Որոշ տոմսեր չեն գտնվել' };
+    }
+
+    for (const ticket of tickets) {
+      if (ticket.userId !== targetOrder.userId) {
+        return {
+          success: false,
+          error: 'Բոլոր տոմսերը պետք է պատկանեն նույն հաճախորդին',
+        };
+      }
+      if (ticket.status !== 'reserved') {
+        return {
+          success: false,
+          error: 'Միայն չվճարված (ամրագրված) տոմսերը կարելի է ավելացնել',
+        };
+      }
+      if (ticket.orderId === targetOrderId) {
+        return {
+          success: false,
+          error: 'Տոմսերից մեկը արդեն այս պատվերում է',
+        };
+      }
+    }
+
+    const sourceOrderIds = Array.from(
+      new Set(
+        tickets
+          .map((t) => t.orderId)
+          .filter((id): id is number => id != null && id !== targetOrderId)
+      )
+    );
+
+    await prisma.$transaction(async (tx) => {
+      for (const ticketId of ticketIds) {
+        await tx.ticket.update({
+          where: { id: ticketId },
+          data: { orderId: targetOrderId },
+        });
+        await tx.orderItem.updateMany({
+          where: { ticketId },
+          data: { orderId: targetOrderId },
+        });
+      }
+
+      await recalculateOrderTotalInTx(tx, targetOrderId);
+
+      for (const sourceOrderId of sourceOrderIds) {
+        await finalizeOrderAfterTicketMove(tx, sourceOrderId);
+      }
+    });
+
+    revalidatePath('/admin/scanner');
+    revalidatePath('/admin/tickets');
+    revalidatePath('/tickets');
+
+    return {
+      success: true,
+      error: null,
+      message: `${ticketIds.length} տոմս ավելացվեց պատվեր #${targetOrderId}-ին`,
+    };
+  } catch (error) {
+    console.error('[Merge Reserved Tickets Into Order] Error:', error);
+    return {
+      success: false,
+      error: 'Տոմսերը միավորելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
 export interface TicketProductScanInput {
   ticketId: number;
   /** Սկանավորված QR կոդեր (ոչ-պոպկորն ապրանքներ) */

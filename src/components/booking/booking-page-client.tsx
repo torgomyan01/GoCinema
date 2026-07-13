@@ -49,6 +49,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
+import { formatDateHy, formatTimeHy } from '@/lib/format';
 import { getScreeningById } from '@/app/actions/screenings';
 import { createOrder } from '@/app/actions/orders';
 import { createCounterReservation } from '@/app/actions/reservations';
@@ -161,23 +162,10 @@ export default function BookingPageClient({
     }
   }, [session, router, isLoading]);
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleDateString('hy-AM', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (date: Date | string) =>
+    formatDateHy(date, { weekday: true, year: true });
 
   const handleSeatClick = (seatId: number, isOccupied: boolean) => {
     if (isOccupied) return;

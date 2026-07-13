@@ -20,6 +20,7 @@ import {
   getSupportMessages,
   getSupportRequestById,
 } from '@/app/actions/support';
+import { formatTimeHy } from '@/lib/format';
 
 interface ChatMessage {
   id: number;
@@ -49,10 +50,7 @@ const statusLabels: Record<string, string> = {
 };
 
 function formatTime(value: Date | string) {
-  return new Date(value).toLocaleTimeString('hy-AM', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatTimeHy(value);
 }
 
 export default function SupportWidget() {

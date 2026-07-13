@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
+import { formatDateHy, formatTimeHy } from '@/lib/format';
 import { getOrderById } from '@/app/actions/orders';
 
 interface CheckoutPageClientProps {
@@ -114,23 +115,10 @@ export default function CheckoutPageClient({
     return ticketsPrice + allProductsPrice;
   }, [order]);
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleDateString('hy-AM', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (date: Date | string) =>
+    formatDateHy(date, { weekday: true, year: true });
 
   const handleProceedToPayment = async () => {
     if (!order || !session?.user) return;

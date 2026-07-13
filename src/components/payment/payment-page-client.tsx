@@ -22,6 +22,7 @@ import { useSession } from 'next-auth/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useRef } from 'react';
 import { SITE_URL } from '@/utils/consts';
+import { formatDateHy, formatTimeHy } from '@/lib/format';
 import {
   createTelcellInvoiceForOrder,
   createVPostOrderForOrder,
@@ -331,23 +332,10 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     };
   }, [isAwaitingTelcell, order, router]);
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleDateString('hy-AM', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (date: Date | string) =>
+    formatDateHy(date, { weekday: true, year: true });
 
   /** Ադմին սկաները ընդունում է TICKET-{id} / ORDER-{id} (`getOrderOrTicketByQR`)։ */
   const getQRCodeData = (ticket: Ticket) => {

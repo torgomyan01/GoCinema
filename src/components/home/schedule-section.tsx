@@ -21,7 +21,7 @@ import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
 import { getScreenings } from '@/app/actions/screenings';
-import { formatPrice } from '@/lib/format';
+import { formatPrice, formatDateHy, formatTimeHy, formatWeekdayHy } from '@/lib/format';
 import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 interface Screening {
@@ -135,41 +135,10 @@ export default function ScheduleSection() {
     setCurrentWeekStart(newDate);
   };
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    const weekdays = [
-      'կիրակի',
-      'երկուշաբթի',
-      'երեքշաբթի',
-      'չորեքշաբթի',
-      'հինգշաբթի',
-      'ուրբաթ',
-      'շաբաթ',
-    ];
-    const months = [
-      'հունվար',
-      'փետրվար',
-      'մարտ',
-      'ապրիլ',
-      'մայիս',
-      'հունիս',
-      'հուլիս',
-      'օգոստոս',
-      'սեպտեմբեր',
-      'հոկտեմբեր',
-      'նոյեմբեր',
-      'դեկտեմբեր',
-    ];
-    return `${weekdays[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
-  };
+  const formatDate = (date: Date | string) =>
+    formatDateHy(date, { weekday: true });
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
   const getAvailableSeats = (screening: Screening) => {
     const capacity = screening.hall?.capacity || 80;
@@ -462,7 +431,7 @@ export default function ScheduleSection() {
                     }`}
                   >
                     <div className="text-sm font-medium mb-1">
-                      {formatDate(day).split(',')[0]}
+                      {formatWeekdayHy(day)}
                     </div>
                     <div
                       className={`text-2xl font-bold ${

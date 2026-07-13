@@ -17,6 +17,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
+import { formatDateHy, formatTimeHy } from '@/lib/format';
 import { getScreeningById } from '@/app/actions/screenings';
 
 interface ScreeningDetailPageClientProps {
@@ -142,23 +143,10 @@ export default function ScreeningDetailPageClient({
     return Array.from(productMap.values());
   }, [screening?.tickets]);
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleDateString('hy-AM', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (date: Date | string) =>
+    formatDateHy(date, { weekday: true, year: true });
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);

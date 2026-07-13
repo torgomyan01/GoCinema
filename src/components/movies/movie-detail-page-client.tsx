@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SITE_URL } from '@/utils/consts';
 import { ageRatingClasses, ageRatingDescription } from '@/lib/age-rating';
+import { formatDateHy, formatDateKey, formatTimeHy } from '@/lib/format';
 
 interface MovieDetailPageClientProps {
   movie: {
@@ -56,22 +57,10 @@ export default function MovieDetailPageClient({
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleDateString('hy-AM', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (date: Date | string, withYear = false) =>
+    formatDateHy(date, { weekday: true, year: withYear });
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
@@ -84,7 +73,7 @@ export default function MovieDetailPageClient({
     const grouped = new Map<string, typeof movie.screenings>();
 
     movie.screenings?.forEach((screening) => {
-      const date = formatDate(screening.startTime);
+      const date = formatDateKey(screening.startTime);
       if (!grouped.has(date)) {
         grouped.set(date, []);
       }
@@ -124,24 +113,17 @@ export default function MovieDetailPageClient({
     movie.screenings
       .filter((s) => isUpcoming(s))
       .forEach((screening) => {
-        dates.add(formatDate(screening.startTime));
+        dates.add(formatDateKey(screening.startTime));
       });
-    return Array.from(dates).sort((a, b) => {
-      const dateA = new Date(
-        movie.screenings!.find((s) => formatDate(s.startTime) === a)!.startTime
-      );
-      const dateB = new Date(
-        movie.screenings!.find((s) => formatDate(s.startTime) === b)!.startTime
-      );
-      return dateA.getTime() - dateB.getTime();
-    });
+    return Array.from(dates).sort((a, b) => a.localeCompare(b));
   }, [movie.screenings]);
 
   // Get screenings for selected date
   const screeningsForSelectedDate = useMemo(() => {
     if (!selectedDate || !movie.screenings) return [];
     return movie.screenings.filter(
-      (s) => formatDate(s.startTime) === selectedDate && isUpcoming(s)
+      (s) =>
+        formatDateKey(s.startTime) === selectedDate && isUpcoming(s)
     );
   }, [selectedDate, movie.screenings]);
 
@@ -170,7 +152,7 @@ export default function MovieDetailPageClient({
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       {/* Hero Section */}
-      <div className="relative w-full h-[70vh] min-h-[500px] overflow-hidden">
+      <div className="relative w-full h-[70vh] min-h-[500px] overflow-hidden mt-[60px]">
         {movie.image && (
           <div className="absolute inset-0">
             <Image
@@ -224,7 +206,7 @@ export default function MovieDetailPageClient({
               </div>
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
-                <span>{formatDate(movie.releaseDate)}</span>
+                <span>{formatDate(movie.releaseDate, true)}</span>
               </div>
             </div>
 
@@ -326,17 +308,17 @@ export default function MovieDetailPageClient({
                       Ընտրեք օր
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {availableDates.map((date) => (
+                      {availableDates.map((dateKey) => (
                         <button
-                          key={date}
-                          onClick={() => setSelectedDate(date)}
+                          key={dateKey}
+                          onClick={() => setSelectedDate(dateKey)}
                           className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                            selectedDate === date
+                            selectedDate === dateKey
                               ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          {date}
+                          {formatDate(dateKey)}
                         </button>
                       ))}
                     </div>
@@ -470,11 +452,11 @@ export default function MovieDetailPageClient({
 
                 <div className="space-y-6">
                   {Array.from(screeningsByDate.entries()).map(
-                    ([date, screenings]) => (
-                      <div key={date}>
+                    ([dateKey, screenings]) => (
+                      <div key={dateKey}>
                         <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
                           <Calendar className="w-5 h-5 text-purple-600" />
-                          {date}
+                          {formatDate(dateKey)}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {screenings
@@ -608,7 +590,7 @@ export default function MovieDetailPageClient({
                     Թողարկման ամսաթիվ
                   </div>
                   <div className="text-lg font-semibold text-gray-900">
-                    {formatDate(movie.releaseDate)}
+                    {formatDate(movie.releaseDate, true)}
                   </div>
                 </div>
               </div>

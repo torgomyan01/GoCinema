@@ -16,6 +16,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { SITE_URL } from '@/utils/consts';
+import { formatDateHy, formatTimeHy } from '@/lib/format';
 
 interface TicketCardProps {
   ticket: {
@@ -134,22 +135,10 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
       btoa(unescape(encodeURIComponent(svgData)));
   };
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleDateString('hy-AM', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (date: Date | string) =>
+    formatDateHy(date, { year: true });
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
   const getStatusColor = (status: string) => {
     switch (status) {

@@ -15,6 +15,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
+import { formatDateHy, formatTimeHy } from '@/lib/format';
 
 interface Screening {
   id: number;
@@ -49,48 +50,15 @@ export default function ScheduleDay({ date, screenings }: ScheduleDayProps) {
   const { data: session, status } = useSession();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
+
+  const formatDate = (date: Date) => formatDateHy(date, { weekday: true });
 
   const handleBookingClick = (e: React.MouseEvent, screeningId: number) => {
-    // Check if user is authenticated
     if (status !== 'authenticated' || !session) {
       e.preventDefault();
       setShowLoginModal(true);
     }
-    // If authenticated, let the Link handle navigation
-  };
-
-  const formatDate = (date: Date) => {
-    const weekdays = [
-      'կիրակի',
-      'երկուշաբթի',
-      'երեքշաբթի',
-      'չորեքշաբթի',
-      'հինգշաբթի',
-      'ուրբաթ',
-      'շաբաթ',
-    ];
-    const months = [
-      'հունվար',
-      'փետրվար',
-      'մարտ',
-      'ապրիլ',
-      'մայիս',
-      'հունիս',
-      'հուլիս',
-      'օգոստոս',
-      'սեպտեմբեր',
-      'հոկտեմբեր',
-      'նոյեմբեր',
-      'դեկտեմբեր',
-    ];
-    return `${weekdays[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]}`;
   };
 
   const isToday = (date: Date) => {

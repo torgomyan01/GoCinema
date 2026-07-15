@@ -261,7 +261,7 @@ export default function BookingPageClient({
     return categoryLabels[category] || category;
   };
 
-  // Filter products
+  // Filter products — սառը թեյ → պոպկորն → մնացածը
   const filteredProducts = useMemo(() => {
     let filtered = products;
 
@@ -278,12 +278,32 @@ export default function BookingPageClient({
       );
     }
 
-    return filtered;
+    const categoryPriority = (category: string) => {
+      if (category === 'iced_tea') return 0;
+      if (category === 'popcorn') return 1;
+      return 2;
+    };
+
+    return [...filtered].sort((a, b) => {
+      const byCategory =
+        categoryPriority(a.category) - categoryPriority(b.category);
+      if (byCategory !== 0) return byCategory;
+      return a.name.localeCompare(b.name, 'hy');
+    });
   }, [products, selectedCategory, searchQuery]);
 
   const availableCategories = useMemo(() => {
-    const categories = new Set(products.map((p) => p.category));
-    return Array.from(categories).sort();
+    const categoryPriority = (category: string) => {
+      if (category === 'iced_tea') return 0;
+      if (category === 'popcorn') return 1;
+      return 2;
+    };
+    const categories = Array.from(new Set(products.map((p) => p.category)));
+    return categories.sort((a, b) => {
+      const byPriority = categoryPriority(a) - categoryPriority(b);
+      if (byPriority !== 0) return byPriority;
+      return a.localeCompare(b);
+    });
   }, [products]);
 
   const getSeatInfo = (seatId: number) => {
@@ -1051,7 +1071,7 @@ export default function BookingPageClient({
                     </button>
                   )}
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none scrollbar-hide">
                   <button
                     onClick={() => setSelectedCategory(null)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${

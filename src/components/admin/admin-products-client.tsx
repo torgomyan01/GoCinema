@@ -55,6 +55,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   drink: 'Խմիչք',
   combo: 'Կոմբո',
   popcorn: 'Պոպկորն',
+  iced_tea: 'Սառը թեյ',
   soda: 'Գազավորված խմիչք',
   candy: 'Քաղցրավենիք',
   hot_dog: 'Հոթ-դոգ',
@@ -809,6 +810,7 @@ export default function AdminProductsClient({
                         <option value="drink">Խմիչք</option>
                         <option value="combo">Կոմբո</option>
                         <option value="popcorn">Պոպկորն</option>
+                        <option value="iced_tea">Սառը թեյ</option>
                         <option value="soda">Գազավորված խմիչք</option>
                         <option value="candy">Քաղցրավենիք</option>
                         <option value="hot_dog">Հոթ-դոգ</option>
@@ -837,7 +839,7 @@ export default function AdminProductsClient({
                         <ScanLine className="h-4 w-4 text-green-600" />
                       )}
                       {isQuantityOnlyProduct(formData.category)
-                        ? 'Պոպկորնը հաշվառվում է քանակով'
+                        ? `${getCategoryLabel(formData.category)}-ը հաշվառվում է քանակով`
                         : 'Պաշարը կառավարվում է QR-սկանավորմամբ'}
                     </div>
                     <p className="mt-1 text-xs text-gray-500">

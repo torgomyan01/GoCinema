@@ -214,7 +214,7 @@ export default function ProductScanSaleModal({
     subtitle ??
     (mode === 'ticket-unpaid'
       ? 'Ավելանում է պատվերին, վճարումը՝ դրամարկղում միասին'
-      : 'Սկանավորեք ապրանքի QR-ը, պոպկորնը՝ ձեռքով');
+      : 'Սկանավորեք ապրանքի QR-ը, քանակով ապրանքները՝ ձեռքով');
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-gray-50">
@@ -311,7 +311,7 @@ export default function ProductScanSaleModal({
             <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
               <p className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
                 <Popcorn className="h-4 w-4" />
-                Պոպկորն (ձեռքով քանակ)
+                Քանակով ապրանքներ (ձեռքով)
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                 {popcornProducts.map((product) => {

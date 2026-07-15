@@ -457,7 +457,7 @@ export default function ProductReturnExchangeModal({
                     <div className="space-y-2">
                       <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
                         <Popcorn className="h-3.5 w-3.5" />
-                        Պոպկորն
+                        Քանակով ապրանքներ
                       </p>
                       {popcornProducts.map((product) => {
                         const qty = popcornCart[product.id] ?? 0;

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 /**
  * Ապրանքների պաշարի կառավարում։
  *
- * - `popcorn` և այլ QUANTITY_ONLY կատեգորիաներ՝ պարզ քանակ (stock դաշտ)
+ * - `popcorn`, `iced_tea` և այլ QUANTITY_ONLY կատեգորիաներ՝ պարզ քանակ (stock դաշտ)
  * - Մնացածը՝ ամեն միավորի ունիկալ QR (ProductUnit), վաճառվածը մնում է բազայում
  */
 
@@ -14,7 +14,7 @@ type Tx = Omit<
 >;
 
 /** QR-հաշվառում չունեցող կատեգորիաներ — վաճառվում են քանակով */
-export const QUANTITY_ONLY_CATEGORIES = ['popcorn'] as const;
+export const QUANTITY_ONLY_CATEGORIES = ['popcorn', 'iced_tea'] as const;
 
 export function usesQrUnitTracking(category: string): boolean {
   return !QUANTITY_ONLY_CATEGORIES.includes(

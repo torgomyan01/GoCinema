@@ -240,6 +240,7 @@ export default function BookingPageClient({
       drink: 'Խմիչք',
       combo: 'Կոմբո',
       popcorn: 'Պոպկորն',
+      iced_tea: 'Սառը թեյ',
       soda: 'Գազավորված խմիչք',
       candy: 'Քաղցրավենիք',
       hot_dog: 'Հոթ-դոգ',

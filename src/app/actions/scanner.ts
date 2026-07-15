@@ -9,6 +9,7 @@ import { COUNTER_PAYMENT_METHOD } from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
 import {
   isQuantityOnlyProduct,
+  QUANTITY_ONLY_CATEGORIES,
   reserveProductUnitsForOrderItem,
   clearOrderItemQrReservations,
   returnOrderItemStock,
@@ -232,7 +233,7 @@ async function confirmQrOrderItemsFulfilled(tx: TxClient, ticketId: number) {
       ticketId,
       fulfilledAt: null,
       product: {
-        category: { notIn: ['popcorn'] },
+        category: { notIn: [...QUANTITY_ONLY_CATEGORIES] },
       },
     },
     data: { fulfilledAt: new Date() },

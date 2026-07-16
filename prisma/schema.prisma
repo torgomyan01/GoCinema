@@ -335,7 +335,7 @@ model Order {
   id            Int      @id @default(autoincrement())
   userId        Int
   totalAmount   Float
-  status        String   @default("pending") @db.VarChar(50) // pending, completed, cancelled
+  status        String   @default("pending") @db.VarChar(50) // pending, completed, failed, cancelled
   paymentMethod String   @default("cash") @db.VarChar(50) // cash, card, counter (օնլայն ամրագրում՝ դրամարկղում վճարելու համար)
   amountPaid    Float? // կանխիկ վճարման դեպքում՝ հաճախորդի տված գումարը
   createdAt     DateTime @default(now())

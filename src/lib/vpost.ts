@@ -288,9 +288,7 @@ function sanitizePayloadForLog(payload: Record<string, unknown>) {
 }
 
 function getVPostConfig() {
-  const publicKey =
-    sanitizeEnvValue(process.env.PAYMENT_PUBLIC_KEY) ||
-    sanitizeEnvValue(process.env.PAYMENT__PUBLIC_KEY);
+  const publicKey = sanitizeEnvValue(process.env.PAYMENT_PUBLIC_KEY);
   const secretKey = sanitizeEnvValue(process.env.PAYMENT_SECRET_KEY);
   const mode = (process.env.PAYMENT_MODE || 'live').toLowerCase();
   const baseUrl =
@@ -306,11 +304,6 @@ function getVPostConfig() {
   };
 }
 
-function signatureInvalid(message?: string) {
-  if (!message) return false;
-  return /signature.+invalid/i.test(message);
-}
-
 async function vpostRequest<T>(
   endpoint: string,
   payload: Record<string, unknown>
@@ -322,124 +315,113 @@ async function vpostRequest<T>(
 
   const url = `${config.baseUrl}${endpoint}`;
 
-  // Keep both concatenation strategies as fallback for providers
-  // with inconsistent signature documentation/implementations.
-  const signatures = Array.from(
-    new Set([
-      md5(config.secretKey + config.publicKey),
-      md5(config.publicKey + config.secretKey),
-    ])
-  );
-
-  const headerVariants = signatures.map((signature) => ({
+  // Ստորագրությունը ITF/vPost փաստաթղթի համաձայն՝ md5(ClientPrivateKey + ClientPublicKey)։
+  const signature = md5(config.secretKey + config.publicKey);
+  const headers = {
     'Content-Type': 'application/json',
-    'public-key': config.publicKey as string,
+    'public-key': config.publicKey,
     signature,
-  }));
-
-  let lastResponse: VPostEnvelope<T> = {
-    status: false,
-    message: 'vPost request failed',
   };
 
-  for (let attempt = 0; attempt < headerVariants.length; attempt += 1) {
-    const headers = headerVariants[attempt];
-    if (isVpostServerLogEnabled()) {
-      vpostServerLog('request', {
-        endpoint,
-        attempt: attempt + 1,
-        url,
-        payload: sanitizePayloadForLog({ ...payload }),
-      });
-    }
-    if (isVPostDebugEnabled()) {
-      console.info('[vPost] Request', {
-        endpoint,
-        attempt: attempt + 1,
-        mode: (process.env.PAYMENT_MODE || 'live').toLowerCase(),
-        baseUrl: config.baseUrl,
-        publicKeyPreview: maskValue(config.publicKey, 6, 6),
-        signaturePreview: maskValue(headers.signature, 6, 6),
-        payload: sanitizePayloadForLog(payload),
-      });
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      cache: 'no-store',
+  if (isVpostServerLogEnabled()) {
+    vpostServerLog('request', {
+      endpoint,
+      url,
+      payload: sanitizePayloadForLog({ ...payload }),
     });
-
-    const responseText = await response.text();
-    let json: VPostEnvelope<T>;
-    try {
-      json = JSON.parse(responseText) as VPostEnvelope<T>;
-    } catch {
-      json = {
-        status: false,
-        message: `Non-JSON response: ${responseText.slice(0, 300)}`,
-      };
-    }
-
-    if (isVpostServerLogEnabled() && json.message?.startsWith('Non-JSON')) {
-      vpostServerLog('raw_body', {
-        endpoint,
-        httpStatus: response.status,
-        snippet: responseText.slice(0, 800),
-      });
-    }
-
-    if (isVPostDebugEnabled()) {
-      console.info('[vPost] Response', {
-        endpoint,
-        attempt: attempt + 1,
-        httpStatus: response.status,
-        ok: response.ok,
-        status: json.status,
-        message: json.message,
-      });
-    }
-
-    if (isVpostServerLogEnabled()) {
-      const data = json.data as Record<string, unknown> | undefined;
-      const logPayload: Record<string, unknown> = {
-        endpoint,
-        attempt: attempt + 1,
-        httpStatus: response.status,
-        envelopeStatus: json.status,
-        message: json.message,
-      };
-      if (endpoint === '/transactions/list' && data) {
-        const list = extractTransactionsList(data);
-        logPayload.listLength = list.length;
-        logPayload.items = list.map(summarizeTransactionForLog);
-      } else if (endpoint === '/order/new' && data) {
-        logPayload.hasRedirect = Boolean(
-          (data as VPostOrderData).redirectURL
-        );
-        logPayload.partnerOrderId = (data as VPostOrderData).partnerOrderId;
-        logPayload.itfOrderId = (data as VPostOrderData).itfOrderId;
-      } else if (endpoint === '/customer/new' && data) {
-        logPayload.clientID = (data as VPostCustomerData).clientID;
-      } else if (data && typeof data === 'object') {
-        logPayload.dataKeys = Object.keys(data);
-      }
-      vpostServerLog('response', logPayload);
-    }
-
-    lastResponse = json;
-
-    if (json.status) return json;
-    if (!signatureInvalid(json.message)) return json;
+  }
+  if (isVPostDebugEnabled()) {
+    console.info('[vPost] Request', {
+      endpoint,
+      mode: (process.env.PAYMENT_MODE || 'live').toLowerCase(),
+      baseUrl: config.baseUrl,
+      publicKeyPreview: maskValue(config.publicKey, 6, 6),
+      signaturePreview: maskValue(signature, 6, 6),
+      payload: sanitizePayloadForLog(payload),
+    });
   }
 
-  return lastResponse;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+
+  const responseText = await response.text();
+  let json: VPostEnvelope<T>;
+  try {
+    json = JSON.parse(responseText) as VPostEnvelope<T>;
+  } catch {
+    json = {
+      status: false,
+      message: `Non-JSON response: ${responseText.slice(0, 300)}`,
+    };
+  }
+
+  if (isVpostServerLogEnabled() && json.message?.startsWith('Non-JSON')) {
+    vpostServerLog('raw_body', {
+      endpoint,
+      httpStatus: response.status,
+      snippet: responseText.slice(0, 800),
+    });
+  }
+
+  if (isVPostDebugEnabled()) {
+    console.info('[vPost] Response', {
+      endpoint,
+      httpStatus: response.status,
+      ok: response.ok,
+      status: json.status,
+      message: json.message,
+    });
+  }
+
+  if (isVpostServerLogEnabled()) {
+    const data = json.data as Record<string, unknown> | undefined;
+    const logPayload: Record<string, unknown> = {
+      endpoint,
+      httpStatus: response.status,
+      envelopeStatus: json.status,
+      message: json.message,
+    };
+    if (endpoint === '/transactions/list' && data) {
+      const list = extractTransactionsList(data);
+      logPayload.listLength = list.length;
+      logPayload.items = list.map(summarizeTransactionForLog);
+    } else if (endpoint === '/order/new' && data) {
+      logPayload.hasRedirect = Boolean((data as VPostOrderData).redirectURL);
+      logPayload.partnerOrderId = (data as VPostOrderData).partnerOrderId;
+      logPayload.itfOrderId = (data as VPostOrderData).itfOrderId;
+    } else if (endpoint === '/customer/new' && data) {
+      logPayload.clientID = (data as VPostCustomerData).clientID;
+    } else if (data && typeof data === 'object') {
+      logPayload.dataKeys = Object.keys(data);
+    }
+    vpostServerLog('response', logPayload);
+  }
+
+  return json;
 }
 
 export function hasVPostConfig() {
   const config = getVPostConfig();
   return Boolean(config.publicKey && config.secretKey);
+}
+
+/**
+ * Գանձման ռեժիմ.
+ * - single-phase (լռելյայն)՝ գումարը գանձվում է միանգամից, `payment_approved`
+ *   (status 1) արդեն նշանակում է հաջող վճարում (առանձին confirm-payment պետք չէ)։
+ * - two-phase (`PAYMENT_TWO_PHASE=true`)՝ գումարը սառեցվում է, ապա անհրաժեշտ է
+ *   `confirm-payment`՝ վաճառողի հաշվին փոխանցելու համար (վերջնական՝ `payment_deposited`)։
+ *
+ * Եթե ITF-ի confirm-payment-ը վերադարձնում է «Կարգավորումները չեն գտնվել»,
+ * ապա հաշիվը single-phase է, և պետք է թողնել լռելյայն արժեքը (false)։
+ */
+export function isVPostTwoPhaseEnabled(): boolean {
+  const value = (process.env.PAYMENT_TWO_PHASE || '').trim().toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes';
 }
 
 export async function createVPostOrder(payload: {
@@ -471,52 +453,15 @@ export async function createVPostCustomer(payload: {
   phoneNumber: string;
   email?: string;
 }) {
-  const safeFirstName = payload.firstName.trim() || 'GoCinema';
-  const safeLastName = payload.lastName?.trim();
-  const phone = String(payload.phoneNumber).replace(/\s+/g, '');
-
-  const candidatePhones = Array.from(
-    new Set([
-      phone,
-      phone.startsWith('+') ? phone.slice(1) : `+${phone}`,
-      phone.startsWith('+374') ? `0${phone.slice(4)}` : phone,
-    ])
-  ).filter(Boolean);
-
-  const candidatePayloads: Array<Record<string, unknown>> = candidatePhones.map(
-    (phoneCandidate) => ({
-      customerID: String(payload.customerID),
-      firstName: safeFirstName,
-      ...(safeLastName ? { lastName: safeLastName } : {}),
-      phoneNumber: phoneCandidate,
-      ...(payload.email ? { email: payload.email } : {}),
-    })
-  );
-
-  // Final strict fallback with minimal ASCII-safe fields.
-  candidatePayloads.push({
+  const body: Record<string, unknown> = {
     customerID: String(payload.customerID),
-    firstName: 'GoCinema',
-    phoneNumber: candidatePhones[0] || '+37400000000',
-  });
-
-  let lastResponse: VPostEnvelope<VPostCustomerData> = {
-    status: false,
-    message: 'Invalid data',
+    firstName: payload.firstName.trim() || 'GoCinema',
+    phoneNumber: String(payload.phoneNumber).replace(/\s+/g, ''),
   };
+  if (payload.lastName?.trim()) body.lastName = payload.lastName.trim();
+  if (payload.email) body.email = payload.email;
 
-  for (const body of candidatePayloads) {
-    if (isVPostDebugEnabled()) {
-      console.info('[vPost] customer/new candidate', {
-        payload: sanitizePayloadForLog(body),
-      });
-    }
-    const response = await vpostRequest<VPostCustomerData>('/customer/new', body);
-    if (response.status) return response;
-    lastResponse = response;
-  }
-
-  return lastResponse;
+  return vpostRequest<VPostCustomerData>('/customer/new', body);
 }
 
 function extractPaginate(data: unknown): VPostPaginate | undefined {
@@ -769,40 +714,16 @@ export function buildVPostProviderInfoFromTransaction(
   };
 }
 
+/**
+ * Երկփուլ վճարման դեպքում գումարը սառեցված է (authorized), բայց դեռ չի գանձվել։
+ * Այս վիճակում պետք է կանչել `/order/confirm-payment` (Confirmation)՝ գումարը
+ * վաճառողի հաշվին փոխանցելու համար։
+ */
 export function isVPostPaymentNeedsConfirmation(
   tx?: VPostTransactionListItem
 ): boolean {
-  if (!tx || isVPostPaymentDeclined(tx)) return false;
-
-  const resp = normalizeResponseObject(tx.response);
-  const paymentState = String(
-    readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
-  ).toLowerCase();
-  const orderStatus = String(
-    readResponseField(resp, ['OrderStatus', 'orderStatus']) ?? ''
-  );
-  const internalStatus = tx.order?.status;
-
-  if (
-    paymentState === 'payment_deposited' ||
-    orderStatus === '2' ||
-    internalStatus === 2
-  ) {
-    return false;
-  }
-
-  if (isVPostPaymentApproved(tx)) {
-    return (
-      paymentState === 'payment_autoauthorized' ||
-      paymentState === 'payment_approved' ||
-      orderStatus === '1' ||
-      orderStatus === '5' ||
-      internalStatus === 1 ||
-      internalStatus === 5
-    );
-  }
-
-  return false;
+  const state = getVPostPaymentState(tx);
+  return state === 'approved' || state === 'autoauthorized';
 }
 
 export function mergeVPostProviderInfo(
@@ -905,68 +826,106 @@ export function isApprovedResponseCode(code: unknown): boolean {
   );
 }
 
+/** Գործարքի նորմալացված վիճակ ITF/vPost «Կարգավիճակի աղյուսակի» համաձայն։ */
+export type VPostPaymentState =
+  | 'started' // 0 — գրանցված, չվճարված
+  | 'approved' // 1 — հաստատված (սառեցված), դեռ չգանձված
+  | 'deposited' // 2 — գումարը փոխանցվել է վաճառողին (ՎՃԱՐՎԱԾ)
+  | 'void' // 3 — հատուկ մերժում
+  | 'refunded' // 4 — վերադարձված
+  | 'autoauthorized' // 5 — հաստատված, սպասում է ACS-ի վերջին հաստատմանը
+  | 'declined' // 6 — մերժված
+  | 'unknown';
+
+const PAYMENT_STATE_BY_NAME: Record<string, VPostPaymentState> = {
+  payment_started: 'started',
+  payment_approved: 'approved',
+  payment_deposited: 'deposited',
+  payment_void: 'void',
+  payment_refunded: 'refunded',
+  payment_autoauthorized: 'autoauthorized',
+  payment_declined: 'declined',
+};
+
+const PAYMENT_STATE_BY_CODE: Record<string, VPostPaymentState> = {
+  '0': 'started',
+  '1': 'approved',
+  '2': 'deposited',
+  '3': 'void',
+  '4': 'refunded',
+  '5': 'autoauthorized',
+  '6': 'declined',
+};
+
+/** Գործարքի վերջնական վիճակը՝ PaymentState-ով, ապա OrderStatus/internal կոդով։ */
+export function getVPostPaymentState(
+  tx?: VPostTransactionListItem
+): VPostPaymentState {
+  if (!tx) return 'unknown';
+  const resp = normalizeResponseObject(tx.response);
+  const paymentState = String(
+    readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
+  ).toLowerCase();
+  if (paymentState && PAYMENT_STATE_BY_NAME[paymentState]) {
+    return PAYMENT_STATE_BY_NAME[paymentState];
+  }
+
+  const orderStatus = String(
+    readResponseField(resp, ['OrderStatus', 'orderStatus']) ?? ''
+  ).trim();
+  const code =
+    orderStatus || (tx.order?.status != null ? String(tx.order.status) : '');
+  return PAYMENT_STATE_BY_CODE[code] ?? 'unknown';
+}
+
+/**
+ * Վերջնական «վճարված» վիճակ — գումարը փաստացի փոխանցվել է վաճառողի հաշվին
+ * (`payment_deposited` / OrderStatus 2)։ ResponseCode `00`-ը միայն authorization
+ * է նշանակում, ոչ գանձում, ուստի «վճարված» որոշման համար օգտագործում ենք սա։
+ */
+export function isVPostPaymentDeposited(
+  tx?: VPostTransactionListItem
+): boolean {
+  return getVPostPaymentState(tx) === 'deposited';
+}
+
+/** Հետընթաց համատեղելիություն. authorized կամ ավելի բարձր (ՈՉ paid-ի որոշման համար)։ */
 export function isVPostPaymentApproved(
   tx?: VPostTransactionListItem
 ): boolean {
-  if (!tx) return false;
-
-  const resp = normalizeResponseObject(tx.response);
-  const responseCode = readResponseField(resp, [
-    'ResponseCode',
-    'responseCode',
-    'code',
-    'resultCode',
-  ]);
-  const paymentState = String(
-    readResponseField(resp, ['PaymentState', 'paymentState', 'state']) ?? ''
-  ).toLowerCase();
-  const orderStatus = String(
-    readResponseField(resp, ['OrderStatus', 'orderStatus', 'status']) ?? ''
-  ).toLowerCase();
-  const internalStatus = tx.order?.status;
-
-  const psOk =
-    paymentState === 'payment_approved' ||
-    paymentState === 'payment_deposited' ||
-    paymentState === 'approved' ||
-    paymentState === 'success' ||
-    paymentState === 'completed' ||
-    paymentState === 'deposited';
-
-  const osOk =
-    orderStatus === '1' ||
-    orderStatus === '2' ||
-    orderStatus === 'paid' ||
-    orderStatus === 'approved' ||
-    orderStatus === 'completed' ||
-    orderStatus === 'success';
-
+  const state = getVPostPaymentState(tx);
   return (
-    isApprovedResponseCode(responseCode) ||
-    psOk ||
-    osOk ||
-    internalStatus === 1 ||
-    internalStatus === 2
+    state === 'deposited' ||
+    state === 'approved' ||
+    state === 'autoauthorized'
   );
 }
 
 export function isVPostPaymentDeclined(tx?: VPostTransactionListItem): boolean {
-  if (!tx) return false;
-  const resp = tx.response;
-  const paymentState = String(
-    readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
-  );
-  const orderStatus = String(
-    readResponseField(resp, ['OrderStatus', 'orderStatus']) ?? ''
-  );
-  const internalStatus = tx.order?.status;
+  const state = getVPostPaymentState(tx);
+  return state === 'declined' || state === 'void';
+}
 
-  return (
-    paymentState === 'payment_declined' ||
-    paymentState === 'payment_void' ||
-    orderStatus === '3' ||
-    orderStatus === '6' ||
-    internalStatus === 3 ||
-    internalStatus === 6
-  );
+/** Գործարքի գումարը՝ գանձման ստուգման համար (թերավճարից պաշտպանվելու)։ */
+export function getVPostTransactionAmount(
+  tx?: VPostTransactionListItem
+): number | undefined {
+  if (!tx) return undefined;
+  const resp = normalizeResponseObject(tx.response);
+  const candidates: unknown[] = [
+    readResponseField(resp, ['DepositedAmount']),
+    readResponseField(resp, ['ApprovedAmount']),
+    readResponseField(resp, ['Amount']),
+    tx.order?.amount,
+    tx.amount,
+  ];
+  for (const candidate of candidates) {
+    if (candidate == null) continue;
+    const value =
+      typeof candidate === 'number'
+        ? candidate
+        : parseFloat(String(candidate));
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return undefined;
 }

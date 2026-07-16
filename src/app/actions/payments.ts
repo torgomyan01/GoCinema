@@ -2,7 +2,6 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { updateTicketStatus, generateQRCode } from './tickets';
 import {
   TELCELL_INVOICE_URL,
   buildTelcellInvoiceSecurityCode,
@@ -16,9 +15,12 @@ import {
   cancelVPostPayment,
   getNormalizedTransactionsFromVPostEnvelope,
   hasVPostConfig,
+  isVPostTwoPhaseEnabled,
   isVPostPaymentApproved,
+  isVPostPaymentDeposited,
   isVPostPaymentDeclined,
   isVPostPaymentNeedsConfirmation,
+  getVPostTransactionAmount,
   buildVPostProviderInfoFromTransaction,
   mergeVPostProviderInfo,
   isApprovedResponseCode,
@@ -47,118 +49,6 @@ function paymentServerLog(event: string, payload: Record<string, unknown>) {
   } catch {
     console.info(`[Payment] ${event}`, payload);
   }
-}
-
-export interface CreatePaymentData {
-  userId: number;
-  ticketId: number;
-  amount: number;
-  method: 'card' | 'bank_transfer' | 'cash';
-}
-
-export async function createPayment(data: CreatePaymentData) {
-  try {
-    // Validation
-    if (!data.userId || !data.ticketId || !data.amount) {
-      return {
-        success: false,
-        error: 'Բոլոր պարտադիր դաշտերը պետք է լրացված լինեն',
-      };
-    }
-
-    // Check if ticket exists and belongs to user
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: data.ticketId },
-      include: {
-        payment: true,
-      },
-    });
-
-    if (!ticket) {
-      return {
-        success: false,
-        error: 'Տոմսը չի գտնվել',
-      };
-    }
-
-    if (ticket.userId !== data.userId) {
-      return {
-        success: false,
-        error: 'Տոմսը ձերն չէ',
-      };
-    }
-
-    if (ticket.status === 'paid' || ticket.status === 'used') {
-      return {
-        success: false,
-        error: 'Տոմսը արդեն վճարված է',
-      };
-    }
-
-    // Check if payment already exists
-    if (ticket.payment) {
-      return {
-        success: false,
-        error: 'Այս տոմսի համար արդեն գոյություն ունի վճարում',
-      };
-    }
-
-    // Generate transaction ID (fake for demo)
-    const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-
-    // Create payment (fake payment - always succeeds)
-    const payment = await prisma.payment.create({
-      data: {
-        userId: data.userId,
-        ticketId: data.ticketId,
-        amount: data.amount,
-        method: data.method,
-        status: 'completed', // Fake payment always succeeds
-        transactionId,
-      },
-      include: {
-        ticket: {
-          include: {
-            screening: {
-              include: {
-                movie: true,
-                hall: true,
-              },
-            },
-            seat: true,
-          },
-        },
-      },
-    });
-
-    // Update ticket status to 'paid'
-    await updateTicketStatus(data.ticketId, 'paid');
-
-    // Generate QR code for the ticket
-    const qrCode = await generateQRCode(data.ticketId);
-
-    revalidatePath('/tickets');
-    revalidatePath('/payment');
-
-    return {
-      success: true,
-      payment,
-      qrCode,
-      message: 'Վճարումը հաջողությամբ ավարտվեց',
-    };
-  } catch (error: any) {
-    console.error('[Create Payment] Error:', error);
-    return {
-      success: false,
-      error: 'Վճարում կատարելիս սխալ է տեղի ունեցել',
-    };
-  }
-}
-
-export interface CreatePaymentForOrderData {
-  userId: number;
-  orderId: number;
-  method: 'card' | 'bank_transfer' | 'cash';
 }
 
 export interface TelcellCheckoutData {
@@ -254,78 +144,87 @@ async function finalizeOrderAsPaid(order: {
 }): Promise<{ conflicts: SeatConflict[] }> {
   const conflicts: SeatConflict[] = [];
 
-  for (const ticket of order.tickets) {
-    // Արդեն վճարված/օգտագործված տոմսերը պարզապես ապահովում ենք QR-ով
-    if (ticket.status === 'paid' || ticket.status === 'used') {
-      if (!ticket.qrCode) {
-        await generateQRCode(ticket.id);
+  // Ամբողջ finalize-ը մեկ ատոմ տրանզակցիայում — կիսատ վիճակ չառաջանա (crash-ի դեպքում)։
+  await prisma.$transaction(
+    async (tx) => {
+      for (const ticket of order.tickets) {
+        // Արդեն վճարված/օգտագործված տոմսերը պարզապես ապահովում ենք QR-ով
+        if (ticket.status === 'paid' || ticket.status === 'used') {
+          if (!ticket.qrCode) {
+            await tx.ticket.update({
+              where: { id: ticket.id },
+              data: { qrCode: `TICKET-${ticket.id}` },
+            });
+          }
+          continue;
+        }
+
+        // Կոնֆլիկտի ստուգում. այս ընթացքում ուրիշը չի՞ վճարել նույն տեղի համար
+        const conflict = await tx.ticket.findFirst({
+          where: {
+            screeningId: ticket.screeningId,
+            seatId: ticket.seatId,
+            id: { not: ticket.id },
+            status: { in: ['paid', 'used'] },
+          },
+          select: { id: true },
+        });
+
+        if (conflict) {
+          // Տեղն արդեն զբաղված է — չեղարկենք ամրագրումը, վճարումը՝ վերադարձման ենթակա
+          await tx.ticket.update({
+            where: { id: ticket.id },
+            data: { status: 'cancelled' },
+          });
+          await tx.payment.updateMany({
+            where: { ticketId: ticket.id },
+            data: { status: 'refunded' },
+          });
+          conflicts.push(
+            ticket.seat
+              ? { row: ticket.seat.row, number: ticket.seat.number }
+              : { row: '', number: ticket.seatId }
+          );
+          continue;
+        }
+
+        await tx.payment.upsert({
+          where: { ticketId: ticket.id },
+          update: {
+            amount: ticket.price,
+            method: 'card',
+            status: 'completed',
+          },
+          create: {
+            userId: order.userId,
+            ticketId: ticket.id,
+            amount: ticket.price,
+            method: 'card',
+            status: 'completed',
+          },
+        });
+
+        // Կարգավիճակ + QR (սկաները կարդում է TICKET-{id}) միասին
+        await tx.ticket.update({
+          where: { id: ticket.id },
+          data: { status: 'paid', qrCode: `TICKET-${ticket.id}` },
+        });
       }
-      continue;
-    }
 
-    // Կոնֆլիկտի ստուգում. այս ընթացքում ուրիշը չի՞ վճարել նույն տեղի համար
-    const conflict = await prisma.ticket.findFirst({
-      where: {
-        screeningId: ticket.screeningId,
-        seatId: ticket.seatId,
-        id: { not: ticket.id },
-        status: { in: ['paid', 'used'] },
-      },
-      select: { id: true },
-    });
+      // Եթե բոլոր տեղերը կոնֆլիկտ էին — պատվերը ձախողված է, հակառակ դեպքում՝ կատարված
+      const allConflicted =
+        conflicts.length > 0 && conflicts.length === order.tickets.length;
 
-    if (conflict) {
-      // Տեղն արդեն զբաղված է — չեղարկենք այս ամրագրումը և նշենք վճարումը վերադարձման ենթակա
-      await prisma.ticket.update({
-        where: { id: ticket.id },
-        data: { status: 'cancelled' },
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: allConflicted ? 'failed' : 'completed' },
       });
-      await prisma.payment.updateMany({
-        where: { ticketId: ticket.id },
-        data: { status: 'refunded' },
-      });
-      conflicts.push(
-        ticket.seat
-          ? { row: ticket.seat.row, number: ticket.seat.number }
-          : { row: '', number: ticket.seatId }
-      );
-      continue;
-    }
+    },
+    { timeout: 15000 }
+  );
 
-    await prisma.payment.upsert({
-      where: { ticketId: ticket.id },
-      update: {
-        amount: ticket.price,
-        method: 'card',
-        status: 'completed',
-      },
-      create: {
-        userId: order.userId,
-        ticketId: ticket.id,
-        amount: ticket.price,
-        method: 'card',
-        status: 'completed',
-      },
-    });
-
-    // Use direct DB update here to guarantee status transition.
-    await prisma.ticket.update({
-      where: { id: ticket.id },
-      data: { status: 'paid' },
-    });
-
-    // Սկաները կարդում է TICKET-{id} — միշտ թարմացնենք վճարման հաստատման պահին
-    await generateQRCode(ticket.id);
-  }
-
-  // Եթե բոլոր տեղերը կոնֆլիկտ էին — պատվերը ձախողված է, հակառակ դեպքում՝ կատարված
-  const allConflicted =
-    conflicts.length > 0 && conflicts.length === order.tickets.length;
-
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { status: allConflicted ? 'failed' : 'completed' },
-  });
+  revalidatePath('/tickets');
+  revalidatePath('/payment');
 
   return { conflicts };
 }
@@ -336,20 +235,22 @@ async function markOrderAsFailed(order: {
 }) {
   const ticketIds = order.tickets.map((ticket) => ticket.id);
 
-  await prisma.payment.updateMany({
-    where: {
-      ticketId: { in: ticketIds },
-      status: { not: 'completed' },
-    },
-    data: {
-      status: 'failed',
-    },
-  });
-
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { status: 'pending' },
-  });
+  await prisma.$transaction([
+    prisma.payment.updateMany({
+      where: {
+        ticketId: { in: ticketIds },
+        status: { not: 'completed' },
+      },
+      data: {
+        status: 'failed',
+      },
+    }),
+    // Պատվերը մնում է 'pending'՝ հաճախորդին կրկին վճարելու հնարավորություն տալու համար
+    prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'pending' },
+    }),
+  ]);
 }
 
 function normalizePhoneForVPost(rawPhone: string): string {
@@ -658,8 +559,14 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       items: txList.map(summarizeTransactionForLog),
     });
 
-    // Երկու փուլով վճարում — հաստատում (confirm-payment) անհրաժեշտ է
-    const txNeedingConfirm = txList.find(isVPostPaymentNeedsConfirmation);
+    const twoPhase = isVPostTwoPhaseEnabled();
+
+    // Երկու փուլով վճարում — հաստատում (confirm-payment) անհրաժեշտ է։
+    // Single-phase հաշվի դեպքում confirm չենք կանչում (ITF-ը վերադարձնում է
+    // «Կարգավորումները չեն գտնվել»)՝ authorized-ն արդեն գանձված է։
+    const txNeedingConfirm = twoPhase
+      ? txList.find(isVPostPaymentNeedsConfirmation)
+      : undefined;
     if (txNeedingConfirm) {
       paymentServerLog('vpost_confirm_attempt', {
         orderId: order.id,
@@ -742,12 +649,33 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       };
     }
 
-    const approvedTxs = txList.filter(isVPostPaymentApproved);
-    if (approvedTxs.length > 0) {
+    // ՎՃԱՐՎԱԾ որոշում.
+    // - two-phase՝ միայն `payment_deposited` (գումարը փոխանցվել է վաճառողին),
+    // - single-phase՝ `payment_approved`/`autoauthorized`/`deposited` (գանձված է
+    //   միանգամից authorization-ի պահին)։
+    const paidTx = twoPhase
+      ? txList.find(isVPostPaymentDeposited)
+      : txList.find(isVPostPaymentApproved);
+    if (paidTx) {
+      // Գումարի ստուգում — կանխել թերավճարով տոմս ստանալը (fabricated tx-ի դեպքում amount չկա)
+      const paidAmount = getVPostTransactionAmount(paidTx);
+      if (paidAmount != null && paidAmount + 1 < order.totalAmount) {
+        paymentServerLog('vpost_amount_mismatch', {
+          orderId: order.id,
+          expected: order.totalAmount,
+          paidAmount,
+        });
+        return {
+          success: false,
+          error:
+            'Վճարված գումարը չի համընկնում պատվերի գումարին։ Դիմեք աջակցությանը։',
+        };
+      }
+
       paymentServerLog('vpost_sync_decision', {
         orderId: order.id,
         decision: 'paid',
-        matchedCount: approvedTxs.length,
+        paidAmount,
       });
       const { conflicts } = await finalizeOrderAsPaid({
         id: order.id,
@@ -811,6 +739,21 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
         success: true,
         state: 'paid' as const,
         message: 'Վճարումը հաջողությամբ հաստատվել է',
+      };
+    }
+
+    // Two-phase՝ authorized (սառեցված), բայց դեռ չգանձված — confirm-payment-ը վերևում
+    // փորձվել է, բայց deposited դեռ չի դարձել։ Չենք մարկում paid, թողնում ենք pending։
+    if (twoPhase && txList.some(isVPostPaymentNeedsConfirmation)) {
+      paymentServerLog('vpost_sync_decision', {
+        orderId: order.id,
+        decision: 'pending',
+        reason: 'authorized_not_deposited',
+      });
+      return {
+        success: true,
+        state: 'pending' as const,
+        message: 'Վճարումը հաստատվում է, խնդրում ենք սպասել…',
       };
     }
 
@@ -978,119 +921,6 @@ export async function createTelcellInvoiceForOrder(
     return {
       success: false,
       error: 'Telcell վճարման հղումը ստեղծելիս սխալ է տեղի ունեցել',
-    };
-  }
-}
-
-export async function createPaymentForOrder(data: CreatePaymentForOrderData) {
-  try {
-    // Validation
-    if (!data.userId || !data.orderId) {
-      return {
-        success: false,
-        error: 'Բոլոր պարտադիր դաշտերը պետք է լրացված լինեն',
-      };
-    }
-
-    // Get order with tickets
-    const order = await prisma.order.findUnique({
-      where: { id: data.orderId },
-      include: {
-        tickets: {
-          include: {
-            payment: true,
-          },
-        },
-        orderItems: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
-
-    if (!order) {
-      return {
-        success: false,
-        error: 'Պատվերը չի գտնվել',
-      };
-    }
-
-    if (order.userId !== data.userId) {
-      return {
-        success: false,
-        error: 'Պատվերը ձերն չէ',
-      };
-    }
-
-    // Check if all payable tickets are already paid
-    const unpaidTickets = order.tickets.filter(
-      (ticket) => ticket.status === 'reserved'
-    );
-
-    if (unpaidTickets.length === 0) {
-      return {
-        success: false,
-        error: 'Պատվերի բոլոր տոմսերը արդեն վճարված են',
-      };
-    }
-
-    // Check if any ticket already has payment
-    const ticketsWithPayment = order.tickets.filter((ticket) => ticket.payment);
-    if (ticketsWithPayment.length > 0) {
-      return {
-        success: false,
-        error: 'Որոշ տոմսեր արդեն վճարված են',
-      };
-    }
-
-    // Generate transaction ID (fake for demo)
-    const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-
-    // Create payment for each ticket
-    const payments = [];
-    const qrCodes: string[] = [];
-
-    for (const ticket of unpaidTickets) {
-      // Create payment for this ticket
-      const payment = await prisma.payment.create({
-        data: {
-          userId: data.userId,
-          ticketId: ticket.id,
-          amount: ticket.price,
-          method: data.method,
-          status: 'completed', // Fake payment always succeeds
-          transactionId: `${transactionId}-${ticket.id}`,
-        },
-      });
-
-      payments.push(payment);
-
-      // Update ticket status to 'paid'
-      await updateTicketStatus(ticket.id, 'paid');
-
-      // Generate QR code for the ticket
-      const qrCode = await generateQRCode(ticket.id);
-      qrCodes.push(qrCode);
-    }
-
-    revalidatePath('/tickets');
-    revalidatePath('/payment');
-    revalidatePath('/checkout');
-
-    return {
-      success: true,
-      payments,
-      qrCodes,
-      tickets: unpaidTickets,
-      order,
-      message: `${unpaidTickets.length} տոմս հաջողությամբ վճարվեց`,
-    };
-  } catch (error: any) {
-    console.error('[Create Payment For Order] Error:', error);
-    return {
-      success: false,
-      error: 'Վճարում կատարելիս սխալ է տեղի ունեցել',
     };
   }
 }

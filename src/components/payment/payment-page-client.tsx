@@ -101,6 +101,10 @@ interface VpostCheckoutData {
   redirectURL: string;
 }
 
+// Telcell վճարման եղանակը ժամանակավոր անջատված է (UI-ի կոճակը կոմենտի մեջ է)։
+// Երբ նորից միացվի, դարձրու true և ապ-կոմենտ արա payment-methods բաժնի կոճակը։
+const TELCELL_ENABLED = false;
+
 export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -108,9 +112,12 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Միակ ակտիվ (տեսանելի) եղանակը քարտային vPost վճարումն է։ Telcell-ը
+  // ժամանակավոր անջատված է UI-ից, ուստի լռելյայն պետք է լինի 'card', այլապես
+  // «Վճարել» սեղմելիս սխալմամբ կաշխատեր անջատված Telcell ճյուղը։
   const [paymentMethod, setPaymentMethod] = useState<
     'card' | 'bank_transfer' | null
-  >('bank_transfer');
+  >('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isAwaitingVpost, setIsAwaitingVpost] = useState(false);
@@ -393,7 +400,9 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
           ? parseInt((session.user as any).id, 10)
           : (session.user as any).id;
 
-      if (paymentMethod === 'card') {
+      // Telcell-ն անջատված է — միշտ քարտային (vPost) վճարում, որպեսզի «Վճարել»
+      // սեղմելիս երբեք սխալմամբ չբացվի անջատված Telcell ճյուղը։
+      if (paymentMethod === 'card' || !TELCELL_ENABLED) {
         const vpostResult = await createVPostOrderForOrder({
           userId,
           orderId: order.id,

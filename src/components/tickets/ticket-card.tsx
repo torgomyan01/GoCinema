@@ -160,7 +160,9 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
       case 'paid':
         return 'Վճարված';
       case 'reserved':
-        return 'Ամրագրված';
+        // Դրամարկղ-ամրագրումը իսկապես «ամրագրված» է (վճարումը՝ մուտքի մոտ),
+        // իսկ օնլայն չվճարված տոմսը դեռ սպասում է vPost-ի հաստատմանը։
+        return isCounterReservation ? 'Ամրագրված' : 'Սպասում է վճարման';
       case 'used':
         return 'Օգտագործված';
       case 'cancelled':
@@ -225,7 +227,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                       <Clock className="w-3.5 h-3.5" />
                       {isCounterReservation
                         ? 'Վճարեք մուտքի մոտ'
-                        : 'Ամրագրումը բաց է'}
+                        : 'Ավարտեք վճարումը'}
                     </span>
                   )}
                   <span className="ml-auto text-[11px] text-gray-400 uppercase tracking-[0.25em]">

@@ -61,6 +61,9 @@ interface SeatItem {
   number: number;
   seatType: string;
   taken: boolean;
+  holdStatus?: string | null;
+  holdUntil?: string | null;
+  holdRemainingMs?: number | null;
 }
 
 interface SeatMap {
@@ -92,6 +95,7 @@ interface TakenTicketInfo {
   status: string;
   qrCode?: string | null;
   createdAt: Date | string;
+  holdUntil?: Date | string | null;
   seat: { id: number; row: string; number: number; seatType: string };
   user?: { name?: string | null; phone?: string | null } | null;
   payment?: { method: string; status: string; amount: number } | null;
@@ -118,6 +122,14 @@ const statusLabels: Record<string, string> = {
   used: 'Օգտագործված',
   cancelled: 'Չեղարկված',
 };
+
+function formatHoldCountdown(ms: number | null | undefined): string {
+  if (ms == null || ms <= 0) return '0:00';
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 function formatDay(value: Date | string) {
   return new Date(value).toLocaleDateString('hy-AM', {
@@ -179,6 +191,16 @@ export default function BoxOfficeClient() {
     message: string;
   } | null>(null);
   const [hdmAgentOnline, setHdmAgentOnline] = useState<boolean | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  // Օնլայն hold-ի հաշվիչի թարմացում (ամեն վայրկյան)
+  useEffect(() => {
+    if (!seatMap?.seats.some((s) => s.holdStatus === 'awaiting_payment')) {
+      return;
+    }
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [seatMap]);
 
   const refreshHdmAgentStatus = async () => {
     if (!isHdmAgentEnabled()) {
@@ -1191,22 +1213,42 @@ export default function BoxOfficeClient() {
                         {seats.map((seat) => {
                           const isSelected = selectedSeat?.id === seat.id;
                           const isVip = seat.seatType === 'vip';
+                          const isAwaitingHold =
+                            seat.taken && seat.holdStatus === 'awaiting_payment';
+                          const remainingMs =
+                            isAwaitingHold && seat.holdUntil
+                              ? Math.max(
+                                  0,
+                                  new Date(seat.holdUntil).getTime() - nowTick
+                                )
+                              : null;
                           return (
                             <button
                               key={seat.id}
                               onClick={() => selectSeat(seat)}
-                              title={`${seat.row}${seat.number}${isVip ? ' (VIP)' : ''}${seat.taken ? ' — զբաղված (սեղմեք՝ տոմսը տեսնելու)' : ''}`}
-                              className={`flex h-10 w-10 items-center justify-center rounded-lg text-[11px] font-semibold transition ${
-                                seat.taken
-                                  ? 'bg-gray-300 text-gray-500 line-through hover:bg-gray-400 hover:text-white'
-                                  : isSelected
-                                    ? 'scale-110 bg-green-600 text-white shadow-md shadow-green-300 ring-2 ring-green-300'
-                                    : isVip
-                                      ? 'bg-amber-100 text-amber-700 shadow-sm hover:bg-amber-200'
-                                      : 'bg-gray-100 text-gray-700 shadow-sm hover:bg-green-100 hover:text-green-700'
+                              title={
+                                isAwaitingHold
+                                  ? `${seat.row}${seat.number} — օնլայն վճարում, մնացել է ${formatHoldCountdown(remainingMs)}`
+                                  : `${seat.row}${seat.number}${isVip ? ' (VIP)' : ''}${seat.taken ? ' — զբաղված (սեղմեք՝ տոմսը տեսնելու)' : ''}`
+                              }
+                              className={`flex h-10 w-10 flex-col items-center justify-center rounded-lg text-[11px] font-semibold transition ${
+                                isAwaitingHold
+                                  ? 'bg-amber-200 text-amber-900 ring-1 ring-amber-400 hover:bg-amber-300'
+                                  : seat.taken
+                                    ? 'bg-gray-300 text-gray-500 line-through hover:bg-gray-400 hover:text-white'
+                                    : isSelected
+                                      ? 'scale-110 bg-green-600 text-white shadow-md shadow-green-300 ring-2 ring-green-300'
+                                      : isVip
+                                        ? 'bg-amber-100 text-amber-700 shadow-sm hover:bg-amber-200'
+                                        : 'bg-gray-100 text-gray-700 shadow-sm hover:bg-green-100 hover:text-green-700'
                               }`}
                             >
-                              {seat.number}
+                              <span>{seat.number}</span>
+                              {isAwaitingHold && remainingMs != null && (
+                                <span className="text-[8px] font-bold leading-none">
+                                  {formatHoldCountdown(remainingMs)}
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -1230,6 +1272,10 @@ export default function BoxOfficeClient() {
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-3 w-3 rounded bg-gray-200" /> Զբաղված
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded bg-amber-200 ring-1 ring-amber-400" />{' '}
+                  Օնլայն վճարում (5ր)
                 </span>
               </div>
 
@@ -1345,6 +1391,24 @@ export default function BoxOfficeClient() {
                       {statusLabels[takenTicket.status] || takenTicket.status}
                     </span>
                   </div>
+                  {takenTicket.status === 'awaiting_payment' &&
+                    takenTicket.holdUntil && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        <Clock className="mr-1 inline h-3.5 w-3.5" />
+                        Մնացել է{' '}
+                        <strong>
+                          {formatHoldCountdown(
+                            Math.max(
+                              0,
+                              new Date(takenTicket.holdUntil).getTime() -
+                                nowTick
+                            )
+                          )}
+                        </strong>{' '}
+                        օնլայն վճարման համար։ Ժամանակը լրանալուց հետո տեղը
+                        կբացվի։
+                      </div>
+                    )}
                   <div className="border-t border-gray-100" />
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">Ֆիլմ</span>

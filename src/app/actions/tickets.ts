@@ -7,15 +7,74 @@ import { authOptions } from '@/lib/auth';
 import {
   occupiedTicketWhere,
   onlineHoldUntil,
+  expiredAwaitingPaymentWhere,
   AWAITING_PAYMENT_STATUS,
 } from '@/lib/reservation';
 
 /**
- * Legacy hook. Ամրագրումները այլևս ավտոմատ չեն չեղարկվում/ազատվում։
- * Թողնում ենք ֆունկցիան, քանի որ կան call-site-եր, բայց այն ոչինչ չի փոխում։
+ * Չեղարկում է լրացած օնլայն վճարման hold-ները (`awaiting_payment` + holdUntil <= now)։
+ * Դրամարկղ `reserved` տոմսերին չի դիպչում։
  */
-export async function releaseExpiredReservations(_screeningId?: number) {
-  return 0;
+export async function releaseExpiredReservations(screeningId?: number) {
+  const now = new Date();
+  const where = {
+    ...expiredAwaitingPaymentWhere(now),
+    ...(screeningId != null ? { screeningId } : {}),
+  };
+
+  const expired = await prisma.ticket.findMany({
+    where,
+    select: { id: true, orderId: true },
+  });
+
+  if (expired.length === 0) return 0;
+
+  const ticketIds = expired.map((t) => t.id);
+  const orderIds = Array.from(
+    new Set(
+      expired
+        .map((t) => t.orderId)
+        .filter((id): id is number => id != null)
+    )
+  );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.ticket.updateMany({
+      where: { id: { in: ticketIds } },
+      data: { status: 'cancelled' },
+    });
+
+    await tx.payment.updateMany({
+      where: {
+        ticketId: { in: ticketIds },
+        status: 'pending',
+      },
+      data: { status: 'failed' },
+    });
+
+    // Եթե պատվերի բոլոր տոմսերը չեղարկված/failed են — պատվերը նույնպես failed
+    for (const orderId of orderIds) {
+      const remaining = await tx.ticket.count({
+        where: {
+          orderId,
+          status: { notIn: ['cancelled'] },
+        },
+      });
+      if (remaining === 0) {
+        await tx.order.update({
+          where: { id: orderId },
+          data: { status: 'failed' },
+        });
+      }
+    }
+  });
+
+  revalidatePath('/tickets');
+  revalidatePath('/booking');
+  revalidatePath('/payment');
+  revalidatePath('/admin/tickets');
+
+  return expired.length;
 }
 
 export interface CreateTicketData {

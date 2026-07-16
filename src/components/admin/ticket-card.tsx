@@ -16,6 +16,10 @@ import {
 import { formatPrice } from '@/lib/format';
 import { isQuantityOnlyProduct } from '@/lib/product-units';
 import {
+  formatPaymentHoldRemaining,
+  isActivePaymentHold,
+} from '@/lib/reservation';
+import {
   getQrOrderItems,
   isTicketQrReady,
   ticketNeedsQrScan,
@@ -71,14 +75,37 @@ export default function TicketCard({
     Boolean(onAddProducts);
   const isUnpaid =
     ticket.status === 'reserved' || ticket.status === 'awaiting_payment';
-  const needsQrScan = entryMode && ticketNeedsQrScan(ticket);
-  const qrReady = entryMode && isTicketQrReady(ticket);
-  const qrProgress = entryMode ? ticketQrScanProgress(ticket) : null;
-  const hasQrProducts = entryMode && getQrOrderItems(ticket).length > 0;
+  const [holdLabel, setHoldLabel] = useState(() =>
+    ticket.status === 'awaiting_payment'
+      ? formatPaymentHoldRemaining(ticket.holdUntil)
+      : null
+  );
 
   useEffect(() => {
     setIsPending(false);
   }, [ticket.status]);
+
+  useEffect(() => {
+    if (ticket.status !== 'awaiting_payment' || !ticket.holdUntil) {
+      setHoldLabel(null);
+      return;
+    }
+    const tick = () => {
+      if (!isActivePaymentHold(ticket.holdUntil)) {
+        setHoldLabel('0:00');
+        return;
+      }
+      setHoldLabel(formatPaymentHoldRemaining(ticket.holdUntil));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [ticket.status, ticket.holdUntil]);
+
+  const needsQrScan = entryMode && ticketNeedsQrScan(ticket);
+  const qrReady = entryMode && isTicketQrReady(ticket);
+  const qrProgress = entryMode ? ticketQrScanProgress(ticket) : null;
+  const hasQrProducts = entryMode && getQrOrderItems(ticket).length > 0;
 
   const checkboxDisabled = !canToggleEntry || isPending || isMarking;
 
@@ -160,11 +187,18 @@ export default function TicketCard({
             </div>
           </div>
         </div>
-        <span
-          className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge.color}`}
-        >
-          {statusBadge.label}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span
+            className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge.color}`}
+          >
+            {statusBadge.label}
+          </span>
+          {ticket.status === 'awaiting_payment' && holdLabel != null && (
+            <span className="text-[11px] font-medium text-amber-700 tabular-nums">
+              Մնացել է {holdLabel} · չվճարելու դեպքում կբացվի
+            </span>
+          )}
+        </div>
       </div>
 
       {(ticket.orderItems?.length > 0 || canAddProducts) && (

@@ -9,6 +9,8 @@ import {
   COUNTER_PAYMENT_METHOD,
   MAX_FREE_RESERVED_SEATS,
   counterHoldUntil,
+  AWAITING_PAYMENT_STATUS,
+  isActivePaymentHold,
 } from '@/lib/reservation';
 import { releaseExpiredReservations } from './tickets';
 import { createNotification, formatAmd } from '@/lib/notifications';
@@ -231,3 +233,142 @@ export async function createCounterReservation(
     };
   }
 }
+
+/**
+ * Օնլայն «սպասում է վճարման» պատվերը (5ր hold-ի ընթացքում) փոխել
+ * դրամարկղ-ամրագրման՝ վճարել մուտքի մոտ։
+ */
+export async function convertAwaitingPaymentOrderToCounter(orderId: number) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return { success: false, error: 'Անհրաժեշտ է մուտք գործել' };
+    }
+    const userId = Number((session.user as { id?: string | number }).id);
+    if (!userId || isNaN(userId)) {
+      return { success: false, error: 'Օգտատիրոջ ID-ն վավեր չէ' };
+    }
+
+    await releaseExpiredReservations();
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        tickets: {
+          include: {
+            screening: { select: { endTime: true, movie: { select: { title: true } } } },
+          },
+        },
+        user: { select: { isBlocked: true } },
+      },
+    });
+
+    if (!order) {
+      return { success: false, error: 'Պատվերը չի գտնվել' };
+    }
+    if (order.userId !== userId) {
+      return { success: false, error: 'Պատվերը ձերն չէ' };
+    }
+    if (order.user?.isBlocked) {
+      return {
+        success: false,
+        blocked: true,
+        error:
+          'Ձեր հաշիվը արգելափակված է անվճար ամրագրումից։ Խնդրում ենք վճարել օնլայն։',
+      };
+    }
+
+    const awaiting = order.tickets.filter(
+      (t) =>
+        t.status === AWAITING_PAYMENT_STATUS &&
+        isActivePaymentHold(t.holdUntil)
+    );
+
+    if (awaiting.length === 0) {
+      return {
+        success: false,
+        error:
+          'Վճարման ժամանակը լրացել է կամ տոմսեր չկան փոխարկման համար։ Ընտրեք նոր աթոռներ։',
+      };
+    }
+
+    // 4-աթոռ սահմանաչափ՝ արդեն ակտիվ counter reserved + այս awaiting-ները
+    const { count: activeCount } = await getActiveReservationCount(userId);
+    if (activeCount + awaiting.length > MAX_FREE_RESERVED_SEATS) {
+      const remaining = Math.max(0, MAX_FREE_RESERVED_SEATS - activeCount);
+      return {
+        success: false,
+        limitReached: true,
+        error:
+          remaining > 0
+            ? `Կարող եք անվճար ամրագրել առավելագույնը ${MAX_FREE_RESERVED_SEATS} աթոռ։ Մնացել է ${remaining} տեղ։`
+            : `Անվճար ամրագրման սահմանը լրացել է (${MAX_FREE_RESERVED_SEATS} աթոռ)։`,
+      };
+    }
+
+    const screeningEnd =
+      awaiting[0]?.screening?.endTime ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const holdUntil = counterHoldUntil(screeningEnd);
+    const ticketIds = awaiting.map((t) => t.id);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.ticket.updateMany({
+        where: { id: { in: ticketIds } },
+        data: {
+          status: 'reserved',
+          holdUntil,
+        },
+      });
+
+      // QR ապահովել
+      for (const t of awaiting) {
+        if (!t.qrCode) {
+          await tx.ticket.update({
+            where: { id: t.id },
+            data: { qrCode: `TICKET-${t.id}` },
+          });
+        }
+      }
+
+      await tx.payment.updateMany({
+        where: { ticketId: { in: ticketIds }, status: 'pending' },
+        data: { status: 'failed' },
+      });
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          paymentMethod: COUNTER_PAYMENT_METHOD,
+          status: 'pending',
+        },
+      });
+    });
+
+    revalidatePath('/tickets');
+    revalidatePath('/booking');
+    revalidatePath('/payment');
+    revalidatePath('/admin/scanner');
+
+    const movieTitle =
+      awaiting[0]?.screening?.movie?.title ?? 'ֆիլմ';
+    await createNotification({
+      type: 'online_ticket',
+      title: 'Ամրագրում փոխարկվեց դրամարկղի',
+      message: `Պատվեր #${order.id}: ${movieTitle} — ${awaiting.length} աթոռ, վճարում մուտքի մոտ`,
+      link: '/admin/scanner',
+    });
+
+    return {
+      success: true,
+      orderId: order.id,
+      message: `${awaiting.length} աթոռ ամրագրվեց դրամարկղում վճարելու համար։`,
+    };
+  } catch (error) {
+    console.error('[Convert Awaiting To Counter] Error:', error);
+    return {
+      success: false,
+      error: 'Փոխարկելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+

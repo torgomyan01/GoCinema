@@ -1,13 +1,17 @@
 /**
- * Նստատեղի «hold» տրամաբանություն։
+ * Նստատեղի hold տրամաբանություն։
  *
- * Տոմս ընտրելուց հետո այն պահվում է (reserved) և ավտոմատ չի չեղարկվում։
- * Հաճախորդը կարող է վճարել/սպասարկվել դրամարկղում, իսկ QR-ը մնում է հասանելի։
+ * Օնլայն վճարում (`awaiting_payment`):
+ * - Պատվերից հետո տեղը փակ է 5 րոպե (վճարման պատուհան)։
+ * - 5 րոպեում չվճարելու դեպքում տոմսը ավտոմատ չեղարկվում է, տեղը բացվում է։
+ * - Այդ 5 րոպեում կարելի է փոխել դրամարկղ-ամրագրման (`reserved` + counter)։
+ * - `awaiting_payment`-ը վաճառված տոմս չէ. վաճառված է միայն `paid`/`used`
+ *   (կամ դրամարկղ `reserved`)։
  *
- * `holdUntil` դաշտը legacy/տեղեկատվական է. այն այլևս չի որոշում, թե
- * տոմսը չեղարկվի՞, QR-ը թաքնվի՞, թե նստատեղը ազատվի՞։
+ * Դրամարկղ-ամրագրում (`reserved` + paymentMethod=counter):
+ * - Մնում է զբաղված մինչև վճարում/չեղարկում (առանց 5ր timeout)։
  */
-export const RESERVATION_HOLD_MINUTES = 10;
+export const RESERVATION_HOLD_MINUTES = 5;
 export const RESERVATION_HOLD_MS = RESERVATION_HOLD_MINUTES * 60 * 1000;
 
 /** Order.paymentMethod-ի արժեքը՝ դրամարկղում վճարվող ամրագրումների համար։ */
@@ -27,94 +31,126 @@ export function counterHoldUntil(screeningEnd: Date | string): Date {
 export const MAX_FREE_RESERVED_SEATS = 4;
 
 /**
- * Օնլайն պատվերի տոմսի սկզբնական ստատուս՝ «սպասում է վճարման»։
- * Տեղը պահվում է, բայց դեռ վճարված չէ։ vPost-ի հաստատումից հետո դառնում է `paid`։
- * Դրամարկղ-ամրագրումը մնում է `reserved` (վճարվում է մուտքի մոտ)։
+ * Օնլայն պատվերի ժամանակավոր hold ստատուս՝ «սպասում է վճարման»։
+ * vPost հաստատումից հետո → `paid`։ Timeout-ից հետո → `cancelled`։
  */
 export const AWAITING_PAYMENT_STATUS = 'awaiting_payment';
 
-/** Կարգավիճակներ, որոնք միշտ զբաղեցնում են տեղը (վերջնական վճարված)։ */
+/** Կարգավիճակներ, որոնք միշտ զբաղեցնում են տեղը (վերջնական վճարված/օգտագործված)։ */
 export const PAID_TICKET_STATUSES = ['paid', 'used'] as const;
-export const OCCUPIED_TICKET_STATUSES = [
-  'reserved',
-  AWAITING_PAYMENT_STATUS,
-  'paid',
-  'used',
-] as const;
 
-/** Ամրագրման ժամկետի ստորին սահմանը. այս պահից առաջ ստեղծված reserved-ները լրացած են։ */
-export function reservationCutoff(now: Date = new Date()): Date {
-  return new Date(now.getTime() - RESERVATION_HOLD_MS);
-}
-
-/** Online ամրագրման hold-ի ավարտը (ստեղծման պահից +10ր)։ */
+/** Online ամրագրման hold-ի ավարտը (ստեղծման պահից +5ր)։ */
 export function onlineHoldUntil(now: Date = new Date()): Date {
   return new Date(now.getTime() + RESERVATION_HOLD_MS);
 }
 
-/** Ստուգում է՝ reserved ամրագրումը դեռ ակտիվ է, թե լրացած (legacy createdAt-ով)։ */
-export function isReservationActive(
-  createdAt: Date | string,
+/** Օնլայն վճարման hold-ը դեռ ակտի՞վ է (holdUntil > now)։ */
+export function isActivePaymentHold(
+  holdUntil: Date | string | null | undefined,
   now: Date = new Date()
 ): boolean {
-  return new Date(createdAt).getTime() >= reservationCutoff(now).getTime();
+  if (!holdUntil) return false;
+  return new Date(holdUntil).getTime() > now.getTime();
+}
+
+/** Մնացած միլիվայրկյաններ մինչև hold-ի ավարտ (0 եթե լրացած)։ */
+export function paymentHoldRemainingMs(
+  holdUntil: Date | string | null | undefined,
+  now: Date = new Date()
+): number {
+  if (!holdUntil) return 0;
+  return Math.max(0, new Date(holdUntil).getTime() - now.getTime());
+}
+
+/** Մարդկային մնացած ժամանակ՝ «4:32» կամ «0:05»։ */
+export function formatPaymentHoldRemaining(
+  holdUntil: Date | string | null | undefined,
+  now: Date = new Date()
+): string {
+  const ms = paymentHoldRemainingMs(holdUntil, now);
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 /**
  * Prisma where-fragment՝ «զբաղված» տոմսերի համար։
- * Reserved տոմսերն այլևս ժամկետով չեն ազատվում. միայն manual cancelled-ը
- * կարող է նորից ազատել նստատեղը։
+ * - paid / used — միշտ
+ * - reserved (դրամարկղ) — միշտ
+ * - awaiting_payment — միայն եթե holdStill ակտիվ է (holdUntil > now)
  */
-export function occupiedTicketWhere(_now: Date = new Date()) {
+export function occupiedTicketWhere(now: Date = new Date()) {
   return {
     OR: [
       { status: { in: [...PAID_TICKET_STATUSES] } },
       { status: 'reserved' },
-      { status: AWAITING_PAYMENT_STATUS },
+      {
+        status: AWAITING_PAYMENT_STATUS,
+        holdUntil: { gt: now },
+      },
     ],
   };
 }
 
 /**
- * Reserved տոմսերի ավտոմատ լրացում/ազատում այլևս չկա։
+ * Լրացած օնլայն hold-ներ՝ ավտո-չեղարկման համար։
  */
-export function expiredReservationWhere(_now: Date = new Date()) {
+export function expiredAwaitingPaymentWhere(now: Date = new Date()) {
   return {
-    status: 'reserved',
-    id: -1,
+    status: AWAITING_PAYMENT_STATUS,
+    OR: [{ holdUntil: { lte: now } }, { holdUntil: null }],
   };
 }
 
-/** Տոմսը հաշվվում է վաճառվա՞ծ (ազատ տեղերի հաշվիչների համար)։ */
+/** @deprecated օգտագործիր expiredAwaitingPaymentWhere */
+export function expiredReservationWhere(now: Date = new Date()) {
+  return expiredAwaitingPaymentWhere(now);
+}
+
+/** Տոմսը հաշվվում է վաճառվա՞ծ (եկամուտ/վաճառք)։ */
 export function isPaidTicketStatus(status: string): boolean {
   return (PAID_TICKET_STATUSES as readonly string[]).includes(status);
 }
 
-/** Տոմսը զբաղեցնո՞ւմ է նստատեղը։ */
-export function isOccupiedTicketStatus(status: string): boolean {
-  return (OCCUPIED_TICKET_STATUSES as readonly string[]).includes(status);
+/**
+ * Տոմսը զբաղեցնո՞ւմ է նստատեղը հիմա։
+ * awaiting_payment-ի համար՝ եթե holdUntil չի փոխանցվել, ենթադրում ենք
+ * որ ցուցակն արդեն ֆիլտրվել է occupiedTicketWhere()-ով։
+ */
+export function isOccupiedTicketStatus(
+  status: string,
+  holdUntil?: Date | string | null,
+  now: Date = new Date()
+): boolean {
+  if ((PAID_TICKET_STATUSES as readonly string[]).includes(status)) return true;
+  if (status === 'reserved') return true;
+  if (status === AWAITING_PAYMENT_STATUS) {
+    // holdUntil չփոխանցելիս՝ ենթադրում ենք occupiedTicketWhere ֆիլտր։
+    if (holdUntil === undefined) return true;
+    return isActivePaymentHold(holdUntil, now);
+  }
+  return false;
 }
 
-/** Տոմսը սպասո՞ւմ է օնլայն վճարման (ամրագրված է, բայց դեռ չվճարված)։ */
+/** Տոմսը սպասո՞ւմ է օնլայն վճարման։ */
 export function isAwaitingPaymentStatus(status: string): boolean {
   return status === AWAITING_PAYMENT_STATUS;
 }
 
 /**
- * Դեռ չվճարված (բայց տեղը զբաղեցնող) ստատուսներ՝ օնլайն «սպասում է վճարման» +
- * դրամարկղ «ամրագրված»։ Օգտագործվում է վճարման/տեղափոխման տրամաբանության մեջ։
+ * Դեռ չվճարված hold ստատուսներ՝ օնլայն awaiting_payment + դրամարկղ reserved։
  */
 export const UNPAID_HELD_STATUSES = [
   'reserved',
   AWAITING_PAYMENT_STATUS,
 ] as const;
 
-/** Տոմսը դեռ չվճարված ամրագրո՞ւմ է (reserved կամ awaiting_payment)։ */
 export function isUnpaidHeldStatus(status: string): boolean {
   return (UNPAID_HELD_STATUSES as readonly string[]).includes(status);
 }
 
-/** Հայերեն պիտակ տոմսի ստատուսի համար (հաճախորդ + ադմին)։ */
+/** Հայերեն պիտակ տոմսի ստատուսի համար։ */
 export function ticketStatusLabelHy(status: string): string {
   switch (status) {
     case 'paid':

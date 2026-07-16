@@ -26,9 +26,13 @@ import { formatDateHy, formatTimeHy } from '@/lib/format';
 import {
   createTelcellInvoiceForOrder,
   createVPostOrderForOrder,
-  syncVPostOrderStatus,
 } from '@/app/actions/payments';
 import { getOrderById } from '@/app/actions/orders';
+import {
+  formatPaymentHoldRemaining,
+  isActivePaymentHold,
+} from '@/lib/reservation';
+import { convertAwaitingPaymentOrderToCounter } from '@/app/actions/reservations';
 
 interface PaymentPageClientProps {
   orderId: string;
@@ -42,6 +46,7 @@ interface Ticket {
   price: number;
   status: string;
   qrCode?: string | null;
+  holdUntil?: Date | string | null;
   createdAt: Date | string;
   screening: {
     id: number;
@@ -120,14 +125,16 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   >('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [isAwaitingVpost, setIsAwaitingVpost] = useState(false);
-  const [vpostStatusNote, setVpostStatusNote] = useState<string | null>(null);
   const [isAwaitingTelcell, setIsAwaitingTelcell] = useState(false);
   const [telcellStatusNote, setTelcellStatusNote] = useState<string | null>(
     null
   );
   const [qrCodes, setQrCodes] = useState<Map<number, string>>(new Map());
   const qrCodeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [holdLabel, setHoldLabel] = useState<string | null>(null);
+  const [holdExpired, setHoldExpired] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -179,25 +186,62 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   }, [session, router, isLoading]);
 
   // Քարտով վճարման ավտո-sync ՉԻ սկսվում պարզապես էջ բացելիս կամ back անելիս։
-  // Հակառակ դեպքում order/new-ից հետո (դեռ չվճարված) sync-ը կարող էր սխալմամբ
-  // paid նշել։ Հաստատումը կատարվում է միայն.
-  // 1) /payment/[id]/vpost-return էջից (vPost-ի backURL), կամ
-  // 2) օգտատիրոջ «Կրկին ստուգել» սեղմումից։
+  // Հաստատումը կատարվում է /payment/[id]/vpost-return էջից (vPost-ի backURL)։
+
+  // 5ր վճարման hold countdown
   useEffect(() => {
-    if (!order || !session?.user || isSuccess) return;
+    if (!order || isSuccess) {
+      setHoldLabel(null);
+      setHoldExpired(false);
+      return;
+    }
+    const awaiting = order.tickets.filter((t) => t.status === 'awaiting_payment');
+    if (awaiting.length === 0) {
+      setHoldLabel(null);
+      setHoldExpired(false);
+      return;
+    }
+    const holdUntil =
+      awaiting
+        .map((t) => t.holdUntil)
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            new Date(a as string).getTime() - new Date(b as string).getTime()
+        )[0] ?? null;
 
-    const hasPendingCard = order.tickets.some(
-      (t) =>
-        (t.status === 'awaiting_payment' || t.status === 'reserved') &&
-        t.payment?.method === 'card' &&
-        t.payment?.status === 'pending'
-    );
-    if (!hasPendingCard) return;
+    const tick = () => {
+      if (!holdUntil || !isActivePaymentHold(holdUntil)) {
+        setHoldExpired(true);
+        setHoldLabel('0:00');
+        return;
+      }
+      setHoldExpired(false);
+      setHoldLabel(formatPaymentHoldRemaining(holdUntil));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [order, isSuccess]);
 
-    setVpostStatusNote(
-      'Եթե արդեն վճարել եք քարտով, սեղմեք «Կրկին ստուգել»՝ կարգավիճակը հաստատելու համար։'
-    );
-  }, [order, session, isSuccess]);
+  const handleConvertToCounter = async () => {
+    if (!order || isConverting) return;
+    setIsConverting(true);
+    setConvertError(null);
+    try {
+      const result = await convertAwaitingPaymentOrderToCounter(order.id);
+      if (!result.success) {
+        setConvertError(result.error || 'Փոխարկումը ձախողվեց');
+        return;
+      }
+      router.push(SITE_URL.TICKETS);
+      router.refresh();
+    } catch {
+      setConvertError('Փոխարկումը ձախողվեց');
+    } finally {
+      setIsConverting(false);
+    }
+  };
 
   useEffect(() => {
     if (!order) return;
@@ -637,6 +681,45 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             Վճարում
           </h1>
+          {holdLabel != null && (
+            <div
+              className={`mt-2 rounded-xl border px-4 py-3 ${
+                holdExpired
+                  ? 'border-red-200 bg-red-50 text-red-800'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+              }`}
+            >
+              {holdExpired ? (
+                <p className="text-sm font-medium">
+                  Վճարման 5 րոպեն լրացել է։ Աթոռները կբացվեն։ Ընտրեք նոր տեղեր
+                  կամ ամրագրեք դրամարկղում, եթե դեռ հնարավոր է։
+                </p>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p className="text-sm font-medium">
+                    Վճարեք{' '}
+                    <span className="font-mono text-lg tabular-nums">
+                      {holdLabel}
+                    </span>{' '}
+                    -ի ընթացքում։ Հակառակ դեպքում աթոռները կբացվեն։
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleConvertToCounter}
+                    disabled={isConverting}
+                    className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    {isConverting
+                      ? 'Փոխարկվում է…'
+                      : 'Ամրագրել՝ վճարել դրամարկղում'}
+                  </button>
+                </div>
+              )}
+              {convertError && (
+                <p className="mt-2 text-xs text-red-600">{convertError}</p>
+              )}
+            </div>
+          )}
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1097,9 +1180,9 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
               <button
                 onClick={handlePayment}
-                disabled={!paymentMethod || isProcessing || isAwaitingVpost}
+                disabled={!paymentMethod || isProcessing}
                 className={`w-full px-6 py-3 rounded-lg font-semibold transition-all ${
-                  paymentMethod && !isProcessing && !isAwaitingVpost
+                  paymentMethod && !isProcessing
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
@@ -1108,70 +1191,6 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                   ? 'Վճարում...'
                   : `Վճարել ${order.totalAmount.toFixed(0)} ֏`}
               </button>
-
-              {(isAwaitingVpost || vpostStatusNote) && (
-                <div className="mt-4 p-3 rounded-lg border border-purple-200 bg-purple-50">
-                  <p className="text-xs text-purple-800 leading-relaxed">
-                    {vpostStatusNote ||
-                      'Ստուգում ենք քարտային վճարման կարգավիճակը…'}
-                  </p>
-                  {!isAwaitingVpost && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!session?.user || !order) return;
-                        setIsAwaitingVpost(true);
-                        setVpostStatusNote(
-                          'Ստուգում ենք քարտային վճարման կարգավիճակը…'
-                        );
-                        try {
-                          const userId = Number(
-                            (session.user as { id?: string | number }).id
-                          );
-                          const syncResult = await syncVPostOrderStatus({
-                            userId,
-                            orderId: order.id,
-                          });
-                          const latest = await getOrderById(order.id);
-                          if (latest.success && latest.order) {
-                            const nextOrder = latest.order as Order;
-                            setOrder(nextOrder);
-                            const allPaid =
-                              nextOrder.tickets.length > 0 &&
-                              nextOrder.tickets.every(
-                                (t) =>
-                                  t.status === 'paid' || t.status === 'used'
-                              );
-                            if (allPaid) {
-                              const qrMap = new Map<number, string>();
-                              nextOrder.tickets.forEach((t) => {
-                                if (t.qrCode) qrMap.set(t.id, t.qrCode);
-                              });
-                              setQrCodes(qrMap);
-                              setIsSuccess(true);
-                              setVpostStatusNote(null);
-                              return;
-                            }
-                          }
-                          setVpostStatusNote(
-                            syncResult.message ||
-                              'Վճարումը դեռ հաստատված չէ։ Սպասեք մի քանի վայրկյան և կրկին փորձեք։'
-                          );
-                        } catch {
-                          setVpostStatusNote(
-                            'Կարգավիճակը թարմացնել չհաջողվեց, փորձեք նորից։'
-                          );
-                        } finally {
-                          setIsAwaitingVpost(false);
-                        }
-                      }}
-                      className="mt-2 text-xs font-semibold text-purple-700 hover:text-purple-800 hover:underline"
-                    >
-                      Կրկին ստուգել
-                    </button>
-                  )}
-                </div>
-              )}
 
               {(isAwaitingTelcell || telcellStatusNote) && (
                 <div className="mt-4 p-3 rounded-lg border border-amber-200 bg-amber-50">

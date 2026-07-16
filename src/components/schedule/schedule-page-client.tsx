@@ -81,8 +81,8 @@ export default function SchedulePageClient() {
             ...screening,
             // Calculate if sold out based on tickets
             isSoldOut:
-              (screening.tickets?.filter(
-                (t) => isOccupiedTicketStatus(t.status)
+              (screening.tickets?.filter((t) =>
+                isOccupiedTicketStatus(t.status, (t as { holdUntil?: Date | string | null }).holdUntil)
               ).length || 0) >= (screening.hall?.capacity || 0),
           }));
           setAllScreenings(allScreeningsData);
@@ -187,7 +187,9 @@ export default function SchedulePageClient() {
   const getAvailableSeats = (screening: Screening) => {
     const capacity = screening.hall?.capacity || 80;
     const bookedTickets =
-      screening.tickets?.filter((t) => isOccupiedTicketStatus(t.status))
+      screening.tickets?.filter((t) =>
+        isOccupiedTicketStatus(t.status, (t as { holdUntil?: Date | string | null }).holdUntil)
+      )
         .length || 0;
     return capacity - bookedTickets;
   };

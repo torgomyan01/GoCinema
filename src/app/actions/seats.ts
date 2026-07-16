@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { occupiedTicketWhere } from '@/lib/reservation';
 import { revalidatePath } from 'next/cache';
 
 export interface CreateSeatData {
@@ -386,9 +387,7 @@ export async function deleteAllSeats(hallId?: number) {
       include: {
         tickets: {
           where: {
-            status: {
-              in: ['reserved', 'awaiting_payment', 'paid', 'used'],
-            },
+            ...occupiedTicketWhere(),
           },
         },
       },

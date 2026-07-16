@@ -110,6 +110,8 @@ export async function getBoxOfficeSeatMap(screeningId: number) {
   }
 
   try {
+    await releaseExpiredReservations(screeningId);
+
     const screening = await prisma.screening.findUnique({
       where: { id: screeningId },
       include: {
@@ -121,7 +123,12 @@ export async function getBoxOfficeSeatMap(screeningId: number) {
         },
         tickets: {
           where: occupiedTicketWhere(),
-          select: { seatId: true },
+          select: {
+            seatId: true,
+            status: true,
+            holdUntil: true,
+            userId: true,
+          },
         },
       },
     });
@@ -130,7 +137,10 @@ export async function getBoxOfficeSeatMap(screeningId: number) {
       return { success: false, error: 'Ցուցադրությունը չի գտնվել', data: null };
     }
 
-    const takenSeatIds = new Set(screening.tickets.map((t) => t.seatId));
+    const ticketBySeat = new Map(
+      screening.tickets.map((t) => [t.seatId, t] as const)
+    );
+    const now = new Date();
 
     return {
       success: true,
@@ -145,13 +155,28 @@ export async function getBoxOfficeSeatMap(screeningId: number) {
           name: screening.hall.name,
           capacity: screening.hall.capacity,
         },
-        seats: screening.hall.seats.map((seat) => ({
-          id: seat.id,
-          row: seat.row,
-          number: seat.number,
-          seatType: seat.seatType,
-          taken: takenSeatIds.has(seat.id),
-        })),
+        seats: screening.hall.seats.map((seat) => {
+          const ticket = ticketBySeat.get(seat.id);
+          const isAwaiting = ticket?.status === 'awaiting_payment';
+          const holdUntil =
+            isAwaiting && ticket?.holdUntil
+              ? ticket.holdUntil.toISOString()
+              : null;
+          const remainingMs =
+            holdUntil != null
+              ? Math.max(0, new Date(holdUntil).getTime() - now.getTime())
+              : null;
+          return {
+            id: seat.id,
+            row: seat.row,
+            number: seat.number,
+            seatType: seat.seatType,
+            taken: Boolean(ticket),
+            holdStatus: ticket?.status ?? null,
+            holdUntil,
+            holdRemainingMs: remainingMs,
+          };
+        }),
       },
     };
   } catch (error) {

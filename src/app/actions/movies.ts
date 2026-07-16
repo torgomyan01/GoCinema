@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { occupiedTicketWhere } from '@/lib/reservation';
 
 export interface CreateMovieData {
   title: string;
@@ -84,13 +85,11 @@ export async function getMovieById(id: number) {
               },
             },
             tickets: {
-              where: {
-                status: {
-                  in: ['reserved', 'awaiting_payment', 'paid', 'used'],
-                },
-              },
+              where: occupiedTicketWhere(),
               select: {
                 id: true,
+                status: true,
+                holdUntil: true,
               },
             },
           },
@@ -136,13 +135,11 @@ export async function getMovieBySlug(slug: string) {
               },
             },
             tickets: {
-              where: {
-                status: {
-                  in: ['reserved', 'awaiting_payment', 'paid', 'used'],
-                },
-              },
+              where: occupiedTicketWhere(),
               select: {
                 id: true,
+                status: true,
+                holdUntil: true,
               },
             },
           },

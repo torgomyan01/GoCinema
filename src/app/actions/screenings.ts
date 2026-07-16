@@ -26,9 +26,11 @@ const screeningListInclude = {
     },
   },
   tickets: {
+    where: occupiedTicketWhere(),
     select: {
       id: true,
       status: true,
+      holdUntil: true,
     },
   },
 } satisfies Prisma.ScreeningInclude;
@@ -507,9 +509,11 @@ export async function getRandomUpcomingScreening() {
           },
         },
         tickets: {
+          where: occupiedTicketWhere(),
           select: {
             id: true,
             status: true,
+            holdUntil: true,
           },
         },
       },
@@ -522,7 +526,7 @@ export async function getRandomUpcomingScreening() {
     const pick = screenings[Math.floor(Math.random() * screenings.length)];
     const capacity = pick.hall?.capacity ?? 80;
     const booked = pick.tickets.filter((t) =>
-      isOccupiedTicketStatus(t.status)
+      isOccupiedTicketStatus(t.status, t.holdUntil)
     ).length;
 
     return {

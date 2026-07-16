@@ -86,12 +86,14 @@ interface Screening {
   basePrice: number;
   tickets: Array<{
     id: number;
+    userId?: number;
+    status: string;
+    holdUntil?: Date | string | null;
     seat: {
       id: number;
       row: string;
       number: number;
     };
-    status: string;
   }>;
 }
 
@@ -149,11 +151,38 @@ export default function BookingPageClient({
     loadData();
   }, [screeningId]);
 
-  // Get occupied seat IDs from tickets
+  // Get occupied seat IDs from tickets (այլ օգտատերերի + սեփական hold)
+  const currentUserId = useMemo(() => {
+    if (!session?.user) return null;
+    const raw = (session.user as { id?: string | number }).id;
+    const n = typeof raw === 'string' ? parseInt(raw, 10) : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [session]);
+
   const occupiedSeatIds = useMemo(() => {
     if (!screening) return new Set<number>();
     return new Set(screening.tickets.map((ticket) => ticket.seat.id));
   }, [screening]);
+
+  const myPendingSeatIds = useMemo(() => {
+    if (!screening || currentUserId == null) return new Set<number>();
+    return new Set(
+      screening.tickets
+        .filter(
+          (t) =>
+            t.status === 'awaiting_payment' && t.userId === currentUserId
+        )
+        .map((t) => t.seat.id)
+    );
+  }, [screening, currentUserId]);
+
+  const myPendingHoldUntil = useMemo(() => {
+    if (!screening || currentUserId == null) return null;
+    const mine = screening.tickets.find(
+      (t) => t.status === 'awaiting_payment' && t.userId === currentUserId
+    );
+    return mine?.holdUntil ?? null;
+  }, [screening, currentUserId]);
 
   // Check if user is logged in
   useEffect(() => {
@@ -584,6 +613,9 @@ export default function BookingPageClient({
                                 seat.id
                               );
                               const isOccupied = occupiedSeatIds.has(seat.id);
+                              const isMyPending = myPendingSeatIds.has(
+                                seat.id
+                              );
                               return (
                                 <button
                                   key={seat.id}
@@ -591,17 +623,23 @@ export default function BookingPageClient({
                                     handleSeatClick(seat.id, isOccupied)
                                   }
                                   disabled={isOccupied}
-                                  title={`${row}${seat.number}`}
+                                  title={
+                                    isMyPending
+                                      ? `${row}${seat.number} — ձեր աթոռը, սպասում է վճարման`
+                                      : `${row}${seat.number}`
+                                  }
                                   className={`
                                     flex flex-col items-center justify-end gap-0.5
                                     w-9 h-10 sm:w-10 sm:h-11 rounded-t-sm rounded-b-md
                                     transition-all duration-150 touch-manipulation select-none
                                     ${
-                                      isOccupied
-                                        ? 'text-red-300 cursor-not-allowed opacity-70'
-                                        : isSelected
-                                          ? 'text-purple-600 scale-110 drop-shadow-md'
-                                          : 'text-gray-300 active:scale-95 hover:text-gray-500'
+                                      isMyPending
+                                        ? 'text-amber-500 cursor-not-allowed'
+                                        : isOccupied
+                                          ? 'text-red-300 cursor-not-allowed opacity-70'
+                                          : isSelected
+                                            ? 'text-purple-600 scale-110 drop-shadow-md'
+                                            : 'text-gray-300 active:scale-95 hover:text-gray-500'
                                     }
                                   `}
                                 >
@@ -611,9 +649,11 @@ export default function BookingPageClient({
                                   />
                                   <span
                                     className={`text-[9px] font-medium leading-none ${
-                                      isSelected
-                                        ? 'text-purple-600'
-                                        : 'text-gray-400'
+                                      isMyPending
+                                        ? 'text-amber-600'
+                                        : isSelected
+                                          ? 'text-purple-600'
+                                          : 'text-gray-400'
                                     }`}
                                   >
                                     {seat.number}
@@ -637,7 +677,7 @@ export default function BookingPageClient({
               )}
 
               {/* Legend */}
-              <div className="flex gap-4 justify-center px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+              <div className="flex gap-4 justify-center px-4 py-3 border-t border-gray-100 bg-gray-50/50 flex-wrap">
                 <div className="flex items-center gap-1.5">
                   <SeatIcon className="w-5 h-5 text-gray-300" filled={false} />
                   <span className="text-xs text-gray-500">Ազատ</span>
@@ -650,7 +690,28 @@ export default function BookingPageClient({
                   <SeatIcon className="w-5 h-5 text-red-300" filled />
                   <span className="text-xs text-gray-500">Զբաղված</span>
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <SeatIcon className="w-5 h-5 text-amber-500" filled />
+                  <span className="text-xs text-gray-500">Իմ վճարումը</span>
+                </div>
               </div>
+              {myPendingSeatIds.size > 0 && (
+                <div className="mx-4 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Ունեք {myPendingSeatIds.size} աթոռ սպասող վճարման
+                  {myPendingHoldUntil
+                    ? ` (մոտ ${Math.max(
+                        0,
+                        Math.ceil(
+                          (new Date(myPendingHoldUntil).getTime() -
+                            Date.now()) /
+                            60000
+                        )
+                      )} րոպե)`
+                    : ''}
+                  . Ավարտեք վճարումը կամ փոխեք դրամարկղ-ամրագրման «Իմ
+                  տոմսերը» բաժնում։
+                </div>
+              )}
             </div>
           </div>
 
@@ -995,7 +1056,7 @@ export default function BookingPageClient({
           ) : (
             <div className="flex items-center gap-3 w-full">
               <div className="flex-1 text-sm text-gray-400 text-center">
-                Ընտրեք նստատեղ
+                Ընտրեք նստատեղsss
               </div>
               <Link
                 href={SITE_URL.SCHEDULE}

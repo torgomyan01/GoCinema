@@ -322,6 +322,11 @@ export async function updateOrderProducts(data: UpdateOrderProductsData) {
 
 export async function getOrderById(id: number) {
   try {
+    const { releaseExpiredReservations } = await import(
+      '@/app/actions/tickets'
+    );
+    await releaseExpiredReservations();
+
     const order = await prisma.order.findUnique({
       where: { id },
       include: {

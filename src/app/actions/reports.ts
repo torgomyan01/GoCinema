@@ -343,8 +343,7 @@ export async function getMovieReports(params: {
       if (t.status === 'paid' && new Date(t.screening.endTime) < now) {
         row.noShow += 1;
       }
-      if (t.status === 'reserved' || t.status === 'awaiting_payment')
-        row.reserved += 1;
+      if (t.status === 'reserved') row.reserved += 1;
       if (t.status === 'cancelled') row.cancelled += 1;
     }
 
@@ -361,11 +360,7 @@ export async function getMovieReports(params: {
           if (ticket.status === 'paid' && new Date(screening.endTime) < now) {
             screening.noShow += 1;
           }
-          if (
-            ticket.status === 'reserved' ||
-            ticket.status === 'awaiting_payment'
-          )
-            screening.reserved += 1;
+          if (ticket.status === 'reserved') screening.reserved += 1;
           if (ticket.status === 'cancelled') screening.cancelled += 1;
         }
       }

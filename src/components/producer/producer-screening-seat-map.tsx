@@ -1,10 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import type {
   ProducerHallSeat,
   ProducerSeatTicket,
 } from '@/app/actions/producer';
+import {
+  formatPaymentHoldRemaining,
+  isOccupiedTicketStatus,
+} from '@/lib/reservation';
 
 function SeatIcon({
   className,
@@ -65,8 +69,11 @@ function seatVisual(seat: ProducerHallSeat): {
       filled: false,
     };
   }
-  if (status === 'reserved' || status === 'awaiting_payment') {
+  if (status === 'reserved') {
     return { iconClass: 'text-amber-500', filled: true };
+  }
+  if (status === 'awaiting_payment') {
+    return { iconClass: 'text-orange-400', filled: true };
   }
   if (status === 'paid') {
     return { iconClass: 'text-purple-600', filled: true };
@@ -110,7 +117,11 @@ function SeatTooltipContent({ seat }: { seat: ProducerHallSeat }) {
       </p>
       {(ticket.status === 'reserved' ||
         ticket.status === 'awaiting_payment') && (
-        <p className="text-amber-700">Ամրագրված է, սպասում է վճարման</p>
+        <p className="text-amber-700">
+          {ticket.status === 'awaiting_payment' && ticket.holdUntil
+            ? `Օնլայն վճարման ժամանակ՝ մնացել է ${formatPaymentHoldRemaining(ticket.holdUntil)}`
+            : 'Ամրագրված է, սպասում է վճարման'}
+        </p>
       )}
       {ticket.status === 'paid' && (
         <p className="text-purple-600">
@@ -131,6 +142,12 @@ interface Props {
 }
 
 export default function ProducerScreeningSeatMap({ hallSeats }: Props) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const seatsByRow = useMemo(() => {
     const map = new Map<string, ProducerHallSeat[]>();
     for (const seat of hallSeats) {
@@ -147,9 +164,7 @@ export default function ProducerScreeningSeatMap({ hallSeats }: Props) {
   const occupiedCount = hallSeats.filter(
     (s) =>
       s.ticket &&
-      ['reserved', 'awaiting_payment', 'paid', 'used'].includes(
-        s.ticket.status
-      )
+      isOccupiedTicketStatus(s.ticket.status, s.ticket.holdUntil)
   ).length;
 
   if (hallSeats.length === 0) {

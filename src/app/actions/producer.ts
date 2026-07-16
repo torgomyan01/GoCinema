@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isAdminRole, isProducerRole } from '@/lib/roles';
+import { isActivePaymentHold } from '@/lib/reservation';
 
 const SOLD_STATUSES = ['paid', 'used'] as const;
 
@@ -290,15 +291,17 @@ export async function getProducerMovieReport(params: {
         if (t.status === 'paid' || t.status === 'used') sold += 1;
         if (t.status === 'used') attended += 1;
         if (t.status === 'paid' && screeningEnded) noShow += 1;
-        if (t.status === 'reserved' || t.status === 'awaiting_payment')
-          reserved += 1;
+        if (t.status === 'reserved') reserved += 1;
         if (t.status === 'cancelled') cancelled += 1;
       }
 
       const hallSeats: ProducerHallSeat[] = (s.hall?.seats ?? []).map(
         (seat) => {
           const ticket = ticketBySeat.get(seat.id);
-          if (!ticket || ticket.status === 'cancelled') {
+          const isExpiredHold =
+            ticket?.status === 'awaiting_payment' &&
+            !isActivePaymentHold(ticket.holdUntil);
+          if (!ticket || ticket.status === 'cancelled' || isExpiredHold) {
             return {
               id: seat.id,
               row: seat.row,

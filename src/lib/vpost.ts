@@ -527,6 +527,148 @@ export function formatVPostDateParam(date: Date): string {
   return `${y}-${m}-${d} ${h}:${min}`;
 }
 
+/** Այսօրվա start/end՝ `/transactions/list` համար */
+export function getTodayVPostDateRange(now: Date = new Date()): {
+  startDate: string;
+  endDate: string;
+} {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 0, 0);
+  return {
+    startDate: formatVPostDateParam(start),
+    endDate: formatVPostDateParam(end),
+  };
+}
+
+/**
+ * Մեկ վճարման փորձի եզակի partner orderID։
+ * Կոդավորում՝ `goCinemaOrderId * 1_000_000 + (timestamp % 1_000_000)`
+ * Legacy (մինչ այս)՝ partnerOrderId === goCinemaOrderId։
+ */
+export function buildVPostAttemptOrderId(
+  goCinemaOrderId: number,
+  now: Date = new Date()
+): number {
+  const stamp = now.getTime() % 1_000_000;
+  return goCinemaOrderId * 1_000_000 + stamp;
+}
+
+/** Partner orderID-ից վերականգնում է GoCinema order id (legacy և նոր կոդավորում)։ */
+export function extractGoCinemaOrderIdFromPartnerId(
+  partnerId: number | null | undefined
+): number | undefined {
+  if (partnerId == null || !Number.isFinite(partnerId) || partnerId <= 0) {
+    return undefined;
+  }
+  if (partnerId < 1_000_000) return partnerId;
+  return Math.floor(partnerId / 1_000_000);
+}
+
+export function transactionMatchesGoCinemaOrder(
+  tx: VPostTransactionListItem,
+  goCinemaOrderId: number,
+  knownItfOrderIds: number[] = [],
+  knownPartnerOrderIds: number[] = []
+): boolean {
+  const partner = getVPostTransactionPartnerOrderId(tx);
+  if (partner != null) {
+    if (partner === goCinemaOrderId) return true;
+    if (knownPartnerOrderIds.includes(partner)) return true;
+    if (extractGoCinemaOrderIdFromPartnerId(partner) === goCinemaOrderId) {
+      return true;
+    }
+  }
+
+  const itfId = tx.order?.id;
+  if (itfId != null && knownItfOrderIds.includes(itfId)) return true;
+
+  const desc = `${tx.description || ''} ${tx.order?.description || ''}`;
+  if (
+    desc.includes(`GoCinema Order #${goCinemaOrderId}`) ||
+    desc.includes(`Order #${goCinemaOrderId}`)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Գտնում է այս GoCinema պատվերին պատկանող գործարքները՝
+ * 1) այսօրվա ամբողջ `/transactions/list`
+ * 2) հայտնի partner / ITF orderID-ներով լրացուցիչ հարցումներ
+ */
+export async function resolveVPostTransactionsForGoCinemaOrder(options: {
+  orderId: number;
+  knownItfOrderIds?: number[];
+  knownPartnerOrderIds?: number[];
+}): Promise<{
+  list: VPostTransactionListItem[];
+  envelopeStatus: boolean;
+  message?: string;
+  source: 'today_list' | 'by_order_id' | 'mixed';
+}> {
+  const orderId = options.orderId;
+  const knownItf = options.knownItfOrderIds ?? [];
+  const knownPartners = options.knownPartnerOrderIds ?? [];
+  const seen = new Set<string>();
+  const all: VPostTransactionListItem[] = [];
+  let envelopeStatus = false;
+  let message: string | undefined;
+  let usedToday = false;
+  let usedById = false;
+
+  const pushList = (list: VPostTransactionListItem[]) => {
+    for (const tx of list) {
+      const key = txDedupeKey(tx);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(tx);
+    }
+  };
+
+  const { startDate, endDate } = getTodayVPostDateRange();
+  const today = await fetchAllVPostTransactions({
+    startDate,
+    endDate,
+    maxPages: 20,
+  });
+  usedToday = true;
+  const todayMatched = today.transactions.filter((tx) =>
+    transactionMatchesGoCinemaOrder(tx, orderId, knownItf, knownPartners)
+  );
+  pushList(todayMatched);
+
+  const idsToQuery = new Set<number>([
+    orderId,
+    ...knownPartners,
+    ...knownItf,
+  ]);
+
+  for (const id of idsToQuery) {
+    const res = await getVPostTransactionsByOrder(id);
+    if (res.status) envelopeStatus = true;
+    if (res.message) message = res.message;
+    const list = getNormalizedTransactionsFromVPostEnvelope(res).filter((tx) =>
+      transactionMatchesGoCinemaOrder(tx, orderId, knownItf, knownPartners)
+    );
+    if (list.length > 0) usedById = true;
+    pushList(list);
+  }
+
+  // Եթե today list-ը դատարկ է, բայց by-id գտել ենք — envelopeStatus true
+  if (all.length > 0) envelopeStatus = true;
+
+  return {
+    list: sortTransactionsNewestFirst(all),
+    envelopeStatus,
+    message,
+    source: usedToday && usedById ? 'mixed' : usedToday ? 'today_list' : 'by_order_id',
+  };
+}
+
 export async function listVPostTransactions(payload?: {
   orderID?: number;
   cardID?: string;

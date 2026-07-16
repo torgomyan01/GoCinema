@@ -11,6 +11,8 @@ import {
   createVPostOrder,
   createVPostCustomer,
   fetchVPostTransactionsForOrder,
+  resolveVPostTransactionsForGoCinemaOrder,
+  buildVPostAttemptOrderId,
   confirmVPostPayment,
   cancelVPostPayment,
   getNormalizedTransactionsFromVPostEnvelope,
@@ -32,6 +34,7 @@ import {
   getVPostTransactionPartnerOrderId,
   getVPostActionOrderId,
   getVPostTransactionStatus,
+  extractGoCinemaOrderIdFromPartnerId,
   type VPostProviderInfo,
 } from '@/lib/vpost';
 import { isUnpaidHeldStatus } from '@/lib/reservation';
@@ -81,16 +84,67 @@ function isOrderFullyPaid(tickets: Array<{ status: string }>): boolean {
 function parseStoredItfOrderId(
   tickets: Array<{ payment?: { transactionId?: string | null } | null }>
 ): number | undefined {
+  const ids = parseStoredVPostRefs(tickets).itfOrderIds;
+  return ids[0];
+}
+
+function parseStoredVPostRefs(
+  tickets: Array<{ payment?: { transactionId?: string | null } | null }>
+): { itfOrderIds: number[]; partnerOrderIds: number[] } {
+  const itfOrderIds: number[] = [];
+  const partnerOrderIds: number[] = [];
+  const seenItf = new Set<number>();
+  const seenPartner = new Set<number>();
+
   for (const ticket of tickets) {
     const raw = ticket.payment?.transactionId?.trim();
     if (!raw) continue;
-    const match = raw.match(/^ITF-(\d+)$/i) || raw.match(/^(\d+)$/);
-    if (match) {
-      const id = parseInt(match[1], 10);
-      if (Number.isFinite(id) && id > 0) return id;
+
+    // Նոր ֆորմատ՝ ITF-123|P-456789012  կամ ITF-123;P-456
+    const itfMatch = raw.match(/ITF-(\d+)/i);
+    if (itfMatch) {
+      const id = parseInt(itfMatch[1], 10);
+      if (Number.isFinite(id) && id > 0 && !seenItf.has(id)) {
+        seenItf.add(id);
+        itfOrderIds.push(id);
+      }
+    }
+
+    const partnerMatch = raw.match(/(?:^|[|;])P-(\d+)/i);
+    if (partnerMatch) {
+      const id = parseInt(partnerMatch[1], 10);
+      if (Number.isFinite(id) && id > 0 && !seenPartner.has(id)) {
+        seenPartner.add(id);
+        partnerOrderIds.push(id);
+      }
+    }
+
+    // Legacy՝ միայն թիվ կամ ITF-թիվ
+    if (!itfMatch && !partnerMatch) {
+      const bare = raw.match(/^(\d+)$/);
+      if (bare) {
+        const id = parseInt(bare[1], 10);
+        if (Number.isFinite(id) && id > 0 && !seenItf.has(id)) {
+          seenItf.add(id);
+          itfOrderIds.push(id);
+        }
+      }
     }
   }
-  return undefined;
+
+  return { itfOrderIds, partnerOrderIds };
+}
+
+function formatStoredVPostTransactionId(
+  itfOrderId: string | number | undefined,
+  partnerOrderId: number
+): string {
+  const itf =
+    itfOrderId != null && String(itfOrderId).trim() !== ''
+      ? `ITF-${String(itfOrderId).trim()}`
+      : null;
+  const partner = `P-${partnerOrderId}`;
+  return itf ? `${itf}|${partner}` : partner;
 }
 
 async function upsertPendingPaymentsForOrder(
@@ -422,10 +476,12 @@ export async function createVPostOrderForOrder(
     const base = appUrl.replace(/\/$/, '');
     // Մի ավելացնեք query այստեղ — vPost-ը կցում է ?orderId=… և URL-ում կրկնակի ? էր լինում
     const backURL = `${base}/payment/${order.id}/vpost-return`;
+    // Ամեն սեղմման վրա նոր VPost պատվեր՝ եզակի partner orderID
+    const partnerOrderId = buildVPostAttemptOrderId(order.id);
     const vpostResponse = await createVPostOrder({
       customerID: String(data.userId),
       amount: order.totalAmount,
-      orderID: order.id,
+      orderID: partnerOrderId,
       backURL,
       description: `GoCinema Order #${order.id}`,
       lang: 'hy',
@@ -434,6 +490,7 @@ export async function createVPostOrderForOrder(
     if (!vpostResponse.status || !vpostResponse.data?.redirectURL) {
       paymentServerLog('vpost_order_new_failed', {
         orderId: order.id,
+        partnerOrderId,
         envelopeStatus: vpostResponse.status,
         message: vpostResponse.message,
       });
@@ -448,21 +505,23 @@ export async function createVPostOrderForOrder(
 
     paymentServerLog('vpost_order_new_ok', {
       orderId: order.id,
+      partnerOrderId,
       itfOrderId: vpostResponse.data?.itfOrderId,
-      partnerOrderId: vpostResponse.data?.partnerOrderId,
+      gatewayPartnerOrderId: vpostResponse.data?.partnerOrderId,
     });
 
     const itfOrderId = vpostResponse.data?.itfOrderId;
-    if (itfOrderId) {
-      await prisma.payment.updateMany({
-        where: { ticketId: { in: unpaidTickets.map((t) => t.id) } },
-        data: { transactionId: `ITF-${itfOrderId}` },
-      });
-    }
+    const storedTxId = formatStoredVPostTransactionId(itfOrderId, partnerOrderId);
+    await prisma.payment.updateMany({
+      where: { ticketId: { in: unpaidTickets.map((t) => t.id) } },
+      data: { transactionId: storedTxId },
+    });
 
     return {
       success: true,
       redirectURL: vpostResponse.data.redirectURL,
+      partnerOrderId,
+      itfOrderId: itfOrderId != null ? String(itfOrderId) : undefined,
       message: 'Քարտային վճարման հղումը պատրաստ է',
     };
   } catch (error: any) {
@@ -549,14 +608,27 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       };
     }
 
-    const itfOrderId = parseStoredItfOrderId(order.tickets);
-    let { envelope: txResponse, list: txList, usedOrderId } =
-      await fetchVPostTransactionsForOrder(order.id, itfOrderId);
+    const refs = parseStoredVPostRefs(order.tickets);
+    const resolved = await resolveVPostTransactionsForGoCinemaOrder({
+      orderId: order.id,
+      knownItfOrderIds: refs.itfOrderIds,
+      knownPartnerOrderIds: refs.partnerOrderIds,
+    });
+
+    let txList = resolved.list;
+    let txResponse = {
+      status: resolved.envelopeStatus,
+      message: resolved.message,
+      data: { list: txList },
+    };
+    const usedOrderId = refs.partnerOrderIds[0] ?? order.id;
 
     paymentServerLog('vpost_sync_raw', {
       orderId: order.id,
       usedOrderId,
-      itfOrderId,
+      source: resolved.source,
+      itfOrderIds: refs.itfOrderIds,
+      partnerOrderIds: refs.partnerOrderIds,
       envelopeStatus: txResponse.status,
       message: txResponse.message,
       listLength: txList.length,
@@ -572,13 +644,18 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       ? txList.find(isVPostPaymentNeedsConfirmation)
       : undefined;
     if (txNeedingConfirm) {
+      const confirmOrderId =
+        getVPostActionOrderId(txNeedingConfirm) ??
+        refs.partnerOrderIds[0] ??
+        order.id;
       paymentServerLog('vpost_confirm_attempt', {
         orderId: order.id,
+        confirmOrderId,
         customerId: order.userId,
         amount: order.totalAmount,
       });
       const confirmResult = await confirmVPostPayment({
-        orderID: order.id,
+        orderID: confirmOrderId,
         customerID: String(order.userId),
         amount: order.totalAmount,
       });
@@ -592,13 +669,17 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       });
 
       if (confirmResult.status) {
-        const refreshed = await fetchVPostTransactionsForOrder(
-          order.id,
-          itfOrderId
-        );
-        txResponse = refreshed.envelope;
+        const refreshed = await resolveVPostTransactionsForGoCinemaOrder({
+          orderId: order.id,
+          knownItfOrderIds: refs.itfOrderIds,
+          knownPartnerOrderIds: refs.partnerOrderIds,
+        });
+        txResponse = {
+          status: refreshed.envelopeStatus,
+          message: refreshed.message,
+          data: { list: refreshed.list },
+        };
         txList = refreshed.list;
-        usedOrderId = refreshed.usedOrderId;
       } else if (
         confirmResult.data?.responseCode === '00' ||
         isApprovedResponseCode(confirmResult.data?.responseCode)
@@ -623,18 +704,19 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       }
     }
 
-    if (!txResponse.status) {
+    if (!txResponse.status && txList.length === 0) {
       const msg = (txResponse.message || '').toLowerCase();
       const maybeEmpty =
         msg.includes('no_payment') ||
         msg.includes('no payments') ||
         msg.includes('unregistered') ||
         msg.includes('0-100');
-      if (maybeEmpty) {
+      if (maybeEmpty || !txResponse.message) {
         return {
           success: true,
           state: 'pending' as const,
-          message: 'Վճարումը դեռ ընթացքի մեջ է',
+          canRestart: true,
+          message: 'Վճարումը դեռ ընթացքի մեջ է կամ դեռ չի գտնվել',
         };
       }
       return {
@@ -649,6 +731,7 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       return {
         success: true,
         state: 'pending' as const,
+        canRestart: true,
         message: 'Վճարումը դեռ ընթացքի մեջ է',
       };
     }
@@ -680,6 +763,7 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       return {
         success: true,
         state: 'pending' as const,
+        canRestart: true,
         message: 'Վճարումը դեռ հաստատված չէ',
       };
     }
@@ -780,6 +864,7 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       return {
         success: true,
         state: 'pending' as const,
+        canRestart: false,
         message: 'Վճարումը հաստատվում է, խնդրում ենք սպասել…',
       };
     }
@@ -799,6 +884,7 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       return {
         success: true,
         state: 'failed' as const,
+        canRestart: true,
         message: 'Վճարումը մերժվել է',
       };
     }
@@ -812,6 +898,7 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
     return {
       success: true,
       state: 'pending' as const,
+      canRestart: true,
       message: 'Վճարումը դեռ ընթացքի մեջ է',
     };
   } catch (error: any) {
@@ -1127,7 +1214,11 @@ export async function getAllVPostTransactionsForAdmin(options?: {
     const partnerOrderIds = Array.from(
       new Set(
         transactions
-          .map((tx) => getVPostActionOrderId(tx))
+          .map((tx) => {
+            const raw =
+              getVPostTransactionPartnerOrderId(tx) ?? getVPostActionOrderId(tx);
+            return extractGoCinemaOrderIdFromPartnerId(raw);
+          })
           .filter((id): id is number => id != null)
       )
     );
@@ -1163,7 +1254,12 @@ export async function getAllVPostTransactionsForAdmin(options?: {
     const rows: AdminVPostTransactionRow[] = transactions.map((tx, index) => {
       const partnerOrderId = getVPostTransactionPartnerOrderId(tx);
       const actionOrderId = getVPostActionOrderId(tx);
-      const local = partnerOrderId ? orderMap.get(partnerOrderId) : undefined;
+      const goCinemaOrderId = extractGoCinemaOrderIdFromPartnerId(
+        partnerOrderId ?? actionOrderId
+      );
+      const local = goCinemaOrderId
+        ? orderMap.get(goCinemaOrderId)
+        : undefined;
       const vpostInfo = buildVPostProviderInfoFromTransaction(tx);
       const resp = tx.response ?? {};
       const responseCodeRaw =

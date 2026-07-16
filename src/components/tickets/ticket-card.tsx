@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar,
@@ -14,9 +14,12 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import { SITE_URL } from '@/utils/consts';
 import { formatDateHy, formatTimeHy } from '@/lib/format';
+import { formatPaymentHoldRemaining } from '@/lib/reservation';
+import { convertAwaitingPaymentOrderToCounter } from '@/app/actions/reservations';
 
 interface TicketCardProps {
   ticket: {
@@ -45,6 +48,7 @@ interface TicketCardProps {
     price: number;
     status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled';
     qrCode?: string | null;
+    holdUntil?: Date | string | null;
     createdAt: Date | string;
     order?: {
       id: number;
@@ -67,14 +71,50 @@ interface TicketCardProps {
 }
 
 export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
+  const router = useRouter();
   const [showQRModal, setShowQRModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [holdLabel, setHoldLabel] = useState(() =>
+    formatPaymentHoldRemaining(ticket.holdUntil)
+  );
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
   const qrCodeRef = useRef<HTMLDivElement>(null);
 
   // Դրամարկղ-ամրագրում՝ վճարվում է մուտքի մոտ։
   const isCounterReservation = ticket.order?.paymentMethod === 'counter';
-  // Օնլайն ամրագրում, որը դեռ սպասում է քարտային վճարման հաստատմանը։
+  // Օնլայն ամրագրում, որը դեռ սպասում է քարտային վճարման հաստատմանը։
   const isAwaitingPayment = ticket.status === 'awaiting_payment';
+
+  useEffect(() => {
+    if (!isAwaitingPayment || !ticket.holdUntil) return;
+    const tick = () =>
+      setHoldLabel(formatPaymentHoldRemaining(ticket.holdUntil));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [isAwaitingPayment, ticket.holdUntil]);
+
+  const handleConvertToCounter = async () => {
+    if (!ticket.order?.id || isConverting) return;
+    setIsConverting(true);
+    setConvertError(null);
+    try {
+      const result = await convertAwaitingPaymentOrderToCounter(
+        ticket.order.id
+      );
+      if (result.success) {
+        router.refresh();
+        window.location.reload();
+      } else {
+        setConvertError(result.error || 'Փոխարկումը ձախողվեց');
+      }
+    } catch {
+      setConvertError('Փոխարկումը ձախողվեց');
+    } finally {
+      setIsConverting(false);
+    }
+  };
 
   // Generate QR code data - only order ID for scanning
   const getQRCodeData = () => {
@@ -233,7 +273,9 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                       <Clock className="w-3.5 h-3.5" />
                       {isCounterReservation
                         ? 'Վճարեք մուտքի մոտ'
-                        : 'Ավարտեք վճարումը'}
+                        : isAwaitingPayment
+                          ? `Վճարեք ${holdLabel}-ի ընթացքում`
+                          : 'Ավարտեք վճարումը'}
                     </span>
                   )}
                   <span className="ml-auto text-[11px] text-gray-400 uppercase tracking-[0.25em]">
@@ -365,6 +407,25 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                         Վճարել օնլայն
                       </Link>
                     )}
+                  {isAwaitingPayment && ticket.order && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleConvertToCounter}
+                        disabled={isConverting}
+                        className="px-4 py-2.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg font-semibold hover:bg-amber-100 transition-colors text-center disabled:opacity-60"
+                      >
+                        {isConverting
+                          ? 'Փոխարկվում է…'
+                          : 'Ամրագրել՝ վճարել դրամարկղում'}
+                      </button>
+                      {convertError && (
+                        <p className="text-xs text-red-600 text-right">
+                          {convertError}
+                        </p>
+                      )}
+                    </>
+                  )}
                   {ticket.status === 'reserved' && isCounterReservation && (
                     <>
                       <p className="text-xs text-gray-500 text-right md:max-w-48">

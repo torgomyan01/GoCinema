@@ -16,10 +16,12 @@ import {
   getNormalizedTransactionsFromVPostEnvelope,
   hasVPostConfig,
   isVPostTwoPhaseEnabled,
-  isVPostPaymentApproved,
   isVPostPaymentDeposited,
   isVPostPaymentDeclined,
   isVPostPaymentNeedsConfirmation,
+  isVPostPaymentStarted,
+  isVPostPaymentCaptured,
+  getVPostPaymentState,
   getVPostTransactionAmount,
   buildVPostProviderInfoFromTransaction,
   mergeVPostProviderInfo,
@@ -536,8 +538,9 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       };
     }
 
-    // DB-ում արդեն հաստատված է (callback/նախորդ sync)
-    if (isOrderFullyPaid(order.tickets) || order.status === 'completed') {
+    // DB-ում արդեն հաստատված է միայն եթե տոմսերն իսկապես paid/used են։
+    // order.status === 'completed' միայնակ բավարար չէ — կարող է հին/սխալ վիճակ լինել։
+    if (isOrderFullyPaid(order.tickets)) {
       paymentServerLog('vpost_sync_already_paid', { orderId: order.id });
       return {
         success: true,
@@ -650,13 +653,36 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       };
     }
 
-    // ՎՃԱՐՎԱԾ որոշում.
-    // - two-phase՝ միայն `payment_deposited` (գումարը փոխանցվել է վաճառողին),
-    // - single-phase՝ `payment_approved`/`autoauthorized`/`deposited` (գանձված է
-    //   միանգամից authorization-ի պահին)։
+    // Ամենանոր գործարքի վիճակը՝ լոգի համար
+    const newestTx = txList[0];
+    const newestState = getVPostPaymentState(newestTx);
+    paymentServerLog('vpost_sync_newest', {
+      orderId: order.id,
+      newestState,
+      orderInternalStatus: newestTx.order?.status,
+    });
+
+    // ՎՃԱՐՎԱԾ որոշում — ՄԻԱՅՆ երբ vPost-ը հստակ հաստատել է։
+    // - two-phase՝ միայն `payment_deposited`
+    // - single-phase՝ `payment_approved`/`autoauthorized`/`deposited`
     const paidTx = twoPhase
       ? txList.find(isVPostPaymentDeposited)
-      : txList.find(isVPostPaymentApproved);
+      : txList.find(isVPostPaymentCaptured);
+
+    // Եթե հաստատված գործարք չկա, և ամենանորը դեռ payment_started (0) է
+    // (օր. օգտատերը back է արել առանց վճարման) → Չենք մարկում paid։
+    if (!paidTx && isVPostPaymentStarted(newestTx)) {
+      paymentServerLog('vpost_sync_decision', {
+        orderId: order.id,
+        decision: 'pending',
+        reason: 'payment_started_not_confirmed',
+      });
+      return {
+        success: true,
+        state: 'pending' as const,
+        message: 'Վճարումը դեռ հաստատված չէ',
+      };
+    }
     if (paidTx) {
       // Գումարի ստուգում — կանխել թերավճարով տոմս ստանալը (fabricated tx-ի դեպքում amount չկա)
       const paidAmount = getVPostTransactionAmount(paidTx);

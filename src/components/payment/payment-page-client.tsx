@@ -140,9 +140,11 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
           setOrder(loadedOrder);
 
           // Check if all tickets are paid
-          const allPaid = loadedOrder.tickets.every(
-            (ticket) => ticket.status === 'paid' || ticket.status === 'used'
-          );
+          const allPaid =
+            loadedOrder.tickets.length > 0 &&
+            loadedOrder.tickets.every(
+              (ticket) => ticket.status === 'paid' || ticket.status === 'used'
+            );
 
           if (allPaid) {
             setIsSuccess(true);
@@ -176,9 +178,13 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     }
   }, [session, router, isLoading]);
 
-  // Քարտով վճարումից հետո ավտոմատ sync (եթե vPost return էջից չի անցել)
+  // Քարտով վճարման ավտո-sync ՉԻ սկսվում պարզապես էջ բացելիս կամ back անելիս։
+  // Հակառակ դեպքում order/new-ից հետո (դեռ չվճարված) sync-ը կարող էր սխալմամբ
+  // paid նշել։ Հաստատումը կատարվում է միայն.
+  // 1) /payment/[id]/vpost-return էջից (vPost-ի backURL), կամ
+  // 2) օգտատիրոջ «Կրկին ստուգել» սեղմումից։
   useEffect(() => {
-    if (!order || !session?.user || isSuccess || isAwaitingTelcell) return;
+    if (!order || !session?.user || isSuccess) return;
 
     const hasPendingCard = order.tickets.some(
       (t) =>
@@ -188,74 +194,10 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     );
     if (!hasPendingCard) return;
 
-    const userId = Number((session.user as { id?: string | number }).id);
-
-    let cancelled = false;
-    setIsAwaitingVpost(true);
-    setVpostStatusNote('Ստուգում ենք քարտային վճարման կարգավիճակը…');
-
-    const poll = async (attempt = 0) => {
-      if (cancelled || attempt >= 20) {
-        if (!cancelled) {
-          setIsAwaitingVpost(false);
-          setVpostStatusNote(
-            'Վճարումը դեռ հաստատված չէ։ Եթե արդեն վճարել եք, սեղմեք «Կրկին ստուգել»։'
-          );
-        }
-        return;
-      }
-
-      try {
-        const syncResult = await syncVPostOrderStatus({
-          userId,
-          orderId: order.id,
-        });
-
-        if (syncResult.success && syncResult.state === 'paid') {
-          const refreshed = await getOrderById(order.id);
-          if (refreshed.success && refreshed.order) {
-            const nextOrder = refreshed.order as Order;
-            setOrder(nextOrder);
-            const qrMap = new Map<number, string>();
-            nextOrder.tickets.forEach((t) => {
-              if (t.qrCode) qrMap.set(t.id, t.qrCode);
-            });
-            setQrCodes(qrMap);
-            setIsSuccess(true);
-            setIsAwaitingVpost(false);
-            setVpostStatusNote(null);
-          }
-          return;
-        }
-
-        const latest = await getOrderById(order.id);
-        if (latest.success && latest.order) {
-          const nextOrder = latest.order as Order;
-          const allPaid = nextOrder.tickets.every(
-            (t) => t.status === 'paid' || t.status === 'used'
-          );
-          if (allPaid) {
-            setOrder(nextOrder);
-            setIsSuccess(true);
-            setIsAwaitingVpost(false);
-            setVpostStatusNote(null);
-            return;
-          }
-        }
-      } catch (err) {
-        console.error('Error polling vPost status:', err);
-      }
-
-      setTimeout(() => poll(attempt + 1), 3000);
-    };
-
-    void poll();
-
-    return () => {
-      cancelled = true;
-      setIsAwaitingVpost(false);
-    };
-  }, [order, session, isSuccess, isAwaitingTelcell]);
+    setVpostStatusNote(
+      'Եթե արդեն վճարել եք քարտով, սեղմեք «Կրկին ստուգել»՝ կարգավիճակը հաստատելու համար։'
+    );
+  }, [order, session, isSuccess]);
 
   useEffect(() => {
     if (!order) return;
@@ -491,9 +433,11 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     return null;
   }
 
-  const allTicketsPaid = order.tickets.every(
-    (ticket) => ticket.status === 'paid' || ticket.status === 'used'
-  );
+  const allTicketsPaid =
+    order.tickets.length > 0 &&
+    order.tickets.every(
+      (ticket) => ticket.status === 'paid' || ticket.status === 'used'
+    );
 
   if (isSuccess || allTicketsPaid) {
     return (
@@ -515,7 +459,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
               <p className="text-xl text-gray-600 mb-8">
                 Ձեր {order.tickets.length} տոմս
-                {order.tickets.length > 1 ? 'երը' : 'ը'} ամրագրված{' '}
+                {order.tickets.length > 1 ? 'երը' : 'ը'} վճարված{' '}
                 {order.tickets.length > 1 ? 'են' : 'է'}: QR կոդերը կարող եք
                 գտնել «Իմ տոմսերը» բաժնում:
               </p>
@@ -1188,28 +1132,22 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
                             userId,
                             orderId: order.id,
                           });
-                          if (
-                            syncResult.success &&
-                            syncResult.state === 'paid'
-                          ) {
-                            const latest = await getOrderById(order.id);
-                            if (latest.success && latest.order) {
-                              const nextOrder = latest.order as Order;
-                              setOrder(nextOrder);
-                              setIsSuccess(true);
-                              setVpostStatusNote(null);
-                            }
-                            return;
-                          }
                           const latest = await getOrderById(order.id);
                           if (latest.success && latest.order) {
-                            setOrder(latest.order as Order);
-                            const allPaid = (
-                              latest.order as Order
-                            ).tickets.every(
-                              (t) => t.status === 'paid' || t.status === 'used'
-                            );
+                            const nextOrder = latest.order as Order;
+                            setOrder(nextOrder);
+                            const allPaid =
+                              nextOrder.tickets.length > 0 &&
+                              nextOrder.tickets.every(
+                                (t) =>
+                                  t.status === 'paid' || t.status === 'used'
+                              );
                             if (allPaid) {
+                              const qrMap = new Map<number, string>();
+                              nextOrder.tickets.forEach((t) => {
+                                if (t.qrCode) qrMap.set(t.id, t.qrCode);
+                              });
+                              setQrCodes(qrMap);
                               setIsSuccess(true);
                               setVpostStatusNote(null);
                               return;

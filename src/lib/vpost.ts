@@ -145,10 +145,42 @@ function coerceOrder(raw: unknown): VPostTransactionListItem['order'] | undefine
 function coerceTxItem(raw: unknown): VPostTransactionListItem | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
-  const order = coerceOrder(r.order);
+  // Nested `order` կամ flat դաշտեր (orderId / orderInternalStatus) — երկուսն էլ
+  let order = coerceOrder(r.order);
+  if (!order) {
+    const flatStatus =
+      r.orderInternalStatus ?? r.OrderInternalStatus ?? r.status ?? r.Status;
+    const flatId = r.orderId ?? r.orderID ?? r.OrderID ?? r.id;
+    const flatPartner =
+      r.partnerOrderId ?? r.partnerOrderID ?? r.PartnerOrderId;
+    if (flatStatus != null || flatId != null || flatPartner != null) {
+      order = coerceOrder({
+        id: flatId,
+        partnerOrderId: flatPartner,
+        status: flatStatus,
+        amount: r.amount,
+        fee: r.fee,
+        totalAmount: r.totalAmount,
+        description: r.description,
+        customerId: r.customerId ?? r.customerID,
+      });
+    }
+  }
   let response = r.response as Record<string, unknown> | undefined;
   if (!response && typeof r.ResponseCode !== 'undefined') {
     response = r as Record<string, unknown>;
+  }
+  // Flat PaymentState / OrderStatus — եթե nested response չկա
+  if (!response) {
+    const paymentState = r.PaymentState ?? r.paymentState;
+    const orderStatus = r.OrderStatus ?? r.orderStatus;
+    if (paymentState != null || orderStatus != null) {
+      response = {
+        PaymentState: paymentState,
+        OrderStatus: orderStatus,
+        ResponseCode: r.ResponseCode ?? r.responseCode,
+      };
+    }
   }
   return {
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
@@ -889,8 +921,18 @@ export function isVPostPaymentDeposited(
   return getVPostPaymentState(tx) === 'deposited';
 }
 
-/** Հետընթաց համատեղելիություն. authorized կամ ավելի բարձր (ՈՉ paid-ի որոշման համար)։ */
-export function isVPostPaymentApproved(
+/** Պատվերը գրանցված է vPost-ում, բայց դեռ չի վճարվել (OrderStatus 0)։ */
+export function isVPostPaymentStarted(tx?: VPostTransactionListItem): boolean {
+  return getVPostPaymentState(tx) === 'started';
+}
+
+/**
+ * Տոմսը «վճարված» դարձնելու միակ թույլատրելի վիճակները.
+ * - single-phase՝ approved / autoauthorized / deposited
+ * - երկու-փուլ՝ միայն deposited (կանչողը պետք է ֆիլտրի)
+ * Կարևոր՝ `started` (0) և `unknown` ԵՐԲԵՔ չեն համարվում վճարված։
+ */
+export function isVPostPaymentCaptured(
   tx?: VPostTransactionListItem
 ): boolean {
   const state = getVPostPaymentState(tx);
@@ -899,6 +941,13 @@ export function isVPostPaymentApproved(
     state === 'approved' ||
     state === 'autoauthorized'
   );
+}
+
+/** Հետընթաց համատեղելիություն. authorized կամ ավելի բարձր (ՈՉ paid-ի որոշման համար)։ */
+export function isVPostPaymentApproved(
+  tx?: VPostTransactionListItem
+): boolean {
+  return isVPostPaymentCaptured(tx);
 }
 
 export function isVPostPaymentDeclined(tx?: VPostTransactionListItem): boolean {

@@ -37,9 +37,9 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
       const refreshed = await getOrderById(idNum);
       if (!refreshed.success || !refreshed.order) return false;
       const tickets = refreshed.order.tickets as Array<{ status: string }>;
-      const allPaid = tickets.every(
-        (t) => t.status === 'paid' || t.status === 'used'
-      );
+      const allPaid =
+        tickets.length > 0 &&
+        tickets.every((t) => t.status === 'paid' || t.status === 'used');
       if (allPaid) {
         router.replace(SITE_URL.PAYMENT(idNum));
         return true;
@@ -75,7 +75,11 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
         }
 
         if (syncResult.state === 'paid') {
-          router.replace(SITE_URL.PAYMENT(idNum));
+          // Միայն եթե DB-ում տոմսերն իսկապես paid են — redirect
+          if (await redirectIfPaid(idNum)) return;
+          setError(
+            'Վճարումը դեռ հաստատված չէ բազայում։ Սեղմեք «Կրկին ստուգել»։'
+          );
           return;
         }
 

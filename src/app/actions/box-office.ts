@@ -790,7 +790,7 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       };
     }
 
-    if (!['paid', 'reserved'].includes(ticket.status)) {
+    if (!['paid', 'reserved', 'awaiting_payment'].includes(ticket.status)) {
       return { success: false, error: 'Այս տոմսը չի կարող չեղարկվել' };
     }
 

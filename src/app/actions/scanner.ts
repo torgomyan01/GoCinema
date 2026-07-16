@@ -5,7 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isStaffRole } from '@/lib/roles';
-import { COUNTER_PAYMENT_METHOD } from '@/lib/reservation';
+import {
+  COUNTER_PAYMENT_METHOD,
+  isUnpaidHeldStatus,
+} from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
 import {
   isQuantityOnlyProduct,
@@ -524,7 +527,7 @@ export async function removeTicketOrderItem(orderItemId: number) {
     if (orderItem.ticket.status === 'used') {
       return { success: false, error: 'Տոմսը արդեն մուտք է գործել' };
     }
-    if (orderItem.ticket.status !== 'reserved') {
+    if (!isUnpaidHeldStatus(orderItem.ticket.status)) {
       return {
         success: false,
         error:
@@ -909,7 +912,7 @@ export async function attachTicketPreOrderQrs(input: {
     if (ticket.status === 'used') {
       return { success: false, error: 'Տոմսը արդեն մուտք է գործել' };
     }
-    if (ticket.status !== 'reserved') {
+    if (!isUnpaidHeldStatus(ticket.status)) {
       return {
         success: false,
         error: 'Այս գործողությունը միայն ամրագրված տոմսերի համար է',
@@ -1377,7 +1380,9 @@ export async function findReservations(query: string) {
         },
       };
       where.tickets = {
-        some: { status: { in: ['reserved', 'paid', 'used'] } },
+        some: {
+          status: { in: ['reserved', 'awaiting_payment', 'paid', 'used'] },
+        },
       };
     }
 
@@ -1403,7 +1408,9 @@ export async function findReservations(query: string) {
     const results = orders
       .filter((order) => order.tickets.length > 0)
       .map((order) => {
-        const reserved = order.tickets.filter((t) => t.status === 'reserved');
+        const reserved = order.tickets.filter((t) =>
+          isUnpaidHeldStatus(t.status)
+        );
         const paid = order.tickets.filter((t) => t.status === 'paid');
         const used = order.tickets.filter((t) => t.status === 'used');
         const firstScreening = order.tickets[0]?.screening;
@@ -1487,8 +1494,8 @@ export async function payReservationAtCounter(input: {
       return { success: false, error: 'Պատվերը չի գտնվել' };
     }
 
-    const reservedTickets = order.tickets.filter(
-      (t) => t.status === 'reserved'
+    const reservedTickets = order.tickets.filter((t) =>
+      isUnpaidHeldStatus(t.status)
     );
     if (reservedTickets.length === 0) {
       return {
@@ -1783,7 +1790,7 @@ export async function getCustomerTicketsForScanner(input: {
     const tickets = await prisma.ticket.findMany({
       where: {
         userId,
-        status: { in: ['reserved', 'paid', 'used'] },
+        status: { in: ['reserved', 'awaiting_payment', 'paid', 'used'] },
       },
       include: {
         screening: {
@@ -1813,7 +1820,7 @@ export async function getCustomerTicketsForScanner(input: {
         seatLabel: `${ticket.seat.row}${ticket.seat.number}`,
         inTargetOrder,
         canAdd:
-          ticket.status === 'reserved' &&
+          isUnpaidHeldStatus(ticket.status) &&
           targetOrderId != null &&
           ticket.orderId !== targetOrderId,
       };
@@ -1882,7 +1889,7 @@ export async function mergeReservedTicketsIntoOrder(input: {
           error: 'Բոլոր տոմսերը պետք է պատկանեն նույն հաճախորդին',
         };
       }
-      if (ticket.status !== 'reserved') {
+      if (!isUnpaidHeldStatus(ticket.status)) {
         return {
           success: false,
           error: 'Միայն չվճարված (ամրագրված) տոմսերը կարելի է ավելացնել',

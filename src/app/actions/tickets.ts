@@ -7,6 +7,7 @@ import { authOptions } from '@/lib/auth';
 import {
   occupiedTicketWhere,
   onlineHoldUntil,
+  AWAITING_PAYMENT_STATUS,
 } from '@/lib/reservation';
 
 /**
@@ -222,7 +223,8 @@ export async function createTicket(data: CreateTicketData) {
         screeningId: data.screeningId,
         seatId: data.seatId,
         price: data.price,
-        status: 'reserved',
+        // Օնլայն ամրագրում՝ սկզբում «սպասում է վճարման», paid-ը միայն հաստատումից հետո։
+        status: AWAITING_PAYMENT_STATUS,
         holdUntil: onlineHoldUntil(),
       },
       include: {
@@ -291,7 +293,8 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
         screeningId: data.screeningId,
         seatId: seat.seatId,
         price: seat.price,
-        status: 'reserved',
+        // Օնլայն ամրագրում՝ սկզբում «սպասում է վճարման», paid-ը միայն հաստատումից հետո։
+        status: AWAITING_PAYMENT_STATUS,
         holdUntil,
       })),
     });
@@ -329,7 +332,13 @@ export async function getScreeningsForMovieAdmin(movieId: number) {
     });
 
     const data = screenings.map((s) => {
-      const counts = { reserved: 0, paid: 0, used: 0, cancelled: 0 };
+      const counts = {
+        reserved: 0,
+        awaiting_payment: 0,
+        paid: 0,
+        used: 0,
+        cancelled: 0,
+      };
       let revenue = 0;
       for (const t of s.tickets) {
         if (t.status in counts) {
@@ -398,7 +407,7 @@ export async function getTicketsForScreeningAdmin(screeningId: number) {
 
 export async function updateTicketStatus(
   id: number,
-  status: 'reserved' | 'paid' | 'used' | 'cancelled'
+  status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled'
 ) {
   try {
     const ticket = await prisma.ticket.update({

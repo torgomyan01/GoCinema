@@ -86,7 +86,7 @@ export async function getMovieById(id: number) {
             tickets: {
               where: {
                 status: {
-                  in: ['reserved', 'paid', 'used'],
+                  in: ['reserved', 'awaiting_payment', 'paid', 'used'],
                 },
               },
               select: {
@@ -138,7 +138,7 @@ export async function getMovieBySlug(slug: string) {
             tickets: {
               where: {
                 status: {
-                  in: ['reserved', 'paid', 'used'],
+                  in: ['reserved', 'awaiting_payment', 'paid', 'used'],
                 },
               },
               select: {

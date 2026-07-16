@@ -135,6 +135,7 @@ function formatTime(value: Date | string) {
 
 function statusLabel(status: string) {
   if (status === 'paid') return 'Վճարված';
+  if (status === 'awaiting_payment') return 'Սպասում է վճարման';
   if (status === 'reserved') return 'Ամրագրված';
   return status;
 }

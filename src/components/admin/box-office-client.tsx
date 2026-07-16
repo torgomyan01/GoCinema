@@ -113,6 +113,7 @@ interface ProductItem {
 
 const statusLabels: Record<string, string> = {
   reserved: 'Ամրագրված',
+  awaiting_payment: 'Սպասում է վճարման',
   paid: 'Վճարված',
   used: 'Օգտագործված',
   cancelled: 'Չեղարկված',
@@ -675,7 +676,9 @@ export default function BoxOfficeClient() {
 
   const canCancelTakenTicket =
     takenTicket &&
-    (takenTicket.status === 'paid' || takenTicket.status === 'reserved');
+    (takenTicket.status === 'paid' ||
+      takenTicket.status === 'reserved' ||
+      takenTicket.status === 'awaiting_payment');
 
   const cannotCancelReason =
     takenTicket?.status === 'used'

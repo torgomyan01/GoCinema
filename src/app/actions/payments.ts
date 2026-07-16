@@ -32,6 +32,7 @@ import {
   getVPostTransactionStatus,
   type VPostProviderInfo,
 } from '@/lib/vpost';
+import { isUnpaidHeldStatus } from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -374,8 +375,8 @@ export async function createVPostOrderForOrder(
       };
     }
 
-    const unpaidTickets = order.tickets.filter(
-      (ticket) => ticket.status === 'reserved'
+    const unpaidTickets = order.tickets.filter((ticket) =>
+      isUnpaidHeldStatus(ticket.status)
     );
 
     if (unpaidTickets.length === 0) {
@@ -854,8 +855,8 @@ export async function createTelcellInvoiceForOrder(
       };
     }
 
-    const unpaidTickets = order.tickets.filter(
-      (ticket) => ticket.status === 'reserved'
+    const unpaidTickets = order.tickets.filter((ticket) =>
+      isUnpaidHeldStatus(ticket.status)
     );
 
     if (unpaidTickets.length === 0) {

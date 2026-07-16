@@ -387,7 +387,7 @@ export async function deleteAllSeats(hallId?: number) {
         tickets: {
           where: {
             status: {
-              in: ['reserved', 'paid', 'used'],
+              in: ['reserved', 'awaiting_payment', 'paid', 'used'],
             },
           },
         },

@@ -258,9 +258,11 @@ export default function ProducerMovieReportClient({ movieId }: Props) {
             ? 'Ներկա'
             : st === 'paid'
               ? 'Վճարված'
-              : st === 'reserved'
-                ? 'Ամրագրված'
-                : st,
+              : st === 'awaiting_payment'
+                ? 'Սպասում է վճարման'
+                : st === 'reserved'
+                  ? 'Ամրագրված'
+                  : st,
           Math.round(seat.ticket.price),
         ]);
       }

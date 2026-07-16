@@ -182,7 +182,7 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
 
     const hasPendingCard = order.tickets.some(
       (t) =>
-        t.status === 'reserved' &&
+        (t.status === 'awaiting_payment' || t.status === 'reserved') &&
         t.payment?.method === 'card' &&
         t.payment?.status === 'pending'
     );

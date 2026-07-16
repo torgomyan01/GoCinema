@@ -43,7 +43,7 @@ interface TicketCardProps {
       number: number;
     };
     price: number;
-    status: 'reserved' | 'paid' | 'used' | 'cancelled';
+    status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled';
     qrCode?: string | null;
     createdAt: Date | string;
     order?: {
@@ -73,6 +73,8 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
 
   // Դրամարկղ-ամրագրում՝ վճարվում է մուտքի մոտ։
   const isCounterReservation = ticket.order?.paymentMethod === 'counter';
+  // Օնլайն ամրագրում, որը դեռ սպասում է քարտային վճարման հաստատմանը։
+  const isAwaitingPayment = ticket.status === 'awaiting_payment';
 
   // Generate QR code data - only order ID for scanning
   const getQRCodeData = () => {
@@ -144,6 +146,8 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
     switch (status) {
       case 'paid':
         return 'bg-green-100 text-green-700';
+      case 'awaiting_payment':
+        return 'bg-amber-100 text-amber-700';
       case 'reserved':
         return 'bg-yellow-100 text-yellow-700';
       case 'used':
@@ -159,10 +163,12 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
     switch (status) {
       case 'paid':
         return 'Վճարված';
+      case 'awaiting_payment':
+        // Օնլайն ամրագրում՝ դեռ սպասում է vPost-ի հաստատմանը։
+        return 'Սպասում է վճարման';
       case 'reserved':
-        // Դրամարկղ-ամրագրումը իսկապես «ամրագրված» է (վճարումը՝ մուտքի մոտ),
-        // իսկ օնլայն չվճարված տոմսը դեռ սպասում է vPost-ի հաստատմանը։
-        return isCounterReservation ? 'Ամրագրված' : 'Սպասում է վճարման';
+        // Դրամարկղ-ամրագրում՝ վճարվում է մուտքի մոտ։
+        return 'Ամրագրված';
       case 'used':
         return 'Օգտագործված';
       case 'cancelled':
@@ -222,7 +228,7 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                       Մոտալուտ ցուցադրում
                     </span>
                   )}
-                  {ticket.status === 'reserved' && (
+                  {(ticket.status === 'reserved' || isAwaitingPayment) && (
                     <span className="px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5" />
                       {isCounterReservation
@@ -349,8 +355,8 @@ export default function TicketCard({ ticket, index = 0 }: TicketCardProps) {
                     <Share2 className="w-4 h-4" />
                     Տարածել տոմսը
                   </button>
-                  {ticket.status === 'reserved' &&
-                    !isCounterReservation &&
+                  {(isAwaitingPayment ||
+                    (ticket.status === 'reserved' && !isCounterReservation)) &&
                     ticket.order && (
                       <Link
                         href={SITE_URL.PAYMENT(ticket.order.id)}

@@ -64,10 +64,13 @@ export default function TicketCard({
   const canToggleEntry =
     (isPaid || isUsed) && Boolean(onCheckedChange);
   const canAddProducts =
-    (ticket.status === 'paid' || ticket.status === 'reserved') &&
+    (ticket.status === 'paid' ||
+      ticket.status === 'reserved' ||
+      ticket.status === 'awaiting_payment') &&
     !isUsed &&
     Boolean(onAddProducts);
-  const isUnpaid = ticket.status === 'reserved';
+  const isUnpaid =
+    ticket.status === 'reserved' || ticket.status === 'awaiting_payment';
   const needsQrScan = entryMode && ticketNeedsQrScan(ticket);
   const qrReady = entryMode && isTicketQrReady(ticket);
   const qrProgress = entryMode ? ticketQrScanProgress(ticket) : null;
@@ -207,7 +210,8 @@ export default function TicketCard({
               {ticket.orderItems.map((item: any) => {
                 const canRemove =
                   entryMode &&
-                  ticket.status === 'reserved' &&
+                  (ticket.status === 'reserved' ||
+                    ticket.status === 'awaiting_payment') &&
                   Boolean(onRemoveOrderItem);
 
                 return (

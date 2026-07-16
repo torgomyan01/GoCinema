@@ -20,7 +20,12 @@ import {
   updateTicketStatus,
 } from '@/app/actions/tickets';
 
-type TicketStatus = 'reserved' | 'paid' | 'used' | 'cancelled';
+type TicketStatus =
+  | 'reserved'
+  | 'awaiting_payment'
+  | 'paid'
+  | 'used'
+  | 'cancelled';
 
 interface ScreeningSummary {
   id: number;
@@ -32,7 +37,13 @@ interface ScreeningSummary {
   capacity: number;
   totalTickets: number;
   sold: number;
-  counts: { reserved: number; paid: number; used: number; cancelled: number };
+  counts: {
+    reserved: number;
+    awaiting_payment: number;
+    paid: number;
+    used: number;
+    cancelled: number;
+  };
   revenue: number;
 }
 
@@ -71,6 +82,11 @@ const STATUS_META: Record<
     badge: 'bg-amber-100 text-amber-800',
     dot: 'bg-amber-500',
   },
+  awaiting_payment: {
+    label: 'Սպասում է վճարման',
+    badge: 'bg-amber-100 text-amber-800',
+    dot: 'bg-amber-500',
+  },
   paid: {
     label: 'Վճարված',
     badge: 'bg-emerald-100 text-emerald-800',
@@ -89,6 +105,7 @@ const STATUS_META: Record<
 };
 
 const STATUS_ORDER: TicketStatus[] = [
+  'awaiting_payment',
   'reserved',
   'paid',
   'used',
@@ -331,7 +348,9 @@ function TicketRow({
   onChangeStatus: (id: number, status: TicketStatus) => void;
 }) {
   const status = (
-    ['reserved', 'paid', 'used', 'cancelled'].includes(ticket.status)
+    ['reserved', 'awaiting_payment', 'paid', 'used', 'cancelled'].includes(
+      ticket.status
+    )
       ? ticket.status
       : 'reserved'
   ) as TicketStatus;

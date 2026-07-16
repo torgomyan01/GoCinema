@@ -46,6 +46,7 @@ function formatDateTime(value: string): string {
 
 const STATUS_LABELS: Record<ProducerSeatTicket['status'], string> = {
   reserved: 'Ամրագրված — սպասում է վճարման',
+  awaiting_payment: 'Սպասում է վճարման (օնլайն)',
   paid: 'Վճարված — մուտք չի սկանավորվել',
   used: 'Ներկա — սկանավորվել է մուտքի մոտ',
   cancelled: 'Չեղարկված',
@@ -64,7 +65,7 @@ function seatVisual(seat: ProducerHallSeat): {
       filled: false,
     };
   }
-  if (status === 'reserved') {
+  if (status === 'reserved' || status === 'awaiting_payment') {
     return { iconClass: 'text-amber-500', filled: true };
   }
   if (status === 'paid') {
@@ -107,7 +108,8 @@ function SeatTooltipContent({ seat }: { seat: ProducerHallSeat }) {
       <p className="text-gray-500">
         Ամրագրված՝ {formatDateTime(ticket.createdAt)}
       </p>
-      {ticket.status === 'reserved' && (
+      {(ticket.status === 'reserved' ||
+        ticket.status === 'awaiting_payment') && (
         <p className="text-amber-700">Ամրագրված է, սպասում է վճարման</p>
       )}
       {ticket.status === 'paid' && (
@@ -143,7 +145,11 @@ export default function ProducerScreeningSeatMap({ hallSeats }: Props) {
   }, [hallSeats]);
 
   const occupiedCount = hallSeats.filter(
-    (s) => s.ticket && ['reserved', 'paid', 'used'].includes(s.ticket.status)
+    (s) =>
+      s.ticket &&
+      ['reserved', 'awaiting_payment', 'paid', 'used'].includes(
+        s.ticket.status
+      )
   ).length;
 
   if (hallSeats.length === 0) {

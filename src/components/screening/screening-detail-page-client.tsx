@@ -56,7 +56,7 @@ interface Screening {
       row: string;
       number: number;
     };
-    status: 'reserved' | 'paid' | 'used' | 'cancelled';
+    status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled';
     order?: {
       id: number;
       orderItems: Array<{

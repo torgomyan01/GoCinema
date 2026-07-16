@@ -111,6 +111,8 @@ function statusLabel(status: string): string {
       return 'Վճարված';
     case 'used':
       return 'Եկել է';
+    case 'awaiting_payment':
+      return 'Սպասում է վճարման';
     case 'reserved':
       return 'Ամրագրված';
     case 'cancelled':
@@ -126,6 +128,8 @@ function statusClasses(status: string): string {
       return 'bg-orange-50 text-orange-700 border-orange-200';
     case 'used':
       return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'awaiting_payment':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
     case 'reserved':
       return 'bg-amber-50 text-amber-700 border-amber-200';
     case 'cancelled':

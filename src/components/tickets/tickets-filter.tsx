@@ -16,7 +16,7 @@ interface TicketsFilterProps {
 
 const statusOptions: Array<{ value: TicketStatus; label: string }> = [
   { value: 'all', label: 'Բոլորը' },
-  { value: 'reserved', label: 'Ամրագրված' },
+  { value: 'reserved', label: 'Չվճարված' },
   { value: 'paid', label: 'Վճարված' },
   { value: 'used', label: 'Օգտագործված' },
   { value: 'cancelled', label: 'Չեղարկված' },

@@ -611,7 +611,10 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const handleScanModalComplete = (
     items: Array<{ orderItemId: number; qrCodes: string[]; quantity: number }>
   ) => {
-    if (scanModalTicket?.status === 'reserved') {
+    if (
+      scanModalTicket?.status === 'reserved' ||
+      scanModalTicket?.status === 'awaiting_payment'
+    ) {
       void handleAttachReservedQrs(items);
     } else {
       void handleCompleteTicketEntry(items);
@@ -846,6 +849,10 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { label: string; color: string }> = {
       reserved: { label: 'Ամրագրված', color: 'bg-yellow-100 text-yellow-800' },
+      awaiting_payment: {
+        label: 'Սպասում է վճարման',
+        color: 'bg-amber-100 text-amber-800',
+      },
       paid: { label: 'Վճարված', color: 'bg-green-100 text-green-800' },
       used: { label: 'Օգտագործված', color: 'bg-blue-100 text-blue-800' },
       cancelled: { label: 'Չեղարկված', color: 'bg-red-100 text-red-800' },
@@ -1486,7 +1493,9 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                 {/* Դրամարկղ-վճարում՝ չվճարված ամրագրման համար */}
                 {(() => {
                   const reserved = activeWindow.scannedData.data.tickets.filter(
-                    (t: any) => t.status === 'reserved'
+                    (t: any) =>
+                      t.status === 'reserved' ||
+                      t.status === 'awaiting_payment'
                   );
                   if (reserved.length === 0) return null;
                   const ticketsTotal = reserved.reduce(
@@ -1744,7 +1753,8 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                   };
                   const canAdd =
                     (ticketData.status === 'paid' ||
-                      ticketData.status === 'reserved') &&
+                      ticketData.status === 'reserved' ||
+                      ticketData.status === 'awaiting_payment') &&
                     activeWindow.scannedData.type === 'ticket';
                   const needsScan = ticketNeedsQrScan(ticketData);
                   const progress = ticketQrScanProgress(ticketData);
@@ -1790,7 +1800,9 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                       {ticketData.orderItems.length > 0 ? (
                         <div className="space-y-2">
                           {ticketData.orderItems.map((item: any) => {
-                            const canRemove = ticketData.status === 'reserved';
+                            const canRemove =
+                              ticketData.status === 'reserved' ||
+                              ticketData.status === 'awaiting_payment';
 
                             return (
                               <div
@@ -1836,7 +1848,9 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                 })()}
 
                 {/* Չվճարված ամրագրում՝ ուղղորդում դեպի պատվերը */}
-                {activeWindow.scannedData.data.status === 'reserved' &&
+                {(activeWindow.scannedData.data.status === 'reserved' ||
+                  activeWindow.scannedData.data.status ===
+                    'awaiting_payment') &&
                   activeWindow.scannedData.data.order?.id && (
                     <button
                       onClick={() =>
@@ -1905,7 +1919,12 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           ticket={scanModalTicket}
           isSubmitting={isCompletingEntry}
           error={entryError}
-          mode={scanModalTicket.status === 'reserved' ? 'attach' : 'entry'}
+          mode={
+            scanModalTicket.status === 'reserved' ||
+            scanModalTicket.status === 'awaiting_payment'
+              ? 'attach'
+              : 'entry'
+          }
           onClose={closeScanModal}
           lookupScan={(qrCode) =>
             lookupPreOrderProductQrForTicket(Number(scanModalTicket.id), qrCode)

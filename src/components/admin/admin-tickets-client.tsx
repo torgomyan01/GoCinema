@@ -122,6 +122,11 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
           label: 'Վճարված',
           color: 'bg-green-100 text-green-700',
         };
+      case 'awaiting_payment':
+        return {
+          label: 'Սպասում է վճարման',
+          color: 'bg-amber-100 text-amber-700',
+        };
       case 'reserved':
         return {
           label: 'Ամրագրված',
@@ -226,7 +231,12 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
     let result = [...tickets];
 
     if (selectedStatus !== 'all') {
-      result = result.filter((t) => t.status === selectedStatus);
+      // «Ամրագրված» ֆիլտրը ընդգրկում է նաև օնլայն «սպասում է վճարման»-ը։
+      result = result.filter((t) =>
+        selectedStatus === 'reserved'
+          ? t.status === 'reserved' || t.status === 'awaiting_payment'
+          : t.status === selectedStatus
+      );
     }
 
     if (searchQuery.trim()) {
@@ -276,7 +286,9 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
     const total = tickets.length;
     const paid = tickets.filter((t) => t.status === 'paid').length;
     const used = tickets.filter((t) => t.status === 'used').length;
-    const reserved = tickets.filter((t) => t.status === 'reserved').length;
+    const reserved = tickets.filter(
+      (t) => t.status === 'reserved' || t.status === 'awaiting_payment'
+    ).length;
     const cancelled = tickets.filter((t) => t.status === 'cancelled').length;
     const revenue = tickets
       .filter((t) => t.status === 'paid' || t.status === 'used')
@@ -287,7 +299,9 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
   const statusCounts = useMemo(() => {
     return {
       all: tickets.length,
-      reserved: tickets.filter((t) => t.status === 'reserved').length,
+      reserved: tickets.filter(
+        (t) => t.status === 'reserved' || t.status === 'awaiting_payment'
+      ).length,
       paid: tickets.filter((t) => t.status === 'paid').length,
       used: tickets.filter((t) => t.status === 'used').length,
       cancelled: tickets.filter((t) => t.status === 'cancelled').length,
@@ -309,7 +323,9 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
     const total = movieTickets.length;
     const paid = movieTickets.filter((t) => t.status === 'paid').length;
     const used = movieTickets.filter((t) => t.status === 'used').length;
-    const reserved = movieTickets.filter((t) => t.status === 'reserved').length;
+    const reserved = movieTickets.filter(
+      (t) => t.status === 'reserved' || t.status === 'awaiting_payment'
+    ).length;
     const cancelled = movieTickets.filter(
       (t) => t.status === 'cancelled'
     ).length;
@@ -434,7 +450,8 @@ export default function AdminTicketsClient({ user }: AdminTicketsClientProps) {
       (s.tickets || []).forEach((t: any) => {
         if (t.status === 'paid') paid += 1;
         else if (t.status === 'used') used += 1;
-        else if (t.status === 'reserved') reserved += 1;
+        else if (t.status === 'reserved' || t.status === 'awaiting_payment')
+          reserved += 1;
         else if (t.status === 'cancelled') cancelled += 1;
       });
 

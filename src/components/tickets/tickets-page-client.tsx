@@ -15,7 +15,7 @@ type TicketStatus = 'all' | 'reserved' | 'paid' | 'used' | 'cancelled';
 interface Ticket {
   id: number;
   price: number;
-  status: 'reserved' | 'paid' | 'used' | 'cancelled';
+  status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled';
   qrCode?: string | null;
   createdAt: Date | string;
   screening: {
@@ -115,16 +115,24 @@ export default function TicketsPageClient() {
 
   const filteredTickets = useMemo(() => {
     const statusOrder: Record<Ticket['status'], number> = {
-      reserved: 0, // վճարման սպասում
+      awaiting_payment: 0, // սպասում է վճարման (օնլայն)
+      reserved: 0, // ամրագրված (դրամարկղ)
       paid: 1,
       used: 2,
       cancelled: 3,
     };
 
+    // «Ամրագրված» ֆիլտրը ընդգրկում է և՛ դրամարկղ-ամրագրումը, և՛ օնլայն «սպասում է վճարման»-ը։
+    const matchesStatus = (ticket: Ticket) =>
+      selectedStatus === 'reserved'
+        ? ticket.status === 'reserved' ||
+          ticket.status === 'awaiting_payment'
+        : ticket.status === selectedStatus;
+
     let list =
       selectedStatus === 'all'
         ? [...tickets]
-        : tickets.filter((ticket) => ticket.status === selectedStatus);
+        : tickets.filter(matchesStatus);
 
     list.sort((a, b) => {
       const byStatus = statusOrder[a.status] - statusOrder[b.status];
@@ -141,7 +149,9 @@ export default function TicketsPageClient() {
   const statusCounts = useMemo(() => {
     return {
       all: tickets.length,
-      reserved: tickets.filter((t) => t.status === 'reserved').length,
+      reserved: tickets.filter(
+        (t) => t.status === 'reserved' || t.status === 'awaiting_payment'
+      ).length,
       paid: tickets.filter((t) => t.status === 'paid').length,
       used: tickets.filter((t) => t.status === 'used').length,
       cancelled: tickets.filter((t) => t.status === 'cancelled').length,

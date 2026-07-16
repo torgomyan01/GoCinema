@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { createMultipleTickets } from './tickets';
+import { AWAITING_PAYMENT_STATUS } from '@/lib/reservation';
 
 export interface CreateOrderData {
   userId: number;
@@ -84,7 +85,7 @@ export async function createOrder(data: CreateOrderData) {
         userId: data.userId,
         screeningId: data.screeningId,
         seatId: { in: data.seatIds },
-        status: 'reserved',
+        status: AWAITING_PAYMENT_STATUS,
         orderId: null,
       },
       orderBy: { createdAt: 'desc' },

@@ -19,7 +19,7 @@ export interface ProducerMovieListItem {
 }
 
 export interface ProducerSeatTicket {
-  status: 'reserved' | 'paid' | 'used' | 'cancelled';
+  status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled';
   price: number;
   createdAt: string;
   updatedAt: string;
@@ -249,7 +249,13 @@ export async function getProducerMovieReport(params: {
       },
     });
 
-    const STATUS_PRIORITY = ['used', 'paid', 'reserved', 'cancelled'] as const;
+    const STATUS_PRIORITY = [
+      'used',
+      'paid',
+      'reserved',
+      'awaiting_payment',
+      'cancelled',
+    ] as const;
 
     const rows: ProducerScreeningRow[] = screenings.map((s) => {
       let sold = 0;
@@ -284,7 +290,8 @@ export async function getProducerMovieReport(params: {
         if (t.status === 'paid' || t.status === 'used') sold += 1;
         if (t.status === 'used') attended += 1;
         if (t.status === 'paid' && screeningEnded) noShow += 1;
-        if (t.status === 'reserved') reserved += 1;
+        if (t.status === 'reserved' || t.status === 'awaiting_payment')
+          reserved += 1;
         if (t.status === 'cancelled') cancelled += 1;
       }
 

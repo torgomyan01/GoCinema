@@ -174,7 +174,7 @@ model Ticket {
   screeningId         Int
   seatId              Int
   price               Float
-  status              String    @default("reserved") @db.VarChar(50) // reserved, paid, used, cancelled
+  status              String    @default("reserved") @db.VarChar(50) // reserved (դրամարկղ), awaiting_payment (օնլայն՝ սպասում է վճարման), paid, used, cancelled
   qrCode              String?   @db.VarChar(500)
   holdUntil           DateTime? // ամրագրման ժամկետի վերջը. online՝ +10ր, դրամարկղ-ամրագրում՝ ցուցադրության սկիզբը
   noShow              Boolean   @default(false) // դրամարկղ-ամրագրում, որը լրացել է առանց վճարման (չի եկել)

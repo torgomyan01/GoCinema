@@ -183,12 +183,12 @@ export async function createScreening(data: CreateScreeningData) {
     const startTime = new Date(data.startTime);
     const endTime = new Date(data.endTime);
 
-    if (endTime <= startTime) {
-      return {
-        success: false,
-        error: 'Ավարտի ժամը պետք է լինի ավելի ուշ, քան սկզբի ժամը',
-      };
-    }
+    // if (endTime <= startTime) {
+    //   return {
+    //     success: false,
+    //     error: 'Ավարտի ժամը պետք է լինի ավելի ուշ, քան սկզբի ժամը',
+    //   };
+    // }
 
     // Check for overlapping screenings in the same hall
     const overlapping = await prisma.screening.findFirst({
@@ -293,12 +293,12 @@ export async function updateScreening(data: UpdateScreeningData) {
       const startTime = new Date(updateData.startTime);
       const endTime = new Date(updateData.endTime);
 
-      if (endTime <= startTime) {
-        return {
-          success: false,
-          error: 'Ավարտի ժամը պետք է լինի ավելի ուշ, քան սկզբի ժամը',
-        };
-      }
+      // if (endTime <= startTime) {
+      //   return {
+      //     success: false,
+      //     error: 'Ավարտի ժամը պետք է լինի ավելի ուշ, քան սկզբի ժամը',
+      //   };
+      // }
 
       const overlapping = await prisma.screening.findFirst({
         where: {

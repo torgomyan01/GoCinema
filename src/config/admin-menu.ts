@@ -22,6 +22,7 @@ import {
   Receipt,
   ReceiptText,
   Wallet,
+  PartyPopper,
   LucideIcon,
 } from 'lucide-react';
 
@@ -89,6 +90,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/screenings',
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
+  },
+  {
+    title: 'Փաթեթների պատվերներ',
+    icon: PartyPopper,
+    href: '/admin/packages',
+    color: 'text-fuchsia-600',
+    bgColor: 'bg-fuchsia-50',
   },
   {
     title: 'Նախապատրաստում',

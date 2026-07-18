@@ -37,6 +37,7 @@ model User {
   producedMovies      Movie[]              @relation("MovieProducers")
   fiscalReceipts      FiscalReceipt[]      @relation("CashierFiscalReceipts")
   expenses            Expense[]            @relation("ExpenseCreatedBy")
+  packageBookings     PackageBooking[]     @relation("PackageBookingCreatedBy")
 
   @@index([email])
   @@index([phone])
@@ -536,6 +537,33 @@ model Premiere {
 // ============================================
 // Expenses (Admin)
 // ============================================
+
+// ============================================
+// Package Bookings (Private Party, Corporate, VIP Date)
+// ============================================
+
+model PackageBooking {
+  id            Int      @id @default(autoincrement())
+  packageType   String   @db.VarChar(50) // private-party, corporate, vip-date, other
+  customerName  String   @db.VarChar(255)
+  customerPhone String   @db.VarChar(50)
+  guestsCount   Int? // հյուրերի քանակ
+  price         Float? // գին / կանխավճար (֏)
+  notes         String?  @db.Text
+  startTime     DateTime // պայմանավորված սկիզբ
+  endTime       DateTime // հավանական ավարտ
+  status        String   @default("confirmed") @db.VarChar(50) // pending, confirmed, cancelled
+  createdById   Int? // ո՞վ է գրանցել (ադմին)
+  createdBy     User?    @relation("PackageBookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([startTime])
+  @@index([status])
+  @@index([packageType])
+  @@index([createdById])
+  @@map("package_bookings")
+}
 
 model Expense {
   id          Int      @id @default(autoincrement())

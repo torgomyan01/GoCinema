@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
 import { isOccupiedTicketStatus, occupiedTicketWhere } from '@/lib/reservation';
 import { releaseExpiredReservations } from '@/app/actions/tickets';
+import { findPackageBookingConflictForScreening } from '@/app/actions/package-bookings';
 
 const screeningListInclude = {
   movie: {
@@ -230,6 +231,18 @@ export async function createScreening(data: CreateScreeningData) {
       };
     }
 
+    // Փաթեթի պատվերի (Private Party և այլն) բախում — արգելում ենք
+    const packageConflict = await findPackageBookingConflictForScreening(
+      startTime,
+      endTime
+    );
+    if (packageConflict) {
+      return {
+        success: false,
+        error: packageConflict,
+      };
+    }
+
     const screening = await prisma.screening.create({
       data: {
         movieId: data.movieId,
@@ -337,6 +350,18 @@ export async function updateScreening(data: UpdateScreeningData) {
         return {
           success: false,
           error: 'Այս ժամանակահատվածում դահլիճը արդեն զբաղված է',
+        };
+      }
+
+      // Փաթեթի պատվերի բախում — արգելում ենք
+      const packageConflict = await findPackageBookingConflictForScreening(
+        startTime,
+        endTime
+      );
+      if (packageConflict) {
+        return {
+          success: false,
+          error: packageConflict,
         };
       }
     }

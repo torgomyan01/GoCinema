@@ -558,13 +558,6 @@ export default function AdminScreeningsClient({
         return;
       }
 
-      // Validate end time is after start time
-      if (endDateTime <= startDateTime) {
-        setError('Ավարտի ժամը պետք է լինի ավելի ուշ, քան սկզբի ժամը');
-        setIsLoading(false);
-        return;
-      }
-
       const data = {
         movieId: parseInt(formData.movieId),
         // hallId will be auto-set on server (we have only one hall)
@@ -1172,9 +1165,7 @@ export default function AdminScreeningsClient({
                         className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Trash2 className="h-4 w-4" />
-                        {isDeleting
-                          ? 'Հանվում է...'
-                          : 'Հանել ցուցադրությունը'}
+                        {isDeleting ? 'Հանվում է...' : 'Հանել ցուցադրությունը'}
                       </button>
                       <p className="mt-2 text-center text-xs text-gray-400">
                         Եթե արդեն կան վաճառված տոմսեր, ցուցադրությունը հանել
@@ -1584,7 +1575,9 @@ export default function AdminScreeningsClient({
                   {(() => {
                     const dateKey = getLocalDateKey(selectedDayForDetails);
                     const dayScreenings = screenings.filter((screening) => {
-                      const screeningDate = getLocalDateKey(screening.startTime);
+                      const screeningDate = getLocalDateKey(
+                        screening.startTime
+                      );
                       return screeningDate === dateKey;
                     });
 

@@ -827,13 +827,13 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       const cancelDeadline = new Date(
         screeningEnd.getTime() + CANCEL_GRACE_MS
       );
-      if (Date.now() > cancelDeadline.getTime()) {
-        return {
-          success: false,
-          error:
-            'Չեղարկման ժամկետն անցել է (ցուցադրության ավարտից 1 ժամ հետո տոմսը չի չեղարկվում)',
-        };
-      }
+      // if (Date.now() > cancelDeadline.getTime()) {
+      //   return {
+      //     success: false,
+      //     error:
+      //       'Չեղարկման ժամկետն անցել է (ցուցադրության ավարտից 1 ժամ հետո տոմսը չի չեղարկվում)',
+      //   };
+      // }
     }
 
     // Այս տոմսին կապված ապրանքների քանակները՝ պաշար վերադարձնելու համար

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
 import {
   occupiedTicketWhere,
   COUNTER_PAYMENT_METHOD,
@@ -155,56 +156,94 @@ export async function createCounterReservation(
     const holdUntil = counterHoldUntil(screening.endTime);
 
     // Ստեղծում ենք տոմսերը՝ QR-ը հաճախորդի մոտ միշտ հասանելի պահելու համար։
-    const created = await prisma.$transaction(async (tx) => {
-      const order = await tx.order.create({
-        data: {
-          userId,
-          totalAmount,
-          status: 'pending',
-          paymentMethod: COUNTER_PAYMENT_METHOD,
+    let created: { id: number };
+    try {
+      created = await prisma.$transaction(
+        async (tx) => {
+          const raceCheck = await tx.ticket.findMany({
+            where: {
+              screeningId: data.screeningId,
+              seatId: { in: data.seatIds },
+              ...occupiedTicketWhere(),
+            },
+          });
+          if (raceCheck.length > 0) {
+            throw new Error('SEAT_TAKEN');
+          }
+
+          const order = await tx.order.create({
+            data: {
+              userId,
+              totalAmount,
+              status: 'pending',
+              paymentMethod: COUNTER_PAYMENT_METHOD,
+            },
+          });
+
+          const seatIdToTicketId = new Map<number, number>();
+          for (const seatId of data.seatIds) {
+            const ticket = await tx.ticket.create({
+              data: {
+                userId,
+                screeningId: data.screeningId,
+                seatId,
+                price: screening.basePrice,
+                status: 'reserved',
+                holdUntil,
+                orderId: order.id,
+              },
+            });
+            await tx.ticket.update({
+              where: { id: ticket.id },
+              data: { qrCode: `TICKET-${ticket.id}` },
+            });
+            seatIdToTicketId.set(seatId, ticket.id);
+          }
+
+          if (data.products.length > 0) {
+            await tx.orderItem.createMany({
+              data: data.products.map((p) => {
+                const product = productList.find((prod) => prod.id === p.productId);
+                const ticketId = p.seatId
+                  ? seatIdToTicketId.get(p.seatId)
+                  : null;
+                return {
+                  orderId: order.id,
+                  productId: p.productId,
+                  quantity: p.quantity,
+                  price: product?.price || 0,
+                  ...(ticketId ? { ticketId } : {}),
+                };
+              }),
+            });
+          }
+
+          return order;
         },
-      });
-
-      const seatIdToTicketId = new Map<number, number>();
-      for (const seatId of data.seatIds) {
-        const ticket = await tx.ticket.create({
-          data: {
-            userId,
-            screeningId: data.screeningId,
-            seatId,
-            price: screening.basePrice,
-            status: 'reserved',
-            holdUntil,
-            orderId: order.id,
-          },
-        });
-        await tx.ticket.update({
-          where: { id: ticket.id },
-          data: { qrCode: `TICKET-${ticket.id}` },
-        });
-        seatIdToTicketId.set(seatId, ticket.id);
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 15000,
+        }
+      );
+    } catch (inner: unknown) {
+      if (inner instanceof Error && inner.message === 'SEAT_TAKEN') {
+        return {
+          success: false,
+          error: 'Որոշ նստատեղեր արդեն զբաղված են, խնդրում ենք ընտրել այլ տեղ',
+        };
       }
-
-      if (data.products.length > 0) {
-        await tx.orderItem.createMany({
-          data: data.products.map((p) => {
-            const product = productList.find((prod) => prod.id === p.productId);
-            const ticketId = p.seatId
-              ? seatIdToTicketId.get(p.seatId)
-              : null;
-            return {
-              orderId: order.id,
-              productId: p.productId,
-              quantity: p.quantity,
-              price: product?.price || 0,
-              ...(ticketId ? { ticketId } : {}),
-            };
-          }),
-        });
+      const code =
+        inner && typeof inner === 'object' && 'code' in inner
+          ? String((inner as { code: unknown }).code)
+          : '';
+      if (code === 'P2034') {
+        return {
+          success: false,
+          error: 'Որոշ նստատեղեր արդեն զբաղված են, խնդրում ենք ընտրել այլ տեղ',
+        };
       }
-
-      return order;
-    });
+      throw inner;
+    }
 
     revalidatePath('/tickets');
     revalidatePath('/booking');

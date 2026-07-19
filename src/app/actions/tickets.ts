@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
 import {
   occupiedTicketWhere,
   onlineHoldUntil,
@@ -261,50 +262,75 @@ export async function createTicket(data: CreateTicketData) {
     // Legacy hook է. reserved տոմսերը ավտոմատ չեն ազատվում։
     await releaseExpiredReservations(data.screeningId);
 
-    const existingTicket = await prisma.ticket.findFirst({
-      where: {
-        screeningId: data.screeningId,
-        seatId: data.seatId,
-        ...occupiedTicketWhere(),
-      },
-    });
+    try {
+      const ticket = await prisma.$transaction(
+        async (tx) => {
+          const existingTicket = await tx.ticket.findFirst({
+            where: {
+              screeningId: data.screeningId,
+              seatId: data.seatId,
+              ...occupiedTicketWhere(),
+            },
+          });
 
-    if (existingTicket) {
-      return {
-        success: false,
-        error: 'Այս նստատեղը արդեն զբաղված է',
-      };
-    }
+          if (existingTicket) {
+            throw new Error('SEAT_TAKEN');
+          }
 
-    const ticket = await prisma.ticket.create({
-      data: {
-        userId: data.userId,
-        screeningId: data.screeningId,
-        seatId: data.seatId,
-        price: data.price,
-        // Օնլայն ամրագրում՝ սկզբում «սպասում է վճարման», paid-ը միայն հաստատումից հետո։
-        status: AWAITING_PAYMENT_STATUS,
-        holdUntil: onlineHoldUntil(),
-      },
-      include: {
-        screening: {
-          include: {
-            movie: true,
-            hall: true,
-          },
+          return tx.ticket.create({
+            data: {
+              userId: data.userId,
+              screeningId: data.screeningId,
+              seatId: data.seatId,
+              price: data.price,
+              status: AWAITING_PAYMENT_STATUS,
+              holdUntil: onlineHoldUntil(),
+            },
+            include: {
+              screening: {
+                include: {
+                  movie: true,
+                  hall: true,
+                },
+              },
+              seat: true,
+            },
+          });
         },
-        seat: true,
-      },
-    });
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 10000,
+        }
+      );
 
-    revalidatePath('/tickets');
-    revalidatePath('/booking');
+      revalidatePath('/tickets');
+      revalidatePath('/booking');
 
-    return {
-      success: true,
-      ticket,
-      message: 'Տոմսը հաջողությամբ ամրագրվեց',
-    };
+      return {
+        success: true,
+        ticket,
+        message: 'Տոմսը հաջողությամբ ամրագրվեց',
+      };
+    } catch (inner: unknown) {
+      if (inner instanceof Error && inner.message === 'SEAT_TAKEN') {
+        return {
+          success: false,
+          error: 'Այս նստատեղը արդեն զբաղված է',
+        };
+      }
+      // Serializable conflict — retry-friendly message
+      const code =
+        inner && typeof inner === 'object' && 'code' in inner
+          ? String((inner as { code: unknown }).code)
+          : '';
+      if (code === 'P2034') {
+        return {
+          success: false,
+          error: 'Այս նստատեղը արդեն զբաղված է',
+        };
+      }
+      throw inner;
+    }
   } catch (error: any) {
     console.error('[Create Ticket] Error:', error);
     return {
@@ -328,44 +354,69 @@ export async function createMultipleTickets(data: CreateMultipleTicketsData) {
     await releaseExpiredReservations(data.screeningId);
 
     const seatIds = data.seats.map((s) => s.seatId);
-    const existingTickets = await prisma.ticket.findMany({
-      where: {
-        screeningId: data.screeningId,
-        seatId: {
-          in: seatIds,
-        },
-        ...occupiedTicketWhere(),
-      },
-    });
-
-    if (existingTickets.length > 0) {
-      return {
-        success: false,
-        error: 'Որոշ նստատեղեր արդեն զբաղված են, խնդրում ենք ընտրել այլ տեղ',
-      };
-    }
-
     const holdUntil = onlineHoldUntil();
-    const tickets = await prisma.ticket.createMany({
-      data: data.seats.map((seat) => ({
-        userId: data.userId,
-        screeningId: data.screeningId,
-        seatId: seat.seatId,
-        price: seat.price,
-        // Օնլայն ամրագրում՝ սկզբում «սպասում է վճարման», paid-ը միայն հաստատումից հետո։
-        status: AWAITING_PAYMENT_STATUS,
-        holdUntil,
-      })),
-    });
 
-    revalidatePath('/tickets');
-    revalidatePath('/booking');
+    try {
+      const count = await prisma.$transaction(
+        async (tx) => {
+          const existingTickets = await tx.ticket.findMany({
+            where: {
+              screeningId: data.screeningId,
+              seatId: { in: seatIds },
+              ...occupiedTicketWhere(),
+            },
+          });
 
-    return {
-      success: true,
-      count: tickets.count,
-      message: `${tickets.count} տոմս հաջողությամբ ամրագրվեց`,
-    };
+          if (existingTickets.length > 0) {
+            throw new Error('SEAT_TAKEN');
+          }
+
+          const created = await tx.ticket.createMany({
+            data: data.seats.map((seat) => ({
+              userId: data.userId,
+              screeningId: data.screeningId,
+              seatId: seat.seatId,
+              price: seat.price,
+              status: AWAITING_PAYMENT_STATUS,
+              holdUntil,
+            })),
+          });
+
+          return created.count;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 10000,
+        }
+      );
+
+      revalidatePath('/tickets');
+      revalidatePath('/booking');
+
+      return {
+        success: true,
+        count,
+        message: `${count} տոմս հաջողությամբ ամրագրվեց`,
+      };
+    } catch (inner: unknown) {
+      if (inner instanceof Error && inner.message === 'SEAT_TAKEN') {
+        return {
+          success: false,
+          error: 'Որոշ նստատեղեր արդեն զբաղված են, խնդրում ենք ընտրել այլ տեղ',
+        };
+      }
+      const code =
+        inner && typeof inner === 'object' && 'code' in inner
+          ? String((inner as { code: unknown }).code)
+          : '';
+      if (code === 'P2034') {
+        return {
+          success: false,
+          error: 'Որոշ նստատեղեր արդեն զբաղված են, խնդրում ենք ընտրել այլ տեղ',
+        };
+      }
+      throw inner;
+    }
   } catch (error: any) {
     console.error('[Create Multiple Tickets] Error:', error);
     return {

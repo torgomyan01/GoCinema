@@ -14,6 +14,14 @@
 export const RESERVATION_HOLD_MINUTES = 5;
 export const RESERVATION_HOLD_MS = RESERVATION_HOLD_MINUTES * 60 * 1000;
 
+/**
+ * VPost/gateway էջում գտնվելու ժամանակ hold-ը երկարացվում է այսքանով,
+ * որպեսզի 5ր պատուհանը չլրանա քարտ մուտքագրելու ընթացքում։
+ */
+export const PAYMENT_GATEWAY_HOLD_MINUTES = 15;
+export const PAYMENT_GATEWAY_HOLD_MS =
+  PAYMENT_GATEWAY_HOLD_MINUTES * 60 * 1000;
+
 /** Order.paymentMethod-ի արժեքը՝ դրամարկղում վճարվող ամրագրումների համար։ */
 export const COUNTER_PAYMENT_METHOD = 'counter';
 
@@ -42,6 +50,11 @@ export const PAID_TICKET_STATUSES = ['paid', 'used'] as const;
 /** Online ամրագրման hold-ի ավարտը (ստեղծման պահից +5ր)։ */
 export function onlineHoldUntil(now: Date = new Date()): Date {
   return new Date(now.getTime() + RESERVATION_HOLD_MS);
+}
+
+/** VPost վճարման սկսելիս hold-ի երկարացում (+15ր այս պահից)։ */
+export function paymentGatewayHoldUntil(now: Date = new Date()): Date {
+  return new Date(now.getTime() + PAYMENT_GATEWAY_HOLD_MS);
 }
 
 /** Օնլայն վճարման hold-ը դեռ ակտի՞վ է (holdUntil > now)։ */

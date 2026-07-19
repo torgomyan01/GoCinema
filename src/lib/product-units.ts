@@ -26,6 +26,51 @@ export function isQuantityOnlyProduct(category: string): boolean {
   return !usesQrUnitTracking(category);
 }
 
+/** Քանակային ապրանքի չափ՝ անվանումից `(Փոքր)` / `(Մեծ)` */
+export type QuantityProductSize = 'small' | 'large';
+
+const SIZE_SUFFIX_RE = /\s*\((Փոքր|Մեծ)\)\s*$/u;
+
+/**
+ * Անվանումից հանում է չափը և համի բանալին։
+ * օր. «Պոպկորն Բեկոնի համով (Մեծ)» → flavor «Պոպկորն Բեկոնի համով», size large
+ */
+export function parseQuantityProductName(name: string): {
+  flavorKey: string;
+  size: QuantityProductSize | null;
+  sizeLabel: 'Փոքր' | 'Մեծ' | null;
+} {
+  const trimmed = name.trim();
+  const match = trimmed.match(SIZE_SUFFIX_RE);
+  if (!match) {
+    return { flavorKey: trimmed, size: null, sizeLabel: null };
+  }
+  const sizeLabel = match[1] as 'Փոքր' | 'Մեծ';
+  const flavorKey = trimmed.slice(0, match.index).trim();
+  return {
+    flavorKey,
+    size: sizeLabel === 'Մեծ' ? 'large' : 'small',
+    sizeLabel,
+  };
+}
+
+/**
+ * Ցուցադրման համի անուն՝ պոպկորնի համար հանում է «Պոպկորն» նախածանցը։
+ */
+export function quantityFlavorDisplayName(
+  flavorKey: string,
+  category: string
+): string {
+  if (category === 'popcorn') {
+    return flavorKey.replace(/^Պոպկորն\s+/u, '').trim() || flavorKey;
+  }
+  return flavorKey;
+}
+
+export function quantitySizeLabel(size: QuantityProductSize): string {
+  return size === 'large' ? 'Մեծ' : 'Փոքր';
+}
+
 /** Սխալ, երբ պահեստում բավարար միավոր/քանակ չկա */
 export const UNIT_STOCK_INSUFFICIENT = 'UNIT_STOCK_INSUFFICIENT';
 

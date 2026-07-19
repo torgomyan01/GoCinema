@@ -555,15 +555,53 @@ export function buildVPostAttemptOrderId(
   return goCinemaOrderId * 1_000_000 + stamp;
 }
 
-/** Partner orderID-ից վերականգնում է GoCinema order id (legacy և նոր կոդավորում)։ */
+/**
+ * Partner orderID-ից վերականգնում է GoCinema order id։
+ * Նոր կոդավորում՝ `orderId * 1_000_000 + stamp` → floor(/1e6)։
+ * Legacy (`partner === orderId`, < 1e6) չի decode արվում այստեղ —
+ * դրանք համընկնում են exact equality-ով, որպեսզի փոքր ITF ID-ները
+ * սխալմամբ չկապվեն լոկալ պատվերների հետ վճարման sync-ում։
+ */
 export function extractGoCinemaOrderIdFromPartnerId(
   partnerId: number | null | undefined
 ): number | undefined {
   if (partnerId == null || !Number.isFinite(partnerId) || partnerId <= 0) {
     return undefined;
   }
-  if (partnerId < 1_000_000) return partnerId;
+  if (partnerId < 1_000_000) return undefined;
   return Math.floor(partnerId / 1_000_000);
+}
+
+/**
+ * Ադմին/ցուցադրում՝ նոր կոդավորում + legacy ֆոլբեք։
+ * Վճարման sync-ում մի օգտագործիր — այնտեղ exact/known refs են։
+ */
+export function resolveGoCinemaOrderIdForDisplay(
+  partnerId: number | null | undefined
+): number | undefined {
+  const decoded = extractGoCinemaOrderIdFromPartnerId(partnerId);
+  if (decoded != null) return decoded;
+  if (partnerId == null || !Number.isFinite(partnerId) || partnerId <= 0) {
+    return undefined;
+  }
+  if (partnerId < 1_000_000) return partnerId;
+  return undefined;
+}
+
+/**
+ * Description-ում «Order #12» / «GoCinema Order #12»՝ առանց substring բագի
+ * (#12 չի համընկնում #123-ի հետ)։
+ */
+export function descriptionMentionsGoCinemaOrder(
+  description: string,
+  goCinemaOrderId: number
+): boolean {
+  if (!description || !Number.isFinite(goCinemaOrderId) || goCinemaOrderId <= 0) {
+    return false;
+  }
+  const id = String(goCinemaOrderId);
+  const re = new RegExp(`(?:GoCinema\\s+)?Order\\s*#\\s*${id}(?!\\d)`, 'i');
+  return re.test(description);
 }
 
 export function transactionMatchesGoCinemaOrder(
@@ -574,6 +612,7 @@ export function transactionMatchesGoCinemaOrder(
 ): boolean {
   const partner = getVPostTransactionPartnerOrderId(tx);
   if (partner != null) {
+    // Legacy՝ partnerOrderId === goCinemaOrderId
     if (partner === goCinemaOrderId) return true;
     if (knownPartnerOrderIds.includes(partner)) return true;
     if (extractGoCinemaOrderIdFromPartnerId(partner) === goCinemaOrderId) {
@@ -585,39 +624,64 @@ export function transactionMatchesGoCinemaOrder(
   if (itfId != null && knownItfOrderIds.includes(itfId)) return true;
 
   const desc = `${tx.description || ''} ${tx.order?.description || ''}`;
-  if (
-    desc.includes(`GoCinema Order #${goCinemaOrderId}`) ||
-    desc.includes(`Order #${goCinemaOrderId}`)
-  ) {
+  if (descriptionMentionsGoCinemaOrder(desc, goCinemaOrderId)) {
     return true;
   }
 
   return false;
 }
 
+/** Պատվերի ստեղծումից մինչ այժմ՝ `/transactions/list` միջակայք (cross-day)։ */
+export function getVPostDateRangeSince(
+  since: Date | string | null | undefined,
+  now: Date = new Date()
+): { startDate: string; endDate: string } {
+  const start = since ? new Date(since) : new Date(now);
+  if (!since) {
+    start.setHours(0, 0, 0, 0);
+  } else {
+    // 1 րոպե buffer՝ ժամային սահմանների համար
+    start.setTime(start.getTime() - 60_000);
+  }
+  const end = new Date(now);
+  end.setMinutes(end.getMinutes() + 1);
+  return {
+    startDate: formatVPostDateParam(start),
+    endDate: formatVPostDateParam(end),
+  };
+}
+
 /**
- * Գտնում է այս GoCinema պատվերին պատկանող գործարքները՝
- * 1) այսօրվա ամբողջ `/transactions/list`
- * 2) հայտնի partner / ITF orderID-ներով լրացուցիչ հարցումներ
+ * Գտնում է այս GoCinema պատվերին պատկանող գործարքները։
+ * 1) Հայտնի partner / ITF orderID-ներով հարցումներ (արագ)
+ * 2) Date-range `/transactions/list` — միայն եթե by-id դատարկ է, կամ light=false
  */
 export async function resolveVPostTransactionsForGoCinemaOrder(options: {
   orderId: number;
   knownItfOrderIds?: number[];
   knownPartnerOrderIds?: number[];
+  /** Պատվերի ստեղծման ժամ — date-range-ի սկիզբ (cross-day) */
+  since?: Date | string | null;
+  /**
+   * Եթե true և հայտնի ID-ներով գտնվել է գործարք՝ date-range չենք քաշում։
+   * Polling-ի համար՝ նվազեցնում է vPost load-ը։
+   */
+  light?: boolean;
 }): Promise<{
   list: VPostTransactionListItem[];
   envelopeStatus: boolean;
   message?: string;
-  source: 'today_list' | 'by_order_id' | 'mixed';
+  source: 'date_list' | 'by_order_id' | 'mixed';
 }> {
   const orderId = options.orderId;
   const knownItf = options.knownItfOrderIds ?? [];
   const knownPartners = options.knownPartnerOrderIds ?? [];
+  const light = options.light === true;
   const seen = new Set<string>();
   const all: VPostTransactionListItem[] = [];
   let envelopeStatus = false;
   let message: string | undefined;
-  let usedToday = false;
+  let usedDateList = false;
   let usedById = false;
 
   const pushList = (list: VPostTransactionListItem[]) => {
@@ -628,18 +692,6 @@ export async function resolveVPostTransactionsForGoCinemaOrder(options: {
       all.push(tx);
     }
   };
-
-  const { startDate, endDate } = getTodayVPostDateRange();
-  const today = await fetchAllVPostTransactions({
-    startDate,
-    endDate,
-    maxPages: 20,
-  });
-  usedToday = true;
-  const todayMatched = today.transactions.filter((tx) =>
-    transactionMatchesGoCinemaOrder(tx, orderId, knownItf, knownPartners)
-  );
-  pushList(todayMatched);
 
   const idsToQuery = new Set<number>([
     orderId,
@@ -658,14 +710,33 @@ export async function resolveVPostTransactionsForGoCinemaOrder(options: {
     pushList(list);
   }
 
-  // Եթե today list-ը դատարկ է, բայց by-id գտել ենք — envelopeStatus true
+  const skipDateList = light && all.length > 0;
+  if (!skipDateList) {
+    const { startDate, endDate } = getVPostDateRangeSince(options.since);
+    const ranged = await fetchAllVPostTransactions({
+      startDate,
+      endDate,
+      maxPages: light ? 5 : 10,
+    });
+    usedDateList = true;
+    const matched = ranged.transactions.filter((tx) =>
+      transactionMatchesGoCinemaOrder(tx, orderId, knownItf, knownPartners)
+    );
+    pushList(matched);
+  }
+
   if (all.length > 0) envelopeStatus = true;
 
   return {
     list: sortTransactionsNewestFirst(all),
     envelopeStatus,
     message,
-    source: usedToday && usedById ? 'mixed' : usedToday ? 'today_list' : 'by_order_id',
+    source:
+      usedDateList && usedById
+        ? 'mixed'
+        : usedDateList
+          ? 'date_list'
+          : 'by_order_id',
   };
 }
 
@@ -750,8 +821,8 @@ export function getVPostTransactionPartnerOrderId(
 
   const desc = tx.description || tx.order?.description || '';
   const fromDesc =
-    desc.match(/(?:order|պատվեր)\s*#?\s*(\d+)/i)?.[1] ??
-    desc.match(/#(\d+)/)?.[1];
+    desc.match(/(?:GoCinema\s+)?Order\s*#\s*(\d+)(?!\d)/i)?.[1] ??
+    desc.match(/(?:պատվեր)\s*#?\s*(\d+)(?!\d)/i)?.[1];
   if (fromDesc) {
     const n = parseInt(fromDesc, 10);
     if (Number.isFinite(n) && n > 0) return n;

@@ -2007,7 +2007,6 @@ export async function addTicketProducts(data: TicketProductScanInput) {
     if (ticket.status === 'cancelled') {
       return { success: false, error: 'Չեղարկված տոմսին ապրանք չի ավելացվում' };
     }
-    const isPaidMode = ticket.status === 'paid';
 
     // QR միավորների վալիդացիա (խմբավորում ըստ ապրանքի)
     const unitsByProduct = new Map<
@@ -2129,13 +2128,16 @@ export async function addTicketProducts(data: TicketProductScanInput) {
       });
     }
 
-    // Վճարումը պահանջվում է միայն վճարված տոմսի դեպքում (անմիջապես վաճառք)
+    // Ապրանքները միշտ ավելանում են պատվերին (ամրագրում)։
+    // Անմիջական վաճառք/վճարում/ֆիսկալ՝ միայն եթե կանչողը հստակ payment է փոխանցել
+    // (հին համատեղելիություն)։ Նոր UI-ում տոմսի մոդալը payment չի ուղարկում։
+    const wantsImmediateSale = Boolean(data.paymentMethod);
     let payment: {
       ok: true;
       method: ScannerPaymentMethod;
       amountPaid: number | null;
     } | null = null;
-    if (isPaidMode) {
+    if (wantsImmediateSale) {
       const resolved = resolveScannerPayment(
         data.paymentMethod,
         data.amountPaid,
@@ -2146,6 +2148,7 @@ export async function addTicketProducts(data: TicketProductScanInput) {
       }
       payment = resolved;
     }
+    const sellNow = wantsImmediateSale && payment != null;
 
     let finalOrderId: number | null = ticket.orderId ?? null;
 
@@ -2157,8 +2160,8 @@ export async function addTicketProducts(data: TicketProductScanInput) {
           data: {
             userId: ticket.userId,
             totalAmount: productsTotal,
-            status: isPaidMode ? 'completed' : 'pending',
-            ...(isPaidMode && payment
+            status: sellNow ? 'completed' : 'pending',
+            ...(sellNow && payment
               ? {
                   paymentMethod: payment.method,
                   amountPaid: payment.amountPaid,
@@ -2176,7 +2179,9 @@ export async function addTicketProducts(data: TicketProductScanInput) {
           where: { id: orderId },
           data: {
             totalAmount: { increment: productsTotal },
-            ...(isPaidMode ? { status: 'completed' } : {}),
+            // Անմիջական վաճառք → completed; ավելացում պատվերին → pending
+            // (որ դրամարկղում կարողանան վճարել նոր ապրանքները)
+            status: sellNow ? 'completed' : 'pending',
           },
         });
       }
@@ -2190,12 +2195,11 @@ export async function addTicketProducts(data: TicketProductScanInput) {
             productId,
             quantity: group.unitIds.length,
             price: group.price,
-            // Վճարված տոմս՝ անմիջապես տրվում է; ամրագրված՝ միայն ամրագրվում է,
-            // վերջնականացումը (վաճառք + պաշար) դրամարկղում վճարելիս
-            fulfilledAt: isPaidMode ? new Date() : null,
+            // sellNow՝ անմիջապես տրվում է; հակառակ դեպքում՝ ամրագրվում է մինչև վճարում
+            fulfilledAt: sellNow ? new Date() : null,
           },
         });
-        if (isPaidMode) {
+        if (sellNow) {
           await sellSpecificProductUnits(tx, group.unitIds, item.id);
         } else {
           // Ամրագրում՝ միավորները մնում են in_stock, կապվում պատվերի տողին
@@ -2214,11 +2218,11 @@ export async function addTicketProducts(data: TicketProductScanInput) {
             productId: sel.productId,
             quantity: qty,
             price: product.price,
-            fulfilledAt: isPaidMode ? new Date() : null,
+            fulfilledAt: sellNow ? new Date() : null,
           },
         });
-        // Ամրագրված տոմսի դեպքում պաշարը չենք հանում մինչև վճարումը
-        if (isPaidMode) {
+        // Ամրագրման դեպքում պաշարը չենք հանում մինչև վճարումը
+        if (sellNow) {
           await sellQuantityStock(tx, sel.productId, qty);
         }
       }
@@ -2230,13 +2234,15 @@ export async function addTicketProducts(data: TicketProductScanInput) {
       ? `${ticket.seat.row}${ticket.seat.number}`
       : '';
     const movieTitle = ticket.screening?.movie?.title ?? 'ֆիլմ';
-    const paymentNote = isPaidMode
+    const paymentNote = sellNow
       ? ` (${payment?.method === 'card' ? 'քարտով' : 'կանխիկ'})`
       : ' (ավելացվեց պատվերին)';
 
     await createNotification({
       type: 'box_office',
-      title: 'Մուտքի կետ՝ ապրանքների վաճառք',
+      title: sellNow
+        ? 'Մուտքի կետ՝ ապրանքների վաճառք'
+        : 'Մուտքի կետ՝ ապրանքներ պատվերին',
       message: `${movieTitle}${seatLabel ? `, տեղ ${seatLabel}` : ''} — ${formatAmd(productsTotal)}${paymentNote}`,
       link: '/admin/scanner',
     });
@@ -2248,12 +2254,12 @@ export async function addTicketProducts(data: TicketProductScanInput) {
     return {
       success: true,
       total: productsTotal,
-      paid: isPaidMode,
-      message: isPaidMode
+      paid: sellNow,
+      message: sellNow
         ? 'Ապրանքները վաճառվեցին տոմսին'
         : 'Ապրանքներն ավելացվեցին պատվերին (վճարումը՝ դրամարկղում)',
       // Ֆիսկալ տվյալներ՝ միայն անմիջական վաճառքի դեպքում (բրաուզերը ուղարկում է ՀԴՄ)
-      fiscal: isPaidMode
+      fiscal: sellNow
         ? {
             orderId: finalOrderId,
             ticketId,

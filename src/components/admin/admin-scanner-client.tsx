@@ -1945,11 +1945,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           title="Մուտքի կետ՝ ապրանքներ"
           subtitle={
             productModalTicket
-              ? `Տեղ ${productModalTicket.seat?.row ?? ''}${productModalTicket.seat?.number ?? ''}${
-                  productModalStatus === 'paid'
-                    ? ' — վաճառք և վճարում'
-                    : ' — ավելանում է պատվերին, վճարումը միասին'
-                }`
+              ? `Տեղ ${productModalTicket.seat?.row ?? ''}${productModalTicket.seat?.number ?? ''} — ավելանում է պատվերին`
               : 'Մուտքի կետ'
           }
         />

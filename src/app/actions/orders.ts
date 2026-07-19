@@ -325,7 +325,16 @@ export async function getOrderById(id: number) {
     const { releaseExpiredReservations } = await import(
       '@/app/actions/tickets'
     );
-    await releaseExpiredReservations();
+
+    // Միայն այս պատվերի ցուցադրությունների hold-ները — ոչ ամբողջ բազան
+    const screeningRows = await prisma.ticket.findMany({
+      where: { orderId: id },
+      select: { screeningId: true },
+      distinct: ['screeningId'],
+    });
+    for (const row of screeningRows) {
+      await releaseExpiredReservations(row.screeningId);
+    }
 
     const order = await prisma.order.findUnique({
       where: { id },

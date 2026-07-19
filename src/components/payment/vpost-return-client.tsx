@@ -13,8 +13,8 @@ interface VpostReturnClientProps {
   orderId: string;
 }
 
-const MAX_ATTEMPTS = 24;
-const RETRY_MS = 2500;
+const MAX_ATTEMPTS = 12;
+const RETRY_MS = 2000;
 
 /**
  * vPost վերադարձի նպատակային էջ։ backURL-ում query չենք ավելացնում —

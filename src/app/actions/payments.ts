@@ -34,14 +34,15 @@ import {
   getVPostTransactionPartnerOrderId,
   getVPostActionOrderId,
   getVPostTransactionStatus,
-  extractGoCinemaOrderIdFromPartnerId,
+  resolveGoCinemaOrderIdForDisplay,
   type VPostProviderInfo,
 } from '@/lib/vpost';
-import { isUnpaidHeldStatus } from '@/lib/reservation';
+import { isUnpaidHeldStatus, paymentGatewayHoldUntil } from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isAdminRole } from '@/lib/roles';
+import { releaseExpiredReservations } from '@/app/actions/tickets';
 
 function paymentServerLog(event: string, payload: Record<string, unknown>) {
   const log =
@@ -147,13 +148,51 @@ function formatStoredVPostTransactionId(
   return itf ? `${itf}|${partner}` : partner;
 }
 
+/**
+ * Կուտակում է բոլոր վճարման փորձերի ITF/P ref-երը (cross-day sync-ի համար)։
+ * VARCHAR(255) սահմանում պահում է վերջին փորձերը։
+ */
+function mergeStoredVPostTransactionId(
+  existing: string | null | undefined,
+  itfOrderId: string | number | undefined,
+  partnerOrderId: number
+): string {
+  const next = formatStoredVPostTransactionId(itfOrderId, partnerOrderId);
+  const prev = existing?.trim();
+  if (!prev) return next;
+
+  // Արդեն կա այս partner փորձը — թարմացնում ենք ITF մասը եթե պետք է
+  if (prev.includes(`P-${partnerOrderId}`)) {
+    if (
+      itfOrderId != null &&
+      String(itfOrderId).trim() !== '' &&
+      !prev.includes(`ITF-${String(itfOrderId).trim()}`)
+    ) {
+      const merged = `${prev},${next}`;
+      return trimStoredVPostRefs(merged);
+    }
+    return prev;
+  }
+
+  return trimStoredVPostRefs(`${prev},${next}`);
+}
+
+function trimStoredVPostRefs(raw: string, maxLen = 255): string {
+  if (raw.length <= maxLen) return raw;
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+  while (parts.length > 1 && parts.join(',').length > maxLen) {
+    parts.shift();
+  }
+  return parts.join(',').slice(0, maxLen);
+}
+
 async function upsertPendingPaymentsForOrder(
   userId: number,
   method: 'card' | 'bank_transfer' | 'cash',
   tickets: Array<{
     id: number;
     price: number;
-    payment: { id: number } | null;
+    payment: { id: number; transactionId?: string | null } | null;
   }>
 ) {
   for (const ticket of tickets) {
@@ -164,7 +203,7 @@ async function upsertPendingPaymentsForOrder(
           amount: ticket.price,
           method,
           status: 'pending',
-          transactionId: null,
+          // transactionId չենք զրոյացնում — նախորդ փորձերի ref-երը պահում ենք
         },
       });
     } else {
@@ -398,6 +437,16 @@ export async function createVPostOrderForOrder(
       };
     }
 
+    // Նախ չեղարկենք լրացած hold-ները այս պատվերի ցուցադրությունների համար
+    const screeningRows = await prisma.ticket.findMany({
+      where: { orderId: data.orderId },
+      select: { screeningId: true },
+      distinct: ['screeningId'],
+    });
+    for (const row of screeningRows) {
+      await releaseExpiredReservations(row.screeningId);
+    }
+
     const order = await prisma.order.findUnique({
       where: { id: data.orderId },
       include: {
@@ -431,18 +480,40 @@ export async function createVPostOrderForOrder(
       };
     }
 
-    const unpaidTickets = order.tickets.filter((ticket) =>
-      isUnpaidHeldStatus(ticket.status)
-    );
-
-    if (unpaidTickets.length === 0) {
+    if (isOrderFullyPaid(order.tickets)) {
       return {
         success: false,
         error: 'Պատվերը արդեն վճարված է',
       };
     }
 
+    const unpaidTickets = order.tickets.filter((ticket) =>
+      isUnpaidHeldStatus(ticket.status)
+    );
+
+    if (unpaidTickets.length === 0) {
+      const allCancelled = order.tickets.every((t) => t.status === 'cancelled');
+      if (allCancelled || order.status === 'failed') {
+        return {
+          success: false,
+          error:
+            'Վճարման ժամանակը սպառվել է։ Պատվերը չեղարկված է։ Խնդրում ենք նորից ամրագրել տեղերը։',
+        };
+      }
+      return {
+        success: false,
+        error: 'Պատվերը վճարման ենթակա չէ',
+      };
+    }
+
     await upsertPendingPaymentsForOrder(data.userId, 'card', unpaidTickets);
+
+    // Hold երկարացում՝ VPost էջում գտնվելու ընթացքում տեղը չբացվի
+    const extendedHold = paymentGatewayHoldUntil();
+    await prisma.ticket.updateMany({
+      where: { id: { in: unpaidTickets.map((t) => t.id) } },
+      data: { holdUntil: extendedHold },
+    });
 
     const customerRegistration = await createVPostCustomer({
       customerID: String(order.user.id),
@@ -511,17 +582,30 @@ export async function createVPostOrderForOrder(
     });
 
     const itfOrderId = vpostResponse.data?.itfOrderId;
-    const storedTxId = formatStoredVPostTransactionId(itfOrderId, partnerOrderId);
-    await prisma.payment.updateMany({
+
+    // Կուտակել նախորդ փորձերի ref-երը + նորը
+    const payments = await prisma.payment.findMany({
       where: { ticketId: { in: unpaidTickets.map((t) => t.id) } },
-      data: { transactionId: storedTxId },
+      select: { id: true, transactionId: true },
     });
+    for (const payment of payments) {
+      const storedTxId = mergeStoredVPostTransactionId(
+        payment.transactionId,
+        itfOrderId,
+        partnerOrderId
+      );
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { transactionId: storedTxId },
+      });
+    }
 
     return {
       success: true,
       redirectURL: vpostResponse.data.redirectURL,
       partnerOrderId,
       itfOrderId: itfOrderId != null ? String(itfOrderId) : undefined,
+      holdUntil: extendedHold.toISOString(),
       message: 'Քարտային վճարման հղումը պատրաստ է',
     };
   } catch (error: any) {
@@ -609,10 +693,14 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
     }
 
     const refs = parseStoredVPostRefs(order.tickets);
+    const hasKnownRefs =
+      refs.itfOrderIds.length > 0 || refs.partnerOrderIds.length > 0;
     const resolved = await resolveVPostTransactionsForGoCinemaOrder({
       orderId: order.id,
       knownItfOrderIds: refs.itfOrderIds,
       knownPartnerOrderIds: refs.partnerOrderIds,
+      since: order.createdAt,
+      light: hasKnownRefs,
     });
 
     let txList = resolved.list;
@@ -673,6 +761,8 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
           orderId: order.id,
           knownItfOrderIds: refs.itfOrderIds,
           knownPartnerOrderIds: refs.partnerOrderIds,
+          since: order.createdAt,
+          light: true,
         });
         txResponse = {
           status: refreshed.envelopeStatus,
@@ -838,6 +928,53 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
         const seatLabels = conflicts
           .map((c) => `${c.row}${c.number}`)
           .join(', ');
+
+        // Ավտոմատ vPost cancel/refund՝ գումարը չմնա սառեցված/գանձված
+        const cancelOrderId =
+          getVPostActionOrderId(paidTx) ??
+          refs.partnerOrderIds[0] ??
+          order.id;
+        try {
+          const cancelResult = await cancelVPostPayment({
+            orderID: cancelOrderId,
+            amount: order.totalAmount,
+          });
+          paymentServerLog('vpost_auto_refund_on_conflict', {
+            orderId: order.id,
+            cancelOrderId,
+            status: cancelResult.status,
+            message: cancelResult.message,
+          });
+          if (cancelResult.status) {
+            const conflictTicketIds = order.tickets
+              .filter((t) =>
+                conflicts.some(
+                  (c) =>
+                    t.seat &&
+                    t.seat.row === c.row &&
+                    t.seat.number === c.number
+                )
+              )
+              .map((t) => t.id);
+            // Եթե բոլոր տեղերը conflict էին՝ բոլոր payment-ները refunded են արդեն finalize-ում
+            if (conflictTicketIds.length > 0) {
+              await prisma.payment.updateMany({
+                where: { ticketId: { in: conflictTicketIds } },
+                data: { status: 'refunded' },
+              });
+            }
+          }
+        } catch (refundErr) {
+          paymentServerLog('vpost_auto_refund_failed', {
+            orderId: order.id,
+            cancelOrderId,
+            error:
+              refundErr instanceof Error
+                ? refundErr.message
+                : String(refundErr),
+          });
+        }
+
         return {
           success: true,
           state: 'seat_taken' as const,
@@ -973,9 +1110,23 @@ export async function createTelcellInvoiceForOrder(
     );
 
     if (unpaidTickets.length === 0) {
+      if (isOrderFullyPaid(order.tickets)) {
+        return {
+          success: false,
+          error: 'Պատվերը արդեն վճարված է',
+        };
+      }
+      const allCancelled = order.tickets.every((t) => t.status === 'cancelled');
+      if (allCancelled || order.status === 'failed') {
+        return {
+          success: false,
+          error:
+            'Վճարման ժամանակը սպառվել է։ Պատվերը չեղարկված է։ Խնդրում ենք նորից ամրագրել տեղերը։',
+        };
+      }
       return {
         success: false,
-        error: 'Պատվերը արդեն վճարված է',
+        error: 'Պատվերը վճարման ենթակա չէ',
       };
     }
 
@@ -1217,7 +1368,7 @@ export async function getAllVPostTransactionsForAdmin(options?: {
           .map((tx) => {
             const raw =
               getVPostTransactionPartnerOrderId(tx) ?? getVPostActionOrderId(tx);
-            return extractGoCinemaOrderIdFromPartnerId(raw);
+            return resolveGoCinemaOrderIdForDisplay(raw);
           })
           .filter((id): id is number => id != null)
       )
@@ -1254,7 +1405,7 @@ export async function getAllVPostTransactionsForAdmin(options?: {
     const rows: AdminVPostTransactionRow[] = transactions.map((tx, index) => {
       const partnerOrderId = getVPostTransactionPartnerOrderId(tx);
       const actionOrderId = getVPostActionOrderId(tx);
-      const goCinemaOrderId = extractGoCinemaOrderIdFromPartnerId(
+      const goCinemaOrderId = resolveGoCinemaOrderIdForDisplay(
         partnerOrderId ?? actionOrderId
       );
       const local = goCinemaOrderId
@@ -1474,8 +1625,11 @@ export async function cancelVPostPaymentForOrder(params: {
       return { success: false, error: 'Գործարքի գումարը բացակայում է' };
     }
 
+    const refs = order ? parseStoredVPostRefs(order.tickets) : { partnerOrderIds: [] as number[], itfOrderIds: [] as number[] };
+    const cancelOrderId = refs.partnerOrderIds[0] ?? params.orderId;
+
     const cancelResult = await cancelVPostPayment({
-      orderID: params.orderId,
+      orderID: cancelOrderId,
       amount,
     });
 

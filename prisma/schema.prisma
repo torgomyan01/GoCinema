@@ -17,6 +17,7 @@ model User {
   name           String?   @db.VarChar(255)
   phone          String    @unique @db.VarChar(50)
   password       String    @db.VarChar(255)
+  birthDate      DateTime? @db.Date // ծննդյան ամսաթիվ
   role           String    @default("user") @db.VarChar(50) // user, admin, moderator, employee, producer (comma-separated roles supported in app code)
   emailVerified  Boolean   @default(false)
   phoneVerified  Boolean   @default(false)

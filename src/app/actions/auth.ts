@@ -4,19 +4,21 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { getServerSession } from 'next-auth';
+import { validateBirthDate } from '@/lib/birth-date';
 
 export async function registerUser(formData: {
   name: string;
   password: string;
   phone: string;
+  birthDate: string;
 }) {
   try {
-    const { name, password, phone } = formData;
+    const { name, password, phone, birthDate } = formData;
 
     // Validation
-    if (!name || !phone || !password) {
+    if (!name || !phone || !password || !birthDate) {
       return {
-        error: 'Անուն, հեռախոսահամար և password-ը պարտադիր են',
+        error: 'Անուն, հեռախոսահամար, ծննդյան ամսաթիվ և գաղտնաբառը պարտադիր են',
         success: false,
       };
     }
@@ -24,6 +26,14 @@ export async function registerUser(formData: {
     if (password.length < 6) {
       return {
         error: 'Password-ը պետք է լինի առնվազն 6 նիշ',
+        success: false,
+      };
+    }
+
+    const birth = validateBirthDate(birthDate);
+    if (!birth.ok) {
+      return {
+        error: birth.error,
         success: false,
       };
     }
@@ -59,6 +69,7 @@ export async function registerUser(formData: {
         name,
         phone: cleanPhone,
         password: hashedPassword,
+        birthDate: birth.date,
         email: null,
         role: 'user',
         phoneVerified: false,
@@ -69,6 +80,7 @@ export async function registerUser(formData: {
         name: true,
         email: true,
         phone: true,
+        birthDate: true,
         role: true,
         phoneVerified: true,
         emailVerified: true,
@@ -95,6 +107,66 @@ export async function registerUser(formData: {
       error: 'Սխալ է տեղի ունեցել',
       success: false,
     };
+  }
+}
+
+/** Մուտք գործած օգտատերը ծննդյան ամսաթիվ ունի՞։ */
+export async function getMyBirthDateStatus() {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user
+      ? Number((session.user as { id?: string | number }).id)
+      : null;
+
+    if (!userId || Number.isNaN(userId)) {
+      return { success: true, needsBirthDate: false };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { birthDate: true },
+    });
+
+    if (!user) {
+      return { success: true, needsBirthDate: false };
+    }
+
+    return {
+      success: true,
+      needsBirthDate: user.birthDate == null,
+    };
+  } catch (error) {
+    console.error('[getMyBirthDateStatus] Error:', error);
+    return { success: false, needsBirthDate: false, error: 'Սխալ է տեղի ունեցել' };
+  }
+}
+
+/** Առկա օգտատիրոջ ծննդյան ամսաթվի լրացում (մոդալից)։ */
+export async function updateMyBirthDate(birthDate: string) {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user
+      ? Number((session.user as { id?: string | number }).id)
+      : null;
+
+    if (!userId || Number.isNaN(userId)) {
+      return { success: false, error: 'Անհրաժեշտ է մուտք գործել' };
+    }
+
+    const birth = validateBirthDate(birthDate);
+    if (!birth.ok) {
+      return { success: false, error: birth.error };
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { birthDate: birth.date },
+    });
+
+    return { success: true, message: 'Ծննդյան ամսաթիվը պահպանվեց' };
+  } catch (error) {
+    console.error('[updateMyBirthDate] Error:', error);
+    return { success: false, error: 'Սխալ է տեղի ունեցել' };
   }
 }
 

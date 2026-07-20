@@ -81,18 +81,16 @@ function vpostServerLog(event: string, payload: Record<string, unknown>) {
 }
 
 /** API-ն երբեմն տալիս է camelCase կամ այլ nesting */
-function coerceOrder(raw: unknown): VPostTransactionListItem['order'] | undefined {
+function coerceOrder(
+  raw: unknown
+): VPostTransactionListItem['order'] | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const o = raw as Record<string, unknown>;
   const idNum = parseInt(String(o.id ?? ''), 10);
-  const partnerRaw =
-    o.partnerOrderId ??
-    o.partner_order_id ??
-    o.partnerorderid ??
-    o.orderId ??
-    o.orderID ??
-    o.OrderId;
-  const partnerNum = partnerRaw != null ? parseInt(String(partnerRaw), 10) : NaN;
+  const partnerRaw = o.partnerOrderId ?? o.partner_order_id ?? o.partnerorderid;
+  // Մի՛ վերցրու orderId/orderID որպես partner — դա հաճախ ITF id է և duplicate է տալիս confirm-ում
+  const partnerNum =
+    partnerRaw != null ? parseInt(String(partnerRaw), 10) : NaN;
   const amountRaw = o.amount ?? o.Amount;
   const feeRaw = o.fee ?? o.Fee;
   const totalRaw = o.totalAmount ?? o.TotalAmount;
@@ -191,9 +189,7 @@ function coerceTxItem(raw: unknown): VPostTransactionListItem | null {
     totalAmount:
       typeof r.totalAmount === 'number' ? r.totalAmount : order?.totalAmount,
     description:
-      typeof r.description === 'string'
-        ? r.description
-        : order?.description,
+      typeof r.description === 'string' ? r.description : order?.description,
     order,
     response,
   };
@@ -251,8 +247,14 @@ export function sortTransactionsNewestFirst(
 
 export function summarizeTransactionForLog(tx: VPostTransactionListItem) {
   const resp = tx.response;
-  const responseCode = readResponseField(resp, ['ResponseCode', 'responseCode']);
-  const paymentState = readResponseField(resp, ['PaymentState', 'paymentState']);
+  const responseCode = readResponseField(resp, [
+    'ResponseCode',
+    'responseCode',
+  ]);
+  const paymentState = readResponseField(resp, [
+    'PaymentState',
+    'paymentState',
+  ]);
   const orderStatus = readResponseField(resp, ['OrderStatus', 'orderStatus']);
   const cardRaw = String(
     readResponseField(resp, ['CardNumber', 'cardNumber']) ?? ''
@@ -289,7 +291,10 @@ function md5(value: string): string {
 function sanitizeEnvValue(value?: string) {
   if (!value) return value;
   const trimmed = value.trim();
-  return trimmed.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1').trim();
+  return trimmed
+    .replace(/^"(.*)"$/, '$1')
+    .replace(/^'(.*)'$/, '$1')
+    .trim();
 }
 
 function isVPostDebugEnabled() {
@@ -298,7 +303,8 @@ function isVPostDebugEnabled() {
 
 function maskValue(value?: string, visibleStart = 4, visibleEnd = 4) {
   if (!value) return '';
-  if (value.length <= visibleStart + visibleEnd) return '*'.repeat(value.length);
+  if (value.length <= visibleStart + visibleEnd)
+    return '*'.repeat(value.length);
   return `${value.slice(0, visibleStart)}***${value.slice(-visibleEnd)}`;
 }
 
@@ -362,17 +368,6 @@ async function vpostRequest<T>(
       payload: sanitizePayloadForLog({ ...payload }),
     });
   }
-  if (isVPostDebugEnabled()) {
-    console.info('[vPost] Request', {
-      endpoint,
-      mode: (process.env.PAYMENT_MODE || 'live').toLowerCase(),
-      baseUrl: config.baseUrl,
-      publicKeyPreview: maskValue(config.publicKey, 6, 6),
-      signaturePreview: maskValue(signature, 6, 6),
-      payload: sanitizePayloadForLog(payload),
-    });
-  }
-
   const response = await fetch(url, {
     method: 'POST',
     headers,
@@ -596,7 +591,11 @@ export function descriptionMentionsGoCinemaOrder(
   description: string,
   goCinemaOrderId: number
 ): boolean {
-  if (!description || !Number.isFinite(goCinemaOrderId) || goCinemaOrderId <= 0) {
+  if (
+    !description ||
+    !Number.isFinite(goCinemaOrderId) ||
+    goCinemaOrderId <= 0
+  ) {
     return false;
   }
   const id = String(goCinemaOrderId);
@@ -693,11 +692,7 @@ export async function resolveVPostTransactionsForGoCinemaOrder(options: {
     }
   };
 
-  const idsToQuery = new Set<number>([
-    orderId,
-    ...knownPartners,
-    ...knownItf,
-  ]);
+  const idsToQuery = new Set<number>([orderId, ...knownPartners, ...knownItf]);
 
   for (const id of idsToQuery) {
     const res = await getVPostTransactionsByOrder(id);
@@ -819,13 +814,12 @@ export function getVPostTransactionPartnerOrderId(
   const pid = tx.order?.partnerOrderId;
   if (pid != null && Number.isFinite(pid) && pid > 0) return pid;
 
-  const desc = tx.description || tx.order?.description || '';
-  const fromDesc =
-    desc.match(/(?:GoCinema\s+)?Order\s*#\s*(\d+)(?!\d)/i)?.[1] ??
-    desc.match(/(?:պատվեր)\s*#?\s*(\d+)(?!\d)/i)?.[1];
-  if (fromDesc) {
-    const n = parseInt(fromDesc, 10);
-    if (Number.isFinite(n) && n > 0) return n;
+  // Նոր կոդավորում՝ list-ի order.id-ն հաճախ հենց partner orderID-ն է
+  // (orderId * 1e6 + stamp)։ Մի՛ վերցրու description-ի «Order #N»-ը՝
+  // դա GoCinema id է և confirm-ին «No such order» է տալիս։
+  const oid = tx.order?.id;
+  if (oid != null && Number.isFinite(oid) && oid >= 1_000_000) {
+    return oid;
   }
 
   const resp = normalizeResponseObject(tx.response);
@@ -839,10 +833,29 @@ export function getVPostTransactionPartnerOrderId(
     const n = parseInt(String(alt), 10);
     if (Number.isFinite(n) && n > 0) return n;
   }
+
+  // Legacy՝ partner === goCinema order id === list order.id (< 1e6)
+  if (oid != null && Number.isFinite(oid) && oid > 0) {
+    return oid;
+  }
+
+  const desc = tx.description || tx.order?.description || '';
+  const fromDesc =
+    desc.match(/(?:GoCinema\s+)?Order\s*#\s*(\d+)(?!\d)/i)?.[1] ??
+    desc.match(/(?:պատվեր)\s*#?\s*(\d+)(?!\d)/i)?.[1];
+  if (fromDesc) {
+    const n = parseInt(fromDesc, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
   return undefined;
 }
 
-/** confirm/cancel API-ի orderID — partner, ապա ITF fallback */
+/** confirm/cancel API-ի orderID — partner (order/new), ապա ITF միայն եթե տարբեր է
+ *
+ * Ուշադրություն՝ նոր կոդավորմամբ list-ի `order.id`-ն հաճախ partner-ն է (≥1e6),
+ * ոչ ITF sequential id։ Confirm-ին ITF sequential id ուղարկելը հաճախ
+ * «OrderID is duplicate» է տալիս։
+ */
 export function getVPostActionOrderId(
   tx: VPostTransactionListItem
 ): number | undefined {
@@ -853,7 +866,65 @@ export function getVPostActionOrderId(
   return undefined;
 }
 
-export function getVPostTransactionStatus(tx: VPostTransactionListItem): string {
+/** Confirm/cancel-ի համար փորձելու orderID-ների հերթականություն։
+ * Կարևոր՝ միայն ՏՎՅԱԼ գործարքի ID-ներ (ոչ հին փորձերի կուտակված refs)։
+ * Նախ partner (order/new-ին ուղարկված)։ ITF sequential id՝ միայն եթե
+ * տարբերվում է partner-ից և < 1e6 (այլապես նույն partner-ն է)։
+ */
+export function getVPostConfirmOrderIdCandidates(options: {
+  itfOrderId?: number | null;
+  partnerOrderId?: number | null;
+  actionOrderId?: number | null;
+}): number[] {
+  const ids: number[] = [];
+  const push = (n: number | null | undefined) => {
+    if (n == null || !Number.isFinite(n) || n <= 0) return;
+    if (!ids.includes(n)) ids.push(n);
+  };
+  push(options.partnerOrderId);
+  push(options.actionOrderId);
+  // ITF sequential — միայն եթե իրականում տարբեր փոքր id է
+  const itf = options.itfOrderId;
+  if (
+    itf != null &&
+    Number.isFinite(itf) &&
+    itf > 0 &&
+    itf < 1_000_000 &&
+    itf !== options.partnerOrderId
+  ) {
+    push(itf);
+  }
+  return ids;
+}
+
+function isVPostNoSuchOrderResponse(result: {
+  status?: boolean;
+  message?: string;
+  data?: unknown;
+}): boolean {
+  const blob =
+    `${result.message || ''} ${JSON.stringify(result.data ?? {})}`.toLowerCase();
+  return (
+    blob.includes('no such order') ||
+    blob.includes('"responsecode":"06"') ||
+    blob.includes('"responsecode": "06"') ||
+    /responsecode"\s*:\s*"06"/.test(blob)
+  );
+}
+
+function isVPostDuplicateOrderResponse(result: {
+  status?: boolean;
+  message?: string;
+  data?: unknown;
+}): boolean {
+  const blob =
+    `${result.message || ''} ${JSON.stringify(result.data ?? {})}`.toLowerCase();
+  return blob.includes('duplicate') || blob.includes('արդեն գոյություն');
+}
+
+export function getVPostTransactionStatus(
+  tx: VPostTransactionListItem
+): string {
   const resp = normalizeResponseObject(tx.response);
   const paymentState = String(
     readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
@@ -889,6 +960,64 @@ export async function confirmVPostPayment(payload: {
     customerID: String(payload.customerID),
     amount: normalizedAmount,
   });
+}
+
+/**
+ * confirm-payment՝ նախ partner orderID (order/new), եթե «No such order»՝ ITF id։
+ * Հաջողություն՝ միայն envelope `status: true` (ResponseCode 00 ≠ գանձում)։
+ */
+export async function confirmVPostPaymentWithFallback(payload: {
+  orderIDs: number[];
+  customerID: string;
+  amount: number;
+}) {
+  const customerID = String(payload.customerID).trim();
+  const amount = Number(payload.amount);
+  const uniqueIds = Array.from(
+    new Set(payload.orderIDs.filter((id) => Number.isFinite(id) && id > 0))
+  );
+
+  if (uniqueIds.length === 0) {
+    return {
+      status: false as const,
+      message: 'orderID բացակայում է',
+      data: undefined,
+      usedOrderID: undefined as number | undefined,
+      duplicate: false,
+    };
+  }
+
+  let lastResult: Awaited<ReturnType<typeof confirmVPostPayment>> | undefined;
+  for (let i = 0; i < uniqueIds.length; i += 1) {
+    const orderID = uniqueIds[i];
+    const result = await confirmVPostPayment({
+      orderID,
+      customerID,
+      amount,
+    });
+    lastResult = result;
+
+    // Միայն envelope.status=true = confirm-payment հաջող
+    // ResponseCode "00" կարող է լինել պարզապես նախնական ավտորիզացիա
+    if (result.status === true) {
+      return { ...result, usedOrderID: orderID, duplicate: false };
+    }
+
+    if (isVPostDuplicateOrderResponse(result)) {
+      return { ...result, usedOrderID: orderID, duplicate: true };
+    }
+
+    const hasMore = i < uniqueIds.length - 1;
+    if (!hasMore || !isVPostNoSuchOrderResponse(result)) {
+      return { ...result, usedOrderID: orderID, duplicate: false };
+    }
+  }
+
+  return {
+    ...(lastResult ?? { status: false as const, message: 'confirm failed' }),
+    usedOrderID: uniqueIds[uniqueIds.length - 1],
+    duplicate: false,
+  };
 }
 
 /** Վճարման չեղարկում / վերադարձ — սառեցված կամ վճարված գումարը հետ փոխանցելու համար */
@@ -928,7 +1057,10 @@ export function buildVPostProviderInfoFromTransaction(
 ): VPostProviderInfo | null {
   if (!tx) return null;
   const resp = normalizeResponseObject(tx.response);
-  const responseCode = readResponseField(resp, ['ResponseCode', 'responseCode']);
+  const responseCode = readResponseField(resp, [
+    'ResponseCode',
+    'responseCode',
+  ]);
   const paymentState = String(
     readResponseField(resp, ['PaymentState', 'paymentState']) ?? ''
   );
@@ -939,18 +1071,25 @@ export function buildVPostProviderInfoFromTransaction(
     readResponseField(resp, ['CardNumber', 'cardNumber']) ?? ''
   );
   const description = String(
-    readResponseField(resp, ['Description', 'description', 'TrxnDescription']) ??
-      ''
+    readResponseField(resp, [
+      'Description',
+      'description',
+      'TrxnDescription',
+    ]) ?? ''
   );
 
   return {
     responseCode: responseCode != null ? String(responseCode) : undefined,
     itfOrderId:
-      tx.order?.id != null ? String(tx.order.id) : undefined,
-    partnerOrderId:
-      tx.order?.partnerOrderId != null
-        ? String(tx.order.partnerOrderId)
+      tx.order?.id != null && tx.order.id < 1_000_000
+        ? String(tx.order.id)
         : undefined,
+    partnerOrderId: (() => {
+      const p = getVPostTransactionPartnerOrderId(tx);
+      return p != null ? String(p) : undefined;
+    })(),
+    customerID:
+      tx.order?.customerId != null ? String(tx.order.customerId) : undefined,
     paymentState: paymentState || undefined,
     orderStatus: orderStatus || undefined,
     cardNumber: cardRaw ? maskCardNumber(cardRaw) : undefined,
@@ -1003,9 +1142,7 @@ export function mergeVPostProviderInfo(
     partnerOrderId: confirmData?.partnerOrderId ?? fromTx.partnerOrderId,
     customerID: confirmData?.customerID ?? fromTx.customerID,
     confirmResponse,
-    needsConfirmation: confirmData
-      ? false
-      : fromTx.needsConfirmation,
+    needsConfirmation: confirmData ? false : fromTx.needsConfirmation,
   };
 }
 
@@ -1060,7 +1197,9 @@ function normalizeResponseObject(
 }
 
 export function isApprovedResponseCode(code: unknown): boolean {
-  const rc = String(code ?? '').trim().toLowerCase();
+  const rc = String(code ?? '')
+    .trim()
+    .toLowerCase();
   return (
     rc === '00' ||
     rc === '0' ||
@@ -1145,21 +1284,15 @@ export function isVPostPaymentStarted(tx?: VPostTransactionListItem): boolean {
  * - երկու-փուլ՝ միայն deposited (կանչողը պետք է ֆիլտրի)
  * Կարևոր՝ `started` (0) և `unknown` ԵՐԲԵՔ չեն համարվում վճարված։
  */
-export function isVPostPaymentCaptured(
-  tx?: VPostTransactionListItem
-): boolean {
+export function isVPostPaymentCaptured(tx?: VPostTransactionListItem): boolean {
   const state = getVPostPaymentState(tx);
   return (
-    state === 'deposited' ||
-    state === 'approved' ||
-    state === 'autoauthorized'
+    state === 'deposited' || state === 'approved' || state === 'autoauthorized'
   );
 }
 
 /** Հետընթաց համատեղելիություն. authorized կամ ավելի բարձր (ՈՉ paid-ի որոշման համար)։ */
-export function isVPostPaymentApproved(
-  tx?: VPostTransactionListItem
-): boolean {
+export function isVPostPaymentApproved(tx?: VPostTransactionListItem): boolean {
   return isVPostPaymentCaptured(tx);
 }
 
@@ -1184,9 +1317,7 @@ export function getVPostTransactionAmount(
   for (const candidate of candidates) {
     if (candidate == null) continue;
     const value =
-      typeof candidate === 'number'
-        ? candidate
-        : parseFloat(String(candidate));
+      typeof candidate === 'number' ? candidate : parseFloat(String(candidate));
     if (Number.isFinite(value) && value > 0) return value;
   }
   return undefined;

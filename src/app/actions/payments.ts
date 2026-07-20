@@ -13,7 +13,7 @@ import {
   fetchVPostTransactionsForOrder,
   resolveVPostTransactionsForGoCinemaOrder,
   buildVPostAttemptOrderId,
-  confirmVPostPayment,
+  confirmVPostPaymentWithFallback,
   cancelVPostPayment,
   getNormalizedTransactionsFromVPostEnvelope,
   hasVPostConfig,
@@ -27,12 +27,12 @@ import {
   getVPostTransactionAmount,
   buildVPostProviderInfoFromTransaction,
   mergeVPostProviderInfo,
-  isApprovedResponseCode,
   summarizeTransactionForLog,
   fetchAllVPostTransactions,
   formatVPostDateParam,
   getVPostTransactionPartnerOrderId,
   getVPostActionOrderId,
+  getVPostConfirmOrderIdCandidates,
   getVPostTransactionStatus,
   resolveGoCinemaOrderIdForDisplay,
   type VPostProviderInfo,
@@ -732,23 +732,25 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       ? txList.find(isVPostPaymentNeedsConfirmation)
       : undefined;
     if (txNeedingConfirm) {
-      const confirmOrderId =
-        getVPostActionOrderId(txNeedingConfirm) ??
-        refs.partnerOrderIds[0] ??
-        order.id;
+      const confirmOrderIds = getVPostConfirmOrderIdCandidates({
+        itfOrderId: txNeedingConfirm.order?.id,
+        partnerOrderId: getVPostTransactionPartnerOrderId(txNeedingConfirm),
+      });
+
       paymentServerLog('vpost_confirm_attempt', {
         orderId: order.id,
-        confirmOrderId,
+        confirmOrderIds,
         customerId: order.userId,
         amount: order.totalAmount,
       });
-      const confirmResult = await confirmVPostPayment({
-        orderID: confirmOrderId,
+      const confirmResult = await confirmVPostPaymentWithFallback({
+        orderIDs: confirmOrderIds,
         customerID: String(order.userId),
         amount: order.totalAmount,
       });
       paymentServerLog('vpost_confirm_result', {
         orderId: order.id,
+        usedOrderID: confirmResult.usedOrderID,
         status: confirmResult.status,
         message: confirmResult.message,
         responseCode: confirmResult.data?.responseCode,
@@ -770,28 +772,8 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
           data: { list: refreshed.list },
         };
         txList = refreshed.list;
-      } else if (
-        confirmResult.data?.responseCode === '00' ||
-        isApprovedResponseCode(confirmResult.data?.responseCode)
-      ) {
-        // Պատասխանը հաջող է, բայց envelope.status=false — շարունակում ենք
-        txList = [
-          {
-            order: {
-              id: confirmResult.data?.itfOrderId
-                ? parseInt(String(confirmResult.data.itfOrderId), 10)
-                : order.id,
-              partnerOrderId: order.id,
-              status: 2,
-            },
-            response: {
-              ResponseCode: confirmResult.data?.responseCode,
-              PaymentState: 'payment_deposited',
-              OrderStatus: '2',
-            },
-          },
-        ];
       }
+      // ResponseCode 00 ≠ deposited — միայն list-ի payment_deposited է վավեր
     }
 
     if (!txResponse.status && txList.length === 0) {
@@ -1316,6 +1298,19 @@ export type AdminVPostTransactionRow = {
     screeningLabel?: string;
     hallName?: string;
     seats: string[];
+    /** Յուրաքանչյուր տոմսի ֆիլմ + ցուցադրություն */
+    screenings: Array<{
+      movieTitle: string;
+      startTime: string;
+      endTime?: string;
+      hallName?: string;
+      seat: string;
+      ended: boolean;
+    }>;
+    /** Բոլոր կապված ցուցադրություններն ավարտվա՞ծ են */
+    screeningEnded: boolean;
+    /** Վերջին ցուցադրության ավարտ (ISO) */
+    latestScreeningEndTime?: string;
   } | null;
 };
 
@@ -1390,6 +1385,7 @@ export async function getAllVPostTransactionsForAdmin(options?: {
                   screening: {
                     select: {
                       startTime: true,
+                      endTime: true,
                       hall: { select: { name: true } },
                       movie: { select: { title: true, isActive: true } },
                     },
@@ -1435,6 +1431,37 @@ export async function getAllVPostTransactionsForAdmin(options?: {
           )
         : [];
 
+      const nowMs = Date.now();
+      const screenings = local
+        ? local.tickets
+            .filter((t) => t.screening?.movie?.title && t.screening?.startTime)
+            .map((t) => {
+              const endRaw = t.screening!.endTime ?? t.screening!.startTime;
+              const endMs = new Date(endRaw).getTime();
+              return {
+                movieTitle: t.screening!.movie!.title,
+                startTime: new Date(t.screening!.startTime).toISOString(),
+                endTime: endRaw
+                  ? new Date(endRaw).toISOString()
+                  : undefined,
+                hallName: t.screening?.hall?.name,
+                seat: `${t.seat?.row ?? ''}${t.seat?.number ?? ''}`,
+                ended: Number.isFinite(endMs) && endMs <= nowMs,
+              };
+            })
+        : [];
+
+      const screeningEnded =
+        screenings.length > 0 && screenings.every((s) => s.ended);
+      const latestScreeningEndTime =
+        screenings.length > 0
+          ? screenings
+              .map((s) => s.endTime)
+              .filter((t): t is string => Boolean(t))
+              .sort()
+              .at(-1)
+          : undefined;
+
       const firstScreening = local?.tickets[0]?.screening;
       const screeningLabel = firstScreening?.startTime
         ? new Date(firstScreening.startTime).toLocaleString('hy-AM')
@@ -1444,7 +1471,10 @@ export async function getAllVPostTransactionsForAdmin(options?: {
         key: `${tx.order?.id ?? 'x'}-${partnerOrderId ?? 'p'}-${tx.createdAt ?? index}`,
         partnerOrderId,
         actionOrderId,
-        itfOrderId: tx.order?.id,
+        itfOrderId:
+          tx.order?.id != null && tx.order.id < 1_000_000
+            ? tx.order.id
+            : undefined,
         customerId: tx.order?.customerId,
         amount: Number(tx.amount ?? tx.order?.amount ?? 0),
         fee: tx.fee ?? tx.order?.fee,
@@ -1469,6 +1499,9 @@ export async function getAllVPostTransactionsForAdmin(options?: {
               seats: local.tickets.map(
                 (t) => `${t.seat?.row ?? ''}${t.seat?.number ?? ''}`
               ),
+              screenings,
+              screeningEnded,
+              latestScreeningEndTime,
             }
           : null,
       };
@@ -1493,11 +1526,31 @@ export async function getAllVPostTransactionsForAdmin(options?: {
   }
 }
 
-/** Ադմին — vPost confirm-payment (գանձել սառեցված գումարը) */
+/** Ադմին — vPost /order/confirm-payment (գանձել սառեցված գումարը)
+ *
+ * Պարտադիր պարամետրեր (ITF docs)՝
+ * - orderID — order/new-ին ուղարկված partner ID
+ * - customerID — նույն բաժանորդի համարը, ինչ order/new-ում
+ * - amount — գործարքի գումարը (ApprovedAmount)
+ *
+ * Հաջողություն = ՄԻԱՅՆ list-ում `payment_deposited`։
+ * `payment_approved` / ResponseCode 00 ≠ գանձում։
+ */
 export async function confirmVPostPaymentForOrder(params: {
-  orderId: number;
-  customerId?: number;
-  amount?: number;
+  /** vPost ITF sequential id (միայն եթե < 1e6 և տարբեր է partner-ից) */
+  itfOrderId?: number | null;
+  /** Partner orderID (order/new-ին ուղարկված) */
+  partnerOrderId?: number | null;
+  /** Fallback / legacy */
+  orderID?: number | null;
+  /** vPost customerID — նախընտրելի է list-ից վերցնել */
+  customerID: string;
+  /** Գործարքի գումարը — նախընտրելի է list-ից վերցնել */
+  amount: number;
+  /** Գործարքի ամսաթիվ՝ 30 օրվա ստուգման համար */
+  createdAt?: string | null;
+  /** Լոկալ GoCinema պատվերի id (ոչ vPost orderID) */
+  goCinemaOrderId?: number | null;
 }) {
   try {
     const session = await getServerSession(authOptions);
@@ -1513,76 +1566,263 @@ export async function confirmVPostPaymentForOrder(params: {
       };
     }
 
-    const order = await prisma.order.findUnique({
-      where: { id: params.orderId },
-      select: {
-        id: true,
-        userId: true,
-        totalAmount: true,
-        tickets: {
-          select: {
-            payment: { select: { transactionId: true } },
-          },
-        },
-      },
+    // ITF՝ confirm-payment գործում է ստեղծումից հետո 30 օր
+    if (params.createdAt) {
+      const createdMs = new Date(params.createdAt).getTime();
+      if (Number.isFinite(createdMs)) {
+        const ageDays = (Date.now() - createdMs) / (24 * 60 * 60 * 1000);
+        if (ageDays > 30) {
+          return {
+            success: false,
+            error:
+              'Վճարման հաստատումը հնարավոր է միայն գործարքի ստեղծումից հետո 30 օրվա ընթացքում',
+          };
+        }
+      }
+    }
+
+    const lookupIds = getVPostConfirmOrderIdCandidates({
+      itfOrderId: params.itfOrderId,
+      partnerOrderId: params.partnerOrderId,
+      actionOrderId: params.orderID,
     });
 
-    const customerID = order
-      ? String(order.userId)
-      : params.customerId != null
-        ? String(params.customerId)
-        : null;
-    const amount = order?.totalAmount ?? params.amount;
-
-    if (!customerID || amount == null || !Number.isFinite(amount)) {
+    if (lookupIds.length === 0) {
       return {
         success: false,
-        error: 'Բացակայում են customerID կամ amount',
+        error: 'orderID պարտադիր է (ITF կամ partner գործարքի համարը)',
       };
     }
 
-    const confirmResult = await confirmVPostPayment({
-      orderID: params.orderId,
+    // Live TX — customerID / amount / partner orderID-ի աղբյուր
+    let liveTx: Awaited<
+      ReturnType<typeof fetchVPostTransactionsForOrder>
+    >['list'][number] | null = null;
+    let liveLookupId = lookupIds[0];
+    for (const id of lookupIds) {
+      const { list } = await fetchVPostTransactionsForOrder(id);
+      const match =
+        list.find(isVPostPaymentNeedsConfirmation) ||
+        list.find(isVPostPaymentDeposited) ||
+        list[0];
+      if (match) {
+        liveTx = match;
+        liveLookupId = id;
+        break;
+      }
+    }
+
+    if (liveTx && isVPostPaymentDeposited(liveTx)) {
+      return {
+        success: true,
+        message: 'Գումարն արդեն գանձված է',
+        provider: buildVPostProviderInfoFromTransaction(liveTx),
+        usedOrderID: liveLookupId,
+        alreadyCaptured: true,
+      };
+    }
+
+    const partnerFromTx = liveTx
+      ? getVPostTransactionPartnerOrderId(liveTx)
+      : null;
+    const itfFromTx =
+      liveTx?.order?.id != null &&
+      liveTx.order.id < 1_000_000 &&
+      liveTx.order.id !== partnerFromTx
+        ? liveTx.order.id
+        : null;
+
+    const orderIDs = getVPostConfirmOrderIdCandidates({
+      partnerOrderId: partnerFromTx ?? params.partnerOrderId,
+      itfOrderId: itfFromTx ?? params.itfOrderId,
+      actionOrderId: params.orderID,
+    });
+
+    // customerID՝ նախ list-ից (ինչ order/new-ում էր), ապա client
+    const customerFromTx =
+      liveTx?.order?.customerId != null
+        ? String(liveTx.order.customerId).trim()
+        : '';
+    const customerID =
+      customerFromTx || String(params.customerID ?? '').trim();
+
+    // amount՝ ApprovedAmount / list amount
+    const amountFromTx = liveTx ? getVPostTransactionAmount(liveTx) : undefined;
+    const amount =
+      amountFromTx != null && amountFromTx > 0
+        ? amountFromTx
+        : Number(params.amount);
+
+    if (orderIDs.length === 0) {
+      return {
+        success: false,
+        error: 'orderID պարտադիր է (ITF կամ partner գործարքի համարը)',
+      };
+    }
+    if (!customerID) {
+      return {
+        success: false,
+        error: 'customerID պարտադիր է',
+      };
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return {
+        success: false,
+        error: 'amount պարտադիր է (դրական թիվ)',
+      };
+    }
+
+    paymentServerLog('vpost_admin_confirm_attempt', {
+      orderIDs,
+      customerID,
+      customerFromTx: customerFromTx || null,
+      amount,
+      amountFromTx: amountFromTx ?? null,
+      goCinemaOrderId: params.goCinemaOrderId ?? null,
+      liveLookupId,
+    });
+
+    const confirmResult = await confirmVPostPaymentWithFallback({
+      orderIDs,
       customerID,
       amount,
     });
 
-    if (
-      !confirmResult.status &&
-      !isApprovedResponseCode(confirmResult.data?.responseCode)
-    ) {
+    paymentServerLog('vpost_admin_confirm_result', {
+      usedOrderID: confirmResult.usedOrderID,
+      status: confirmResult.status,
+      message: confirmResult.message,
+      responseCode: confirmResult.data?.responseCode,
+      duplicate: confirmResult.duplicate,
+      data: confirmResult.data ?? null,
+    });
+
+    const usedOrderID = confirmResult.usedOrderID ?? orderIDs[0];
+    const idsToCheck = Array.from(
+      new Set(
+        [usedOrderID, ...orderIDs, liveLookupId].filter(
+          (id): id is number => id != null && Number.isFinite(id) && id > 0
+        )
+      )
+    );
+
+    const findDeposited = async () => {
+      for (const checkId of idsToCheck) {
+        const { list } = await fetchVPostTransactionsForOrder(checkId);
+        const deposited = list.find(isVPostPaymentDeposited);
+        if (deposited) {
+          return { deposited, checkId, list };
+        }
+      }
+      return null;
+    };
+
+    // Կարճ poll — ITF-ը երբեմն ուշ է թարմացնում list-ը
+    let depositedHit = await findDeposited();
+    if (!depositedHit && confirmResult.status === true) {
+      await new Promise((r) => setTimeout(r, 1200));
+      depositedHit = await findDeposited();
+    }
+
+    if (depositedHit) {
+      const txInfo = buildVPostProviderInfoFromTransaction(depositedHit.deposited);
+      const provider = mergeVPostProviderInfo(txInfo, confirmResult.data);
       return {
-        success: false,
-        error:
-          confirmResult.message ||
-          'vPost confirm-payment — անհաջող պատասխան',
-        provider: confirmResult.data ?? null,
+        success: true,
+        message:
+          confirmResult.status === true
+            ? 'Գումարը հաջողությամբ գանձվել է'
+            : 'Գումարն արդեն գանձված է',
+        provider,
+        confirmResponse: confirmResult.data,
+        usedOrderID: depositedHit.checkId,
+        alreadyCaptured: confirmResult.status !== true,
       };
     }
 
-    const itfOrderId = order
-      ? parseStoredItfOrderId(order.tickets)
-      : confirmResult.data?.itfOrderId
-        ? parseInt(String(confirmResult.data.itfOrderId), 10)
-        : undefined;
-    const { list } = await fetchVPostTransactionsForOrder(
-      params.orderId,
-      itfOrderId
-    );
-    const txInfo = buildVPostProviderInfoFromTransaction(list[0]);
-    const provider = mergeVPostProviderInfo(txInfo, confirmResult.data);
+    // Դեռ deposited չէ — վերցրու ընթացիկ վիճակը UI-ի համար
+    let currentTx = liveTx
+      ? buildVPostProviderInfoFromTransaction(liveTx)
+      : null;
+    for (const checkId of idsToCheck) {
+      const { list } = await fetchVPostTransactionsForOrder(checkId);
+      if (list[0]) {
+        currentTx = buildVPostProviderInfoFromTransaction(list[0]);
+        break;
+      }
+    }
 
-    return {
-      success: true,
-      message: 'Գումարը հաջողությամբ գանձվել է',
-      provider,
-      confirmResponse: confirmResult.data,
-    };
-  } catch (error: any) {
-    console.error('[Confirm VPost Payment] Error:', error);
+    if (
+      currentTx?.needsConfirmation ||
+      currentTx?.paymentState === 'payment_approved'
+    ) {
+      const providerMsg =
+        (confirmResult.data as { error?: string } | undefined)?.error ||
+        confirmResult.message ||
+        'Confirm-payment-ը չի գանձել գումարը';
+      const serviceDenied =
+        /չեք կարող օգտվել այս ծառայությունից/i.test(providerMsg) ||
+        String(
+          (confirmResult.data as { responseCode?: string } | undefined)
+            ?.responseCode ?? ''
+        ) === '550';
+
+      return {
+        success: false,
+        error: serviceDenied
+          ? 'ITF-ը մերժել է գանձումը՝ այս մերչանտ հաշվին confirm-payment (Confirmation) ծառայությունը միացված չէ (կոդ 550 / ծառայություն:2)։ Կապվեք ITF LLC-ի հետ՝ երկփուլ վճարման հաստատումը միացնելու համար։ Գումարը դեռ սառեցված է (payment_approved)։'
+          : `${providerMsg}. Կարգավիճակը դեռ «սառեցված» է (payment_approved) — գանձում չի եղել։`,
+        provider: currentTx,
+        triedOrderIDs: orderIDs,
+        usedOrderID,
+        resolvedCustomerID: customerID,
+        resolvedAmount: amount,
+        itfServiceDenied: serviceDenied,
+      };
+    }
+
+    if (confirmResult.duplicate) {
+      return {
+        success: false,
+        error:
+          'OrderID is duplicate, և գործարքը դեռ գանձված չէ (deposited չկա)։',
+        provider: currentTx ?? confirmResult.data ?? null,
+        triedOrderIDs: orderIDs,
+        usedOrderID,
+        resolvedCustomerID: customerID,
+        resolvedAmount: amount,
+      };
+    }
+
+    const providerMsg =
+      (confirmResult.data as { response?: { ResponseMessage?: string } } | undefined)
+        ?.response?.ResponseMessage ||
+      (confirmResult.data as { error?: string } | undefined)?.error ||
+      confirmResult.message;
     return {
       success: false,
-      error: 'Վճարման գանձումը ձախողվեց',
+      error:
+        providerMsg ||
+        'vPost confirm-payment — անհաջող պատասխան' +
+          (confirmResult.data?.responseCode
+            ? ` (code: ${confirmResult.data.responseCode})`
+            : ''),
+      provider: currentTx ?? confirmResult.data ?? null,
+      triedOrderIDs: orderIDs,
+      usedOrderID,
+      resolvedCustomerID: customerID,
+      resolvedAmount: amount,
+    };
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Վճարման գանձումը ձախողվեց';
+    return {
+      success: false,
+      error: message || 'Վճարման գանձումը ձախողվեց',
     };
   }
 }
@@ -1626,19 +1866,41 @@ export async function cancelVPostPaymentForOrder(params: {
     }
 
     const refs = order ? parseStoredVPostRefs(order.tickets) : { partnerOrderIds: [] as number[], itfOrderIds: [] as number[] };
-    const cancelOrderId = refs.partnerOrderIds[0] ?? params.orderId;
+    const cancelOrderIds = getVPostConfirmOrderIdCandidates({
+      itfOrderId: refs.itfOrderIds[0],
+      partnerOrderId: refs.partnerOrderIds[0],
+      actionOrderId: params.orderId,
+    });
+    const cancelOrderId = cancelOrderIds[0] ?? params.orderId;
 
     const cancelResult = await cancelVPostPayment({
       orderID: cancelOrderId,
       amount,
     });
 
-    if (!cancelResult.status) {
+    // Եթե No such order և կա այլ ID՝ փորձիր երկրորդը
+    let finalCancel = cancelResult;
+    let usedCancelId = cancelOrderId;
+    if (
+      !cancelResult.status &&
+      cancelOrderIds.length > 1 &&
+      /no such order/i.test(
+        `${cancelResult.message || ''} ${JSON.stringify(cancelResult.data ?? {})}`
+      )
+    ) {
+      usedCancelId = cancelOrderIds[1];
+      finalCancel = await cancelVPostPayment({
+        orderID: usedCancelId,
+        amount,
+      });
+    }
+
+    if (!finalCancel.status) {
       return {
         success: false,
         error:
-          cancelResult.message || 'vPost cancel — անհաջող պատասխան',
-        cancelResponse: cancelResult.data ?? null,
+          finalCancel.message || 'vPost cancel — անհաջող պատասխան',
+        cancelResponse: finalCancel.data ?? null,
       };
     }
 
@@ -1654,11 +1916,11 @@ export async function cancelVPostPaymentForOrder(params: {
 
     const itfOrderId = order
       ? parseStoredItfOrderId(order.tickets)
-      : cancelResult.data?.itfOrderId
-        ? parseInt(String(cancelResult.data.itfOrderId), 10)
+      : finalCancel.data?.itfOrderId
+        ? parseInt(String(finalCancel.data.itfOrderId), 10)
         : undefined;
     const { list } = await fetchVPostTransactionsForOrder(
-      params.orderId,
+      usedCancelId,
       itfOrderId
     );
     const txInfo = buildVPostProviderInfoFromTransaction(list[0]);

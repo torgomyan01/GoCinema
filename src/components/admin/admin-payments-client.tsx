@@ -18,6 +18,9 @@ import {
   RotateCcw,
   Banknote,
   CheckCircle2,
+  Info,
+  X,
+  Clapperboard,
 } from 'lucide-react';
 import AdminLayout from './admin-layout';
 import {
@@ -36,6 +39,8 @@ type VPostStatusFilter =
   | 'payment_started'
   | 'payment_declined'
   | 'payment_refunded';
+/** Ցուցադրության ավարտի ֆիլտր՝ գանձման համար */
+type ScreeningFilter = 'all' | 'ended' | 'ready_to_capture';
 type DateRange = 90 | 365 | 'all';
 
 interface AdminPaymentsClientProps {
@@ -76,10 +81,15 @@ export default function AdminPaymentsClient({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<VPostStatusFilter>('all');
+  const [screeningFilter, setScreeningFilter] =
+    useState<ScreeningFilter>('all');
   const [dateRange, setDateRange] = useState<DateRange>(365);
   const [searchQuery, setSearchQuery] = useState('');
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [detailRow, setDetailRow] = useState<AdminVPostTransactionRow | null>(
+    null
+  );
 
   const loadVPost = useCallback(async () => {
     const result = await getAllVPostTransactionsForAdmin({ days: dateRange });
@@ -126,20 +136,49 @@ export default function AdminPaymentsClient({
   }, [load]);
 
   const handleCaptureVPost = async (row: AdminVPostTransactionRow) => {
-    const orderId = row.actionOrderId ?? row.partnerOrderId ?? row.itfOrderId;
-    if (!orderId) {
-      setError('Order ID բացակայում է (partner/ITF)');
+    // Միայն այս գործարքի ID-ներ՝ partner (order/new) + ITF
+    const itfOrderId =
+      row.itfOrderId != null && Number.isFinite(row.itfOrderId)
+        ? row.itfOrderId
+        : null;
+    const partnerOrderId =
+      row.partnerOrderId != null && Number.isFinite(row.partnerOrderId)
+        ? row.partnerOrderId
+        : null;
+    const customerID = getConfirmCustomerId(row);
+    const amount = Number(row.amount);
+
+    if (itfOrderId == null && partnerOrderId == null) {
+      setError('orderID բացակայում է (ITF կամ partner գործարքի համարը)');
       return;
     }
-    const key = `${orderId}-capture`;
+    if (!customerID) {
+      setError('customerID բացակայում է (բաժանորդի համարը)');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('amount բացակայում է (գործարքի գումարը)');
+      return;
+    }
+    if (!isWithinConfirmWindow(row.createdAt)) {
+      setError(
+        'Հաստատումը հնարավոր է միայն գործարքի ստեղծումից հետո 30 օրվա ընթացքում'
+      );
+      return;
+    }
+
+    const key = `${partnerOrderId ?? itfOrderId}-capture`;
     setActionKey(key);
     setError(null);
     setSuccessMessage(null);
     try {
       const result = await confirmVPostPaymentForOrder({
-        orderId,
-        customerId: row.customerId,
-        amount: row.amount,
+        itfOrderId,
+        partnerOrderId,
+        customerID,
+        amount,
+        createdAt: row.createdAt,
+        goCinemaOrderId: row.localOrder?.id,
       });
 
       console.log(result);
@@ -148,19 +187,38 @@ export default function AdminPaymentsClient({
         setError(result.error || 'Գանձումը ձախողվեց');
         return;
       }
+
+      // approved ≠ գանձված
+      const provider = result.provider as
+        | { paymentState?: string; needsConfirmation?: boolean }
+        | null
+        | undefined;
+      const state = provider?.paymentState;
+      if (
+        state === 'payment_approved' ||
+        state === 'payment_autoauthorized' ||
+        provider?.needsConfirmation
+      ) {
+        setError(
+          'Գանձումը չի հաստատվել։ Կարգավիճակը դեռ սառեցված է (payment_approved)։'
+        );
+        await loadVPost();
+        return;
+      }
+
       setSuccessMessage(result.message || 'Գումարը գանձվել է');
       await loadVPost();
-    } catch {
-      setError('Գանձումը ձախողվեց');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Գանձումը ձախողվեց');
     } finally {
       setActionKey(null);
     }
   };
 
   const handleRefundVPost = async (row: AdminVPostTransactionRow) => {
-    const orderId = row.actionOrderId ?? row.partnerOrderId ?? row.itfOrderId;
+    const orderId = row.itfOrderId ?? row.partnerOrderId ?? row.actionOrderId;
     if (!orderId) {
-      setError('Order ID բացակայում է (partner/ITF)');
+      setError('Order ID բացակայում է (ITF/partner)');
       return;
     }
     const ok = window.confirm(
@@ -193,6 +251,41 @@ export default function AdminPaymentsClient({
 
   const isFrozenTransaction = (state: string) =>
     state === 'payment_approved' || state === 'payment_autoauthorized';
+
+  const isReadyToCapture = (row: AdminVPostTransactionRow) =>
+    Boolean(row.localOrder?.screeningEnded) &&
+    isFrozenTransaction(row.paymentState);
+
+  /** vPost confirm-payment՝ ստեղծումից հետո ≤ 30 օր */
+  const isWithinConfirmWindow = (createdAt?: string | null) => {
+    if (!createdAt) return true;
+    const createdMs = new Date(createdAt).getTime();
+    if (!Number.isFinite(createdMs)) return true;
+    return (Date.now() - createdMs) / (24 * 60 * 60 * 1000) <= 30;
+  };
+
+  const getConfirmOrderId = (row: AdminVPostTransactionRow) =>
+    row.partnerOrderId ?? row.itfOrderId ?? row.actionOrderId;
+
+  const getConfirmCustomerId = (row: AdminVPostTransactionRow) =>
+    String(
+      row.vpost?.customerID ?? row.customerId ?? row.localOrder?.user?.id ?? ''
+    ).trim();
+
+  const canConfirmPayment = (row: AdminVPostTransactionRow) => {
+    const orderID = getConfirmOrderId(row);
+    const customerID = getConfirmCustomerId(row);
+    const amount = Number(row.amount);
+    return (
+      orderID != null &&
+      Number.isFinite(orderID) &&
+      orderID > 0 &&
+      Boolean(customerID) &&
+      Number.isFinite(amount) &&
+      amount > 0 &&
+      isWithinConfirmWindow(row.createdAt)
+    );
+  };
 
   const formatDateTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
@@ -265,8 +358,24 @@ export default function AdminPaymentsClient({
   const filteredVPost = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return vpostRows.filter((row) => {
-      if (statusFilter !== 'all' && row.paymentState !== statusFilter)
+      if (statusFilter !== 'all' && row.paymentState !== statusFilter) {
         return false;
+      }
+
+      if (screeningFilter === 'ended') {
+        if (!row.localOrder?.screeningEnded) return false;
+      } else if (screeningFilter === 'ready_to_capture') {
+        if (
+          !(
+            row.localOrder?.screeningEnded &&
+            (row.paymentState === 'payment_approved' ||
+              row.paymentState === 'payment_autoauthorized')
+          )
+        ) {
+          return false;
+        }
+      }
+
       if (!q) return true;
       const haystack = [
         row.partnerOrderId,
@@ -284,9 +393,7 @@ export default function AdminPaymentsClient({
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [vpostRows, statusFilter, searchQuery]);
-
-  console.log(filteredVPost);
+  }, [vpostRows, statusFilter, screeningFilter, searchQuery]);
 
   const vpostStats = useMemo(() => {
     const acc = {
@@ -297,9 +404,20 @@ export default function AdminPaymentsClient({
       declined: 0,
       notInDb: 0,
       revenue: 0,
+      endedScreenings: 0,
+      readyToCapture: 0,
+      readyToCaptureAmount: 0,
     };
     for (const row of vpostRows) {
       if (!row.inDatabase) acc.notInDb += 1;
+      if (row.localOrder?.screeningEnded) acc.endedScreenings += 1;
+      const frozen =
+        row.paymentState === 'payment_approved' ||
+        row.paymentState === 'payment_autoauthorized';
+      if (row.localOrder?.screeningEnded && frozen) {
+        acc.readyToCapture += 1;
+        acc.readyToCaptureAmount += row.amount;
+      }
       if (row.paymentState === 'payment_deposited') {
         acc.deposited += 1;
         acc.revenue += row.amount;
@@ -328,6 +446,24 @@ export default function AdminPaymentsClient({
     { value: 'payment_started', label: 'Սկսված' },
     { value: 'payment_declined', label: 'Մերժված' },
     { value: 'payment_refunded', label: 'Վերադարձ' },
+  ];
+
+  const screeningTabs: {
+    value: ScreeningFilter;
+    label: string;
+    count?: number;
+  }[] = [
+    { value: 'all', label: 'Բոլոր ցուցադրություններ' },
+    {
+      value: 'ended',
+      label: 'Ավարտված',
+      count: vpostStats.endedScreenings,
+    },
+    {
+      value: 'ready_to_capture',
+      label: 'Գանձման ենթակա',
+      count: vpostStats.readyToCapture,
+    },
   ];
 
   const dateTabs: { value: DateRange; label: string }[] = [
@@ -396,7 +532,7 @@ export default function AdminPaymentsClient({
 
           {viewMode === 'vpost' && (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
                 <div className="px-4 py-3 rounded-xl bg-white shadow-sm border border-gray-100">
                   <p className="text-gray-500 text-sm">vPost ընդամենը</p>
                   <p className="text-xl font-bold text-gray-900">
@@ -409,6 +545,26 @@ export default function AdminPaymentsClient({
                       </p>
                     )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setScreeningFilter('ready_to_capture')}
+                  className={`px-4 py-3 rounded-xl shadow-sm border text-left transition-colors ${
+                    screeningFilter === 'ready_to_capture'
+                      ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
+                      : 'bg-white border-gray-100 hover:border-amber-200'
+                  }`}
+                >
+                  <p className="text-gray-500 text-sm">Գանձման ենթակա</p>
+                  <p className="text-xl font-bold text-amber-700">
+                    {vpostStats.readyToCapture}
+                  </p>
+                  {vpostStats.readyToCaptureAmount > 0 && (
+                    <p className="text-[11px] text-amber-600">
+                      {vpostStats.readyToCaptureAmount.toLocaleString('hy-AM')}{' '}
+                      ֏
+                    </p>
+                  )}
+                </button>
                 <div className="px-4 py-3 rounded-xl bg-white shadow-sm border border-gray-100">
                   <p className="text-gray-500 text-sm">Գանձված</p>
                   <p className="text-xl font-bold text-green-600">
@@ -433,7 +589,7 @@ export default function AdminPaymentsClient({
                     {vpostStats.notInDb}
                   </p>
                 </div>
-                <div className="px-4 py-3 rounded-xl bg-white shadow-sm border border-gray-100 col-span-2 md:col-span-1">
+                <div className="px-4 py-3 rounded-xl bg-white shadow-sm border border-gray-100">
                   <p className="text-gray-500 text-sm">Շրջանառություն</p>
                   <p className="text-xl font-bold text-emerald-600">
                     {vpostStats.revenue.toLocaleString('hy-AM')} ֏
@@ -468,6 +624,48 @@ export default function AdminPaymentsClient({
                     </button>
                   ))}
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {screeningTabs.map((tab) => (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      onClick={() => setScreeningFilter(tab.value)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+                        screeningFilter === tab.value
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-violet-50'
+                      }`}
+                    >
+                      {tab.value !== 'all' && (
+                        <Clapperboard className="w-3.5 h-3.5" />
+                      )}
+                      {tab.label}
+                      {tab.count != null && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                            screeningFilter === tab.value
+                              ? 'bg-white/20 text-white'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {screeningFilter === 'ready_to_capture' && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    Ցուցադրվում են ավարտված ցուցադրությունների սառեցված
+                    վճարումները — սեղմեք «Գանձել գումարը» յուրաքանչյուրի վրա։
+                  </p>
+                )}
+                {screeningFilter === 'ended' && (
+                  <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                    Ավարտված ցուցադրությունների բոլոր վճարումները։ Գանձման համար
+                    ընտրեք «Գանձման ենթակա» կամ կարգավիճակ՝ «Սառեցված»։
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {vpostStatusTabs.map((tab) => (
                     <button
@@ -511,21 +709,24 @@ export default function AdminPaymentsClient({
             filteredVPost.length === 0 ? (
               <div className="py-20 text-center text-gray-500">
                 <Cloud className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-                vPost գործարքներ չեն գտնվել
+                {screeningFilter === 'ready_to_capture'
+                  ? 'Գանձման ենթակա վճարումներ չկան'
+                  : screeningFilter === 'ended'
+                    ? 'Ավարտված ցուցադրությունների վճարումներ չեն գտնվել'
+                    : 'vPost գործարքներ չեն գտնվել'}
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredVPost.map((row) => {
                   const badge = getVPostBadge(row.paymentState);
-                  const vpost = row.vpost;
-                  const orderId =
-                    row.actionOrderId ?? row.partnerOrderId ?? row.itfOrderId;
+                  const orderId = getConfirmOrderId(row);
                   const captureKey = orderId ? `${orderId}-capture` : row.key;
                   const refundKey = orderId
                     ? `${orderId}-refund`
                     : `${row.key}-r`;
                   const isCapturing = actionKey === captureKey;
                   const isRefunding = actionKey === refundKey;
+                  const canConfirm = canConfirmPayment(row);
                   const movies = row.localOrder?.movieTitles?.length
                     ? row.localOrder.movieTitles.join(', ')
                     : row.description || '—';
@@ -541,16 +742,27 @@ export default function AdminPaymentsClient({
                             <span className="font-semibold text-gray-900 truncate">
                               {movies}
                             </span>
+                            {row.localOrder?.screeningEnded && (
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-100 text-violet-800">
+                                ցուցադրությունն ավարտված է
+                              </span>
+                            )}
+                            {isReadyToCapture(row) && (
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
+                                գանձման ենթակա
+                              </span>
+                            )}
                             {!row.inDatabase && (
                               <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-700">
                                 բազայում չկա
                               </span>
                             )}
-                            {row.inDatabase && (
-                              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-700">
-                                կապված է
-                              </span>
-                            )}
+                            {row.inDatabase &&
+                              !row.localOrder?.screeningEnded && (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-700">
+                                  կապված է
+                                </span>
+                              )}
                           </div>
                           <div className="mt-1 flex items-center gap-3 flex-wrap text-sm text-gray-500">
                             {row.localOrder?.screeningLabel && (
@@ -626,91 +838,56 @@ export default function AdminPaymentsClient({
                         </div>
                       </div>
 
-                      {isFrozenTransaction(row.paymentState) && orderId && (
-                        <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-100">
-                          <button
-                            type="button"
-                            onClick={() => handleRefundVPost(row)}
-                            disabled={isRefunding || isCapturing}
-                            title="vPost /order/cancel — ազատել սառեցված գումարը"
-                            className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-red-300 bg-red-50 text-red-800 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isRefunding ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <RotateCcw className="w-4 h-4" />
-                            )}
-                            Վերադարձնել գումարը
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCaptureVPost(row)}
-                            disabled={isCapturing || isRefunding}
-                            title="vPost /order/confirm-payment — գանձել սառեցված գումարը"
-                            className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-emerald-400 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isCapturing ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Banknote className="w-4 h-4" />
-                            )}
-                            Գանձել գումարը
-                          </button>
-                        </div>
-                      )}
-
-                      {vpost && (
-                        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs">
-                          <p className="font-semibold text-slate-700 flex items-center gap-1.5 mb-2">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                            vPost պատասխան
-                          </p>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1.5 text-slate-600">
-                            <p>
-                              <span className="text-slate-400">
-                                ResponseCode:
-                              </span>{' '}
-                              <span className="font-mono font-medium">
-                                {row.responseCode || vpost.responseCode || '—'}
-                              </span>
-                            </p>
-                            <p>
-                              <span className="text-slate-400">ITF Order:</span>{' '}
-                              <span className="font-mono">
-                                {row.itfOrderId ?? vpost.itfOrderId ?? '—'}
-                              </span>
-                            </p>
-                            <p>
-                              <span className="text-slate-400">
-                                Partner Order:
-                              </span>{' '}
-                              <span className="font-mono">
-                                {row.partnerOrderId ?? '—'}
-                              </span>
-                            </p>
-                            <p>
-                              <span className="text-slate-400">
-                                Customer ID:
-                              </span>{' '}
-                              <span className="font-mono">
-                                {row.customerId ?? vpost.customerID ?? '—'}
-                              </span>
-                            </p>
-                            <p>
-                              <span className="text-slate-400">
-                                PaymentState:
-                              </span>{' '}
-                              {getVPostStateLabel(row.paymentState)}
-                            </p>
-                            <p>
-                              <span className="text-slate-400">
-                                OrderStatus:
-                              </span>{' '}
-                              {vpost.orderStatus || '—'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
+                      <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-100">
+                        {isFrozenTransaction(row.paymentState) && orderId && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleRefundVPost(row)}
+                              disabled={isRefunding || isCapturing}
+                              title="vPost /order/cancel — ազատել սառեցված գումարը"
+                              className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-red-300 bg-red-50 text-red-800 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {isRefunding ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="w-4 h-4" />
+                              )}
+                              Վերադարձնել գումարը
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCaptureVPost(row)}
+                              disabled={
+                                isCapturing || isRefunding || !canConfirm
+                              }
+                              title={
+                                !isWithinConfirmWindow(row.createdAt)
+                                  ? 'Հաստատումը հնարավոր է միայն 30 օրվա ընթացքում'
+                                  : !getConfirmCustomerId(row)
+                                    ? 'customerID բացակայում է'
+                                    : 'vPost /order/confirm-payment — orderID, customerID, amount'
+                              }
+                              className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border-2 border-emerald-400 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {isCapturing ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Banknote className="w-4 h-4" />
+                              )}
+                              Գանձել գումարը
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setDetailRow(row)}
+                          className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        >
+                          <Info className="w-4 h-4" />
+                          Մանրամասներ
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -738,6 +915,232 @@ export default function AdminPaymentsClient({
           )}
         </div>
       </div>
+
+      {detailRow && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="payment-detail-title"
+          onClick={() => setDetailRow(null)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 flex items-center justify-between gap-3 border-b border-gray-100 bg-white px-5 py-4 rounded-t-2xl">
+              <h2
+                id="payment-detail-title"
+                className="text-lg font-bold text-gray-900"
+              >
+                Վճարման մանրամասներ
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDetailRow(null)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Փակել"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 px-5 py-4 text-sm">
+              {/* Ֆիլմ և ցուցադրություն */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Ֆիլմ և ցուցադրություն
+                </p>
+                {detailRow.localOrder?.screenings?.length ? (
+                  <div className="space-y-2">
+                    {detailRow.localOrder.screenings.map((s, i) => (
+                      <div
+                        key={`${s.movieTitle}-${s.startTime}-${s.seat}-${i}`}
+                        className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3"
+                      >
+                        <p className="flex items-center gap-2 font-semibold text-gray-900">
+                          <Film className="h-4 w-4 text-emerald-600 shrink-0" />
+                          {s.movieTitle}
+                        </p>
+                        <p className="mt-1.5 flex items-center gap-2 text-gray-600">
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
+                          Սկիզբ՝ {formatDateTime(s.startTime)}
+                        </p>
+                        {s.endTime && (
+                          <p className="mt-1 flex items-center gap-2 text-gray-600">
+                            <Clock className="h-3.5 w-3.5 shrink-0" />
+                            Ավարտ՝ {formatDateTime(s.endTime)}
+                            {s.ended && (
+                              <span className="text-[11px] font-medium text-violet-700">
+                                (ավարտված)
+                              </span>
+                            )}
+                          </p>
+                        )}
+                        <div className="mt-1 flex flex-wrap gap-3 text-gray-500">
+                          {s.hallName && <span>{s.hallName}</span>}
+                          {s.seat && (
+                            <span className="inline-flex items-center gap-1">
+                              <Armchair className="h-3.5 w-3.5" />
+                              {s.seat}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : detailRow.localOrder?.movieTitles?.length ? (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                    <p className="flex items-center gap-2 font-semibold text-gray-900">
+                      <Film className="h-4 w-4 text-emerald-600" />
+                      {detailRow.localOrder.movieTitles.join(', ')}
+                    </p>
+                    {detailRow.localOrder.screeningLabel && (
+                      <p className="mt-1.5 flex items-center gap-2 text-gray-600">
+                        <Clock className="h-3.5 w-3.5" />
+                        {detailRow.localOrder.screeningLabel}
+                      </p>
+                    )}
+                    {detailRow.localOrder.hallName && (
+                      <p className="mt-1 text-gray-500">
+                        {detailRow.localOrder.hallName}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-orange-800">
+                    Ֆիլմի/ցուցադրության տվյալները բազայում չեն գտնվել
+                    {detailRow.description ? ` — ${detailRow.description}` : ''}
+                  </p>
+                )}
+              </section>
+
+              {/* Հաճախորդ */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Հաճախորդ
+                </p>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-1">
+                  <p className="font-medium text-gray-900">
+                    {detailRow.localOrder?.user?.name ||
+                      detailRow.clientName ||
+                      `Customer #${detailRow.customerId ?? '—'}`}
+                  </p>
+                  {detailRow.localOrder?.user?.phone && (
+                    <p className="text-gray-500">
+                      {detailRow.localOrder.user.phone}
+                    </p>
+                  )}
+                  {detailRow.localOrder?.id != null && (
+                    <p className="text-xs text-gray-400">
+                      GoCinema պատվեր #{detailRow.localOrder.id} (
+                      {detailRow.localOrder.status})
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              {/* Գումար */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Գումար և կարգավիճակ
+                </p>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 grid grid-cols-2 gap-2">
+                  <p>
+                    <span className="text-gray-400">Գումար։</span>{' '}
+                    <span className="font-bold text-gray-900">
+                      {detailRow.amount.toLocaleString('hy-AM')} ֏
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-gray-400">Կարգավիճակ։</span>{' '}
+                    {getVPostStateLabel(detailRow.paymentState)}
+                  </p>
+                  {detailRow.fee != null && detailRow.fee > 0 && (
+                    <p>
+                      <span className="text-gray-400">Միջնորդավճար։</span>{' '}
+                      {detailRow.fee.toLocaleString('hy-AM')} ֏
+                    </p>
+                  )}
+                  {detailRow.totalAmount != null && (
+                    <p>
+                      <span className="text-gray-400">Ընդամենը։</span>{' '}
+                      {detailRow.totalAmount.toLocaleString('hy-AM')} ֏
+                    </p>
+                  )}
+                  <p className="col-span-2">
+                    <span className="text-gray-400">Ամսաթիվ։</span>{' '}
+                    {detailRow.humandate ||
+                      (detailRow.createdAt
+                        ? formatDateTime(detailRow.createdAt)
+                        : '—')}
+                  </p>
+                </div>
+              </section>
+
+              {/* vPost */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  vPost տվյալներ
+                </p>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 grid grid-cols-2 gap-x-3 gap-y-2 text-slate-700">
+                  <p>
+                    <span className="text-slate-400">ResponseCode։</span>{' '}
+                    <span className="font-mono font-medium">
+                      {detailRow.responseCode ||
+                        detailRow.vpost?.responseCode ||
+                        '—'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-slate-400">ITF Order։</span>{' '}
+                    <span className="font-mono">
+                      {detailRow.itfOrderId ??
+                        detailRow.vpost?.itfOrderId ??
+                        '—'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-slate-400">Partner Order։</span>{' '}
+                    <span className="font-mono">
+                      {detailRow.partnerOrderId ?? '—'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-slate-400">Customer ID։</span>{' '}
+                    <span className="font-mono">
+                      {detailRow.customerId ??
+                        detailRow.vpost?.customerID ??
+                        '—'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-slate-400">PaymentState։</span>{' '}
+                    {getVPostStateLabel(detailRow.paymentState)}
+                  </p>
+                  <p>
+                    <span className="text-slate-400">OrderStatus։</span>{' '}
+                    {detailRow.vpost?.orderStatus || '—'}
+                  </p>
+                  {detailRow.cardNumber && (
+                    <p className="col-span-2">
+                      <span className="text-slate-400">Քարտ։</span>{' '}
+                      {detailRow.cardNumber}
+                    </p>
+                  )}
+                  {detailRow.description && (
+                    <p className="col-span-2">
+                      <span className="text-slate-400">Նկարագրություն։</span>{' '}
+                      {detailRow.description}
+                    </p>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }

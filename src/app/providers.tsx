@@ -4,6 +4,7 @@ import { Provider } from 'react-redux';
 import { SessionProvider } from 'next-auth/react';
 import { store } from '@/store/store';
 import SupportWidget from '@/components/support/support-widget';
+import BirthDatePromptModal from '@/components/account/birth-date-prompt-modal';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <Provider store={store}>
         {children}
         <SupportWidget />
+        <BirthDatePromptModal />
       </Provider>
     </SessionProvider>
   );

@@ -14,6 +14,7 @@ import {
   FileText,
   MessageSquare,
   RefreshCw,
+  Calendar,
 } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
@@ -22,6 +23,10 @@ import {
   sendRegistrationOtp,
   verifyRegistrationOtp,
 } from '@/app/actions/phone-verification';
+import {
+  birthDateInputMax,
+  birthDateInputMin,
+} from '@/lib/birth-date';
 
 type Step = 'form' | 'otp' | 'success';
 
@@ -33,6 +38,7 @@ export default function RegisterPageClient() {
   // ── Form state ─────────────────────────────────────────────────────────────
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -136,7 +142,7 @@ export default function RegisterPageClient() {
     e.preventDefault();
     setError('');
 
-    if (!name || !phone || !password) {
+    if (!name || !phone || !password || !birthDate) {
       setError('Բոլոր պարտադիր դաշտերը պետք է լրացված լինեն');
       return;
     }
@@ -161,7 +167,12 @@ export default function RegisterPageClient() {
 
     setIsLoading(true);
     try {
-      const result = await registerUser({ name, phone: cleanPhone, password });
+      const result = await registerUser({
+        name,
+        phone: cleanPhone,
+        password,
+        birthDate,
+      });
       if (!result.success || !result.user) {
         setError(result.error || 'Գրանցումը ձախողվեց');
         return;
@@ -269,6 +280,25 @@ export default function RegisterPageClient() {
                         maxLength={11}
                         className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                         placeholder="0XX XXX XXX"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Birth date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ծննդյան ամսաթիվ <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                      <input
+                        type="date"
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                        required
+                        min={birthDateInputMin()}
+                        max={birthDateInputMax()}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
                   </div>
@@ -392,6 +422,7 @@ export default function RegisterPageClient() {
                       isLoading ||
                       !phone ||
                       !name ||
+                      !birthDate ||
                       !password ||
                       password !== confirmPassword ||
                       !agreeToTerms
@@ -400,6 +431,7 @@ export default function RegisterPageClient() {
                       isLoading ||
                       !phone ||
                       !name ||
+                      !birthDate ||
                       !password ||
                       password !== confirmPassword ||
                       !agreeToTerms

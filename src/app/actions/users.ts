@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import bcrypt from 'bcryptjs';
 import { parseRoles, serializeRoles } from '@/lib/roles';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export interface UpdateUserData {
   id: number;
@@ -408,6 +410,43 @@ export async function getNoShowReport() {
       success: false,
       error: 'No-show հաշվետվությունը բեռնելիս սխալ է տեղի ունեցել',
       users: [],
+    };
+  }
+}
+
+/** Մուտք գործած օգտատերը արգելափակված է անվճար ամրագրումից՞ */
+export async function getMyReservationBlockStatus() {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user
+      ? Number((session.user as { id?: string | number }).id)
+      : null;
+
+    if (!userId || Number.isNaN(userId)) {
+      return { success: true, isBlocked: false, blockedAt: null as string | null };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isBlocked: true, blockedAt: true },
+    });
+
+    if (!user || !user.isBlocked) {
+      return { success: true, isBlocked: false, blockedAt: null as string | null };
+    }
+
+    return {
+      success: true,
+      isBlocked: true,
+      blockedAt: user.blockedAt ? user.blockedAt.toISOString() : null,
+    };
+  } catch (error) {
+    console.error('[getMyReservationBlockStatus] Error:', error);
+    return {
+      success: false,
+      isBlocked: false,
+      blockedAt: null as string | null,
+      error: 'Սխալ է տեղի ունեցել',
     };
   }
 }

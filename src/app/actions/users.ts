@@ -249,6 +249,21 @@ export async function deleteUser(id: number) {
 /** Արգելափակում/ապաարգելափակում է օգտատիրոջը անվճար ամրագրումից։ */
 export async function setUserBlocked(id: number, blocked: boolean) {
   try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        isBlocked: true,
+      },
+    });
+
+    if (!user) {
+      return { success: false, error: 'Օգտատերը չի գտնվել' };
+    }
+
     await prisma.user.update({
       where: { id },
       data: {
@@ -257,7 +272,13 @@ export async function setUserBlocked(id: number, blocked: boolean) {
       },
     });
 
+    // Արգելափակելիս՝ հաղորդագրություն օգտատիրոջ աջակցության չատին
+    if (blocked && !user.isBlocked) {
+      await notifyUserReservationBlocked(user);
+    }
+
     revalidatePath('/admin/users');
+    revalidatePath('/admin/support');
 
     return { success: true };
   } catch (error: any) {
@@ -266,6 +287,73 @@ export async function setUserBlocked(id: number, blocked: boolean) {
       success: false,
       error: 'Օգտատիրոջ կարգավիճակը փոխելիս սխալ է տեղի ունեցել',
     };
+  }
+}
+
+const RESERVATION_BLOCK_MESSAGE = [
+  'Ձեր հաշիվը արգելափակվել է «Ամրագրել, վճարել մուտքի մոտ» հնարավորությունից։',
+  '',
+  'Պատճառը՝ դուք ամրագրել եք տոմսեր, որոնք պետք է վճարեիք դրամարկղում, սակայն չեք եկել։ Այդ իսկ պատճառով այլևս չեք կարող օգտվել այս հնարավորությունից։',
+  '',
+  'Դուք դեռ կարող եք գնել տոմսեր օնլայն վճարմամբ։ Եթե կարծում եք, որ սա սխալ է, պատասխանեք այս հաղորդագրությանը։',
+].join('\n');
+
+async function notifyUserReservationBlocked(user: {
+  id: number;
+  name: string | null;
+  phone: string;
+  email: string | null;
+}) {
+  try {
+    const subject = 'Ամրագրման հնարավորության արգելափակում';
+    let request = await prisma.supportRequest.findFirst({
+      where: {
+        userId: user.id,
+        status: { notIn: ['archived'] },
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (!request) {
+      request = await prisma.supportRequest.create({
+        data: {
+          name: user.name || user.phone || 'Օգտատեր',
+          phone: user.phone,
+          email: user.email,
+          subject,
+          message: RESERVATION_BLOCK_MESSAGE,
+          userId: user.id,
+          status: 'in_progress',
+          adminNote: RESERVATION_BLOCK_MESSAGE,
+        },
+        select: { id: true },
+      });
+    } else {
+      await prisma.supportRequest.update({
+        where: { id: request.id },
+        data: {
+          status: 'in_progress',
+          subject,
+          message: RESERVATION_BLOCK_MESSAGE,
+          adminNote: RESERVATION_BLOCK_MESSAGE,
+        },
+      });
+    }
+
+    await prisma.supportMessage.create({
+      data: {
+        requestId: request.id,
+        senderType: 'staff',
+        senderName: 'GoCinema',
+        message: RESERVATION_BLOCK_MESSAGE,
+      },
+    });
+
+    revalidatePath(`/admin/support/${request.id}`);
+  } catch (error) {
+    // Արգելափակումը չպետք է ձախողվի հաղորդագրության սխալի պատճառով
+    console.error('[Notify User Reservation Blocked] Error:', error);
   }
 }
 

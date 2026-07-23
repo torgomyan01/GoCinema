@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar,
@@ -12,13 +12,22 @@ import {
   ShoppingCart,
   Plus,
   Minus,
-  Search,
   ChevronUp,
   ChevronDown,
   AlertCircle,
+  ArrowLeft,
+  Popcorn,
+  CupSoda,
 } from 'lucide-react';
+import {
+  isQuantityOnlyProduct,
+  parseQuantityProductName,
+  quantityFlavorDisplayName,
+  quantitySizeLabel,
+  type QuantityProductSize,
+} from '@/lib/product-units';
 
-/** Cinema seat icon – back + seat cushion */
+/** Մեկ տեղի բազկաթոռ */
 function SeatIcon({
   className,
   filled = true,
@@ -37,10 +46,43 @@ function SeatIcon({
       className={className}
       aria-hidden
     >
-      {/* seat cushion */}
       <rect x="2" y="12" width="24" height="8" rx="1.5" />
-      {/* seat back */}
       <path d="M5 12V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6" />
+    </svg>
+  );
+}
+
+/** 2 տեղանոց բազկաթոռի պատկերակ (legend / զույգ միավոր) */
+function LoveseatIcon({
+  className,
+  filled = true,
+}: {
+  className?: string;
+  filled?: boolean;
+}) {
+  return (
+    <svg
+      viewBox="0 0 52 26"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth={1.15}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      {/* shared back */}
+      <path d="M5 13V7a3 3 0 0 1 3-3h36a3 3 0 0 1 3 3v6" />
+      {/* left arm */}
+      <path d="M3 13h4v10H4.5A1.5 1.5 0 0 1 3 21.5V13Z" />
+      {/* left cushion */}
+      <rect x="8" y="13" width="15" height="10" rx="1.5" />
+      {/* center armrest */}
+      <rect x="24" y="11" width="4" height="12" rx="1" />
+      {/* right cushion */}
+      <rect x="29" y="13" width="15" height="10" rx="1.5" />
+      {/* right arm */}
+      <path d="M49 13h-4v10h2.5A1.5 1.5 0 0 0 49 21.5V13Z" />
     </svg>
   );
 }
@@ -64,6 +106,27 @@ interface Seat {
   row: string;
   number: number;
   seatType: string;
+}
+
+/** Տողի աթոռները զույգերով (1-2, 3-4, …) — ցուցադրումը մեծ → փոքր */
+function pairSeatsForDisplay(seats: Seat[]): Seat[][] {
+  const ascending = [...seats].sort((a, b) => a.number - b.number);
+  const pairs: Seat[][] = [];
+  for (let i = 0; i < ascending.length; i += 2) {
+    pairs.push(ascending.slice(i, i + 2));
+  }
+  return pairs.reverse();
+}
+
+function seatToneClass(opts: {
+  isMyPending: boolean;
+  isOccupied: boolean;
+  isSelected: boolean;
+}) {
+  if (opts.isMyPending) return 'text-amber-500';
+  if (opts.isOccupied) return 'text-red-300 opacity-70';
+  if (opts.isSelected) return 'text-purple-600';
+  return 'text-gray-300 hover:text-gray-500';
 }
 
 interface Screening {
@@ -118,8 +181,12 @@ export default function BookingPageClient({
     Map<number, number>
   >(new Map());
   const [summaryExpanded, setSummaryExpanded] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  /** null = կատեգորիաներ, category = համեր, flavor = չափ */
+  const [pickerCategory, setPickerCategory] = useState<
+    'popcorn' | 'iced_tea' | null
+  >(null);
+  const [pickerFlavorKey, setPickerFlavorKey] = useState<string | null>(null);
+  const [reserveWarningOpen, setReserveWarningOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -169,8 +236,7 @@ export default function BookingPageClient({
     return new Set(
       screening.tickets
         .filter(
-          (t) =>
-            t.status === 'awaiting_payment' && t.userId === currentUserId
+          (t) => t.status === 'awaiting_payment' && t.userId === currentUserId
         )
         .map((t) => t.seat.id)
     );
@@ -211,6 +277,8 @@ export default function BookingPageClient({
       // Open product selection modal for this seat
       setCurrentSeatId(seatId);
       setCurrentSeatProducts(seatProducts.get(seatId) || new Map());
+      setPickerCategory(null);
+      setPickerFlavorKey(null);
       setProductModalOpen(true);
     }
   };
@@ -237,16 +305,16 @@ export default function BookingPageClient({
     setProductModalOpen(false);
     setCurrentSeatId(null);
     setCurrentSeatProducts(new Map());
-    setSearchQuery('');
-    setSelectedCategory(null);
+    setPickerCategory(null);
+    setPickerFlavorKey(null);
   };
 
   const handleCancelSeatProducts = () => {
     setProductModalOpen(false);
     setCurrentSeatId(null);
     setCurrentSeatProducts(new Map());
-    setSearchQuery('');
-    setSelectedCategory(null);
+    setPickerCategory(null);
+    setPickerFlavorKey(null);
   };
 
   const handleProductQuantityChange = (productId: number, delta: number) => {
@@ -263,77 +331,124 @@ export default function BookingPageClient({
     });
   };
 
-  const getCategoryLabel = (category: string) => {
-    const categoryLabels: Record<string, string> = {
-      snack: 'Նախուտեստ',
-      drink: 'Խմիչք',
-      combo: 'Կոմբո',
-      popcorn: 'Պոպկորն',
-      iced_tea: 'Սառը թեյ',
-      soda: 'Գազավորված խմիչք',
-      candy: 'Քաղցրավենիք',
-      hot_dog: 'Հոթ-դոգ',
-      nachos: 'Նաչոս',
-      coffee: 'Սրճարանային խմիչք',
-      tea: 'Թեյ',
-      juice: 'Հյութ',
-      water: 'Ջուր',
-      chips: 'Չիպս',
-      chocolate: 'Շոկոլադ',
-      ice_cream: 'Պաղպաղակ',
-      sandwich: 'Սենդվիչ',
-      pizza: 'Պիցցա',
-      burger: 'Բուրգեր',
-      salad: 'Աղցան',
-      other: 'Այլ',
-    };
-    return categoryLabels[category] || category;
+  type BookingProduct = {
+    id: number;
+    name: string;
+    price: number;
+    category: string;
+    image?: string | null;
+    description?: string | null;
+    stock?: number;
   };
 
-  // Filter products — սառը թեյ → պոպկորն → մնացածը
-  const filteredProducts = useMemo(() => {
-    let filtered = products;
+  type FlavorGroup = {
+    flavorKey: string;
+    displayName: string;
+    small: BookingProduct | null;
+    large: BookingProduct | null;
+  };
 
-    if (selectedCategory) {
-      filtered = filtered.filter((p) => p.category === selectedCategory);
-    }
+  const quantityProducts = useMemo(
+    () =>
+      (products as BookingProduct[]).filter((p) =>
+        isQuantityOnlyProduct(p.category)
+      ),
+    [products]
+  );
 
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.description?.toLowerCase().includes(query)
+  const popcornByCategory = useMemo(() => {
+    const popcorn = quantityProducts.filter((p) => p.category === 'popcorn');
+    const icedTea = quantityProducts.filter((p) => p.category === 'iced_tea');
+    return { popcorn, icedTea };
+  }, [quantityProducts]);
+
+  const otherProducts = useMemo(
+    () =>
+      (products as BookingProduct[])
+        .filter((p) => !isQuantityOnlyProduct(p.category))
+        .sort((a, b) => a.name.localeCompare(b.name, 'hy')),
+    [products]
+  );
+
+  const flavorGroupsFor = useCallback(
+    (category: 'popcorn' | 'iced_tea'): FlavorGroup[] => {
+      const list =
+        category === 'popcorn'
+          ? popcornByCategory.popcorn
+          : popcornByCategory.icedTea;
+      const map = new Map<string, FlavorGroup>();
+      for (const product of list) {
+        const { flavorKey, size } = parseQuantityProductName(product.name);
+        const key = flavorKey || product.name;
+        let group = map.get(key);
+        if (!group) {
+          group = {
+            flavorKey: key,
+            displayName: quantityFlavorDisplayName(key, category),
+            small: null,
+            large: null,
+          };
+          map.set(key, group);
+        }
+        if (size === 'small') group.small = product;
+        else if (size === 'large') group.large = product;
+        else group.large = group.large ?? product;
+      }
+      return Array.from(map.values()).sort((a, b) =>
+        a.displayName.localeCompare(b.displayName, 'hy')
       );
-    }
+    },
+    [popcornByCategory]
+  );
 
-    const categoryPriority = (category: string) => {
-      if (category === 'iced_tea') return 0;
-      if (category === 'popcorn') return 1;
-      return 2;
-    };
+  const activeFlavorGroups = useMemo(
+    () => (pickerCategory ? flavorGroupsFor(pickerCategory) : []),
+    [pickerCategory, flavorGroupsFor]
+  );
 
-    return [...filtered].sort((a, b) => {
-      const byCategory =
-        categoryPriority(a.category) - categoryPriority(b.category);
-      if (byCategory !== 0) return byCategory;
-      return a.name.localeCompare(b.name, 'hy');
-    });
-  }, [products, selectedCategory, searchQuery]);
+  const activeFlavorGroup = useMemo(
+    () =>
+      activeFlavorGroups.find((g) => g.flavorKey === pickerFlavorKey) ?? null,
+    [activeFlavorGroups, pickerFlavorKey]
+  );
 
-  const availableCategories = useMemo(() => {
-    const categoryPriority = (category: string) => {
-      if (category === 'iced_tea') return 0;
-      if (category === 'popcorn') return 1;
-      return 2;
-    };
-    const categories = Array.from(new Set(products.map((p) => p.category)));
-    return categories.sort((a, b) => {
-      const byPriority = categoryPriority(a) - categoryPriority(b);
-      if (byPriority !== 0) return byPriority;
-      return a.localeCompare(b);
-    });
-  }, [products]);
+  const flavorCartQty = useCallback(
+    (group: FlavorGroup) => {
+      let sum = 0;
+      if (group.small) sum += currentSeatProducts.get(group.small.id) || 0;
+      if (group.large) sum += currentSeatProducts.get(group.large.id) || 0;
+      return sum;
+    },
+    [currentSeatProducts]
+  );
+
+  const categoryCartQty = useCallback(
+    (category: 'popcorn' | 'iced_tea') => {
+      const list =
+        category === 'popcorn'
+          ? popcornByCategory.popcorn
+          : popcornByCategory.icedTea;
+      return list.reduce(
+        (sum, p) => sum + (currentSeatProducts.get(p.id) || 0),
+        0
+      );
+    },
+    [popcornByCategory, currentSeatProducts]
+  );
+
+  const categoryCoverImage = useCallback(
+    (category: 'popcorn' | 'iced_tea') => {
+      const list =
+        category === 'popcorn'
+          ? popcornByCategory.popcorn
+          : popcornByCategory.icedTea;
+      return list.find((p) => p.image)?.image ?? null;
+    },
+    [popcornByCategory]
+  );
+
+  const flavorCoverImage = (group: FlavorGroup) =>
+    group.large?.image || group.small?.image || null;
 
   const getSeatInfo = (seatId: number) => {
     if (!screening) return null;
@@ -419,6 +534,16 @@ export default function BookingPageClient({
   };
 
   // Ամրագրել՝ վճարել մուտքի մոտ (հետվճարային)
+  const openReserveWarning = () => {
+    if (!session?.user || !screening || selectedSeats.length === 0) {
+      if (!session?.user) {
+        router.push('/account');
+      }
+      return;
+    }
+    setReserveWarningOpen(true);
+  };
+
   const handleReserveAtCounter = async () => {
     if (!session?.user || !screening || selectedSeats.length === 0) {
       if (!session?.user) {
@@ -427,6 +552,7 @@ export default function BookingPageClient({
       return;
     }
 
+    setReserveWarningOpen(false);
     setIsReserving(true);
     setError(null);
 
@@ -599,66 +725,114 @@ export default function BookingPageClient({
               {screening.hall.seats && screening.hall.seats.length > 0 ? (
                 <div className="px-2 pb-4 overflow-x-auto">
                   <div className="inline-block min-w-full">
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {Array.from(seatsByRow.entries()).map(([row, seats]) => (
-                        <div key={row} className="flex items-center gap-1">
-                          {/* Row label */}
+                        <div key={row} className="flex items-center gap-1.5">
                           <div className="w-6 shrink-0 text-center text-xs font-semibold text-gray-400">
                             {row}
                           </div>
-                          {/* Seats */}
-                          <div className="flex gap-1 justify-center flex-1">
-                            {seats.map((seat) => {
-                              const isSelected = selectedSeats.includes(
-                                seat.id
-                              );
-                              const isOccupied = occupiedSeatIds.has(seat.id);
-                              const isMyPending = myPendingSeatIds.has(
-                                seat.id
-                              );
-                              return (
-                                <button
-                                  key={seat.id}
-                                  onClick={() =>
-                                    handleSeatClick(seat.id, isOccupied)
-                                  }
-                                  disabled={isOccupied}
-                                  title={
-                                    isMyPending
-                                      ? `${row}${seat.number} — ձեր աթոռը, սպասում է վճարման`
-                                      : `${row}${seat.number}`
-                                  }
-                                  className={`
-                                    flex flex-col items-center justify-end gap-0.5
-                                    w-9 h-10 sm:w-10 sm:h-11 rounded-t-sm rounded-b-md
-                                    transition-all duration-150 touch-manipulation select-none
-                                    ${
-                                      isMyPending
-                                        ? 'text-amber-500 cursor-not-allowed'
-                                        : isOccupied
-                                          ? 'text-red-300 cursor-not-allowed opacity-70'
-                                          : isSelected
-                                            ? 'text-purple-600 scale-110 drop-shadow-md'
-                                            : 'text-gray-300 active:scale-95 hover:text-gray-500'
+                          <div className="flex gap-4 justify-center flex-1">
+                            {pairSeatsForDisplay(seats).map((pair) => {
+                              const [a, b] = pair;
+                              // Ցուցադրման կարգ՝ ձախ = մեծ համար (ինչպես նախկինում)
+                              const left = b
+                                ? a.number >= b.number
+                                  ? a
+                                  : b
+                                : a;
+                              const right = b
+                                ? a.number >= b.number
+                                  ? b
+                                  : a
+                                : null;
+
+                              const renderSeatBtn = (
+                                seat: Seat,
+                                side: 'left' | 'right' | 'solo'
+                              ) => {
+                                const isSelected = selectedSeats.includes(
+                                  seat.id
+                                );
+                                const isOccupied = occupiedSeatIds.has(seat.id);
+                                const isMyPending = myPendingSeatIds.has(
+                                  seat.id
+                                );
+                                const tone = seatToneClass({
+                                  isMyPending,
+                                  isOccupied,
+                                  isSelected,
+                                });
+                                return (
+                                  <button
+                                    key={seat.id}
+                                    type="button"
+                                    onClick={() =>
+                                      handleSeatClick(seat.id, isOccupied)
                                     }
-                                  `}
-                                >
-                                  <SeatIcon
-                                    className="w-6 h-6 sm:w-7 sm:h-7 shrink-0"
-                                    filled={isOccupied || isSelected}
-                                  />
-                                  <span
-                                    className={`text-[9px] font-medium leading-none ${
+                                    disabled={isOccupied || isMyPending}
+                                    title={
                                       isMyPending
-                                        ? 'text-amber-600'
-                                        : isSelected
-                                          ? 'text-purple-600'
-                                          : 'text-gray-400'
-                                    }`}
+                                        ? `${row}${seat.number} — ձեր աթոռը, սպասում է վճարման`
+                                        : `${row}${seat.number}`
+                                    }
+                                    className={`
+                                      flex flex-col items-center justify-end gap-0.5
+                                      flex-1 min-w-0 py-0.5 px-0.5
+                                      transition-all duration-150 touch-manipulation select-none
+                                      ${tone}
+                                      ${isSelected ? 'scale-105 drop-shadow-sm' : ''}
+                                      ${isOccupied || isMyPending ? 'cursor-not-allowed' : 'active:scale-95'}
+                                      ${side === 'left' ? 'rounded-l-md' : ''}
+                                      ${side === 'right' ? 'rounded-r-md' : ''}
+                                      ${side === 'solo' ? 'rounded-md' : ''}
+                                    `}
                                   >
-                                    {seat.number}
-                                  </span>
-                                </button>
+                                    <SeatIcon
+                                      className="w-6 h-6 sm:w-7 sm:h-7 shrink-0"
+                                      filled={
+                                        isOccupied || isSelected || isMyPending
+                                      }
+                                    />
+                                    <span
+                                      className={`text-[9px] font-medium leading-none ${
+                                        isMyPending
+                                          ? 'text-amber-600'
+                                          : isSelected
+                                            ? 'text-purple-600'
+                                            : 'text-gray-400'
+                                      }`}
+                                    >
+                                      {seat.number}
+                                    </span>
+                                  </button>
+                                );
+                              };
+
+                              return (
+                                <div
+                                  key={`${row}-${left.id}-${right?.id ?? 'x'}`}
+                                  className="relative inline-flex items-stretch rounded-t-lg rounded-b-md border border-gray-200/90 bg-gradient-to-b from-gray-50 to-white shadow-sm"
+                                  title={
+                                    right
+                                      ? `Բազկաթոռ ${row}${left.number}–${right.number}`
+                                      : `Աթոռ ${row}${left.number}`
+                                  }
+                                >
+                                  {/* center armrest */}
+                                  {right && (
+                                    <div
+                                      className="pointer-events-none absolute left-1/2 top-2.5 bottom-1.5 w-0.5 -translate-x-1/2 rounded-full bg-gray-300/80 z-10"
+                                      aria-hidden
+                                    />
+                                  )}
+                                  <div className="relative flex w-[4.25rem] sm:w-[5rem] pt-2.5">
+                                    {renderSeatBtn(
+                                      left,
+                                      right ? 'left' : 'solo'
+                                    )}
+                                    {right && renderSeatBtn(right, 'right')}
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
@@ -679,19 +853,22 @@ export default function BookingPageClient({
               {/* Legend */}
               <div className="flex gap-4 justify-center px-4 py-3 border-t border-gray-100 bg-gray-50/50 flex-wrap">
                 <div className="flex items-center gap-1.5">
-                  <SeatIcon className="w-5 h-5 text-gray-300" filled={false} />
+                  <LoveseatIcon
+                    className="w-8 h-4 text-gray-300"
+                    filled={false}
+                  />
                   <span className="text-xs text-gray-500">Ազատ</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <SeatIcon className="w-5 h-5 text-purple-600" filled />
+                  <LoveseatIcon className="w-8 h-4 text-purple-600" filled />
                   <span className="text-xs text-gray-500">Ընտրված</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <SeatIcon className="w-5 h-5 text-red-300" filled />
+                  <LoveseatIcon className="w-8 h-4 text-red-300" filled />
                   <span className="text-xs text-gray-500">Զբաղված</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <SeatIcon className="w-5 h-5 text-amber-500" filled />
+                  <LoveseatIcon className="w-8 h-4 text-amber-500" filled />
                   <span className="text-xs text-gray-500">Իմ վճարումը</span>
                 </div>
               </div>
@@ -708,8 +885,8 @@ export default function BookingPageClient({
                         )
                       )} րոպե)`
                     : ''}
-                  . Ավարտեք վճարումը կամ փոխեք դրամարկղ-ամրագրման «Իմ
-                  տոմսերը» բաժնում։
+                  . Ավարտեք վճարումը կամ փոխեք դրամարկղ-ամրագրման «Իմ տոմսերը»
+                  բաժնում։
                 </div>
               )}
             </div>
@@ -831,7 +1008,7 @@ export default function BookingPageClient({
                   </button>
 
                   <button
-                    onClick={handleReserveAtCounter}
+                    onClick={openReserveWarning}
                     disabled={isCreatingOrder || isReserving || !session?.user}
                     className={`mt-2 w-full py-2.5 rounded-xl font-semibold text-sm transition-all border ${
                       isCreatingOrder || isReserving || !session?.user
@@ -1037,7 +1214,7 @@ export default function BookingPageClient({
                   )}
                 </button>
                 <button
-                  onClick={handleReserveAtCounter}
+                  onClick={openReserveWarning}
                   disabled={isCreatingOrder || isReserving || !session?.user}
                   className={`px-5 py-2 rounded-xl font-semibold text-sm transition-all border ${
                     isCreatingOrder || isReserving || !session?.user
@@ -1112,135 +1289,399 @@ export default function BookingPageClient({
                 </button>
               </div>
 
-              {/* Search + Categories */}
-              <div className="px-4 py-3 border-b border-gray-100 space-y-2.5">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Փնտրել..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
-                    >
-                      <X className="w-4 h-4 text-gray-400" />
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none scrollbar-hide">
-                  <button
-                    onClick={() => setSelectedCategory(null)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
-                      selectedCategory === null
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    Բոլորը
-                  </button>
-                  {availableCategories.map((category) => (
-                    <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
-                        selectedCategory === category
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {getCategoryLabel(category)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Products list */}
+              {/* Picker steps */}
               <div className="flex-1 overflow-y-auto px-4 py-3">
-                {filteredProducts.length > 0 ? (
-                  <div className="space-y-2">
-                    {filteredProducts.map((product) => {
-                      const quantity = currentSeatProducts.get(product.id) || 0;
-                      return (
-                        <div
-                          key={product.id}
-                          className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                            quantity > 0
-                              ? 'border-purple-300 bg-purple-50'
-                              : 'border-gray-100 bg-white'
-                          }`}
-                        >
-                          {product.image ? (
-                            <div className="relative md:w-[200px] md:h-[200px] w-[100px] h-[100px] shrink-0 rounded-lg overflow-hidden bg-gray-100">
-                              <Image
-                                src={product.image}
-                                alt={product.name}
-                                fill
-                                className="object-cover"
-                              />
-                            </div>
-                          ) : (
-                            <div className="md:w-[200px] md:h-[200px] w-[100px] h-[100px] shrink-0 rounded-lg bg-gray-100 flex items-center justify-center">
-                              <ShoppingCart className="w-6 h-6 text-gray-300" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 text-sm leading-tight">
-                              {product.name}
-                            </p>
-                            {product.description && (
-                              <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
-                                {product.description}
-                              </p>
-                            )}
-                            <p className="text-sm font-bold text-purple-600 mt-1">
-                              {product.price.toFixed(0)} ֏
-                            </p>
-                          </div>
-                          {/* Quantity controls */}
-                          <div className="flex items-center gap-2 shrink-0">
-                            {quantity > 0 && (
-                              <>
-                                <button
-                                  onClick={() =>
-                                    handleProductQuantityChange(product.id, -1)
-                                  }
-                                  className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center active:scale-90 transition-transform"
-                                >
-                                  <Minus className="w-3.5 h-3.5" />
-                                </button>
-                                <span className="w-5 text-center font-bold text-gray-900 text-sm">
-                                  {quantity}
-                                </span>
-                              </>
-                            )}
+                {/* Քայլ 0՝ կատեգորիաներ + այլ ապրանքներ */}
+                {pickerCategory == null && (
+                  <div className="space-y-4">
+                    {(popcornByCategory.popcorn.length > 0 ||
+                      popcornByCategory.icedTea.length > 0) && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                          Ընտրեք տեսակը
+                        </p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {popcornByCategory.popcorn.length > 0 && (
                             <button
-                              onClick={() =>
-                                handleProductQuantityChange(product.id, 1)
-                              }
-                              className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center active:scale-90 transition-transform"
+                              type="button"
+                              onClick={() => {
+                                setPickerCategory('popcorn');
+                                setPickerFlavorKey(null);
+                              }}
+                              className="relative flex items-stretch gap-3 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 text-left transition hover:border-amber-400 hover:shadow-md active:scale-[0.99]"
                             >
-                              <Plus className="w-3.5 h-3.5" />
+                              <div className="relative h-24 w-24 shrink-0 bg-amber-100 sm:h-28 sm:w-28">
+                                {categoryCoverImage('popcorn') ? (
+                                  <Image
+                                    src={categoryCoverImage('popcorn')!}
+                                    alt="Պոպկորն"
+                                    fill
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-amber-700">
+                                    <Popcorn className="h-10 w-10" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex min-w-0 flex-1 flex-col justify-center py-3 pr-3">
+                                <p className="text-lg font-bold text-gray-900">
+                                  Պոպկորն
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {flavorGroupsFor('popcorn').length} համ ·
+                                  հետո չափը
+                                </p>
+                              </div>
+                              {categoryCartQty('popcorn') > 0 && (
+                                <span className="absolute right-2 top-2 rounded-full bg-amber-500 px-2.5 py-1 text-sm font-bold text-white">
+                                  {categoryCartQty('popcorn')}
+                                </span>
+                              )}
                             </button>
-                          </div>
+                          )}
+                          {popcornByCategory.icedTea.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPickerCategory('iced_tea');
+                                setPickerFlavorKey(null);
+                              }}
+                              className="relative flex items-stretch gap-3 overflow-hidden rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-cyan-50 text-left transition hover:border-sky-400 hover:shadow-md active:scale-[0.99]"
+                            >
+                              <div className="relative h-24 w-24 shrink-0 bg-sky-100 sm:h-28 sm:w-28">
+                                {categoryCoverImage('iced_tea') ? (
+                                  <Image
+                                    src={categoryCoverImage('iced_tea')!}
+                                    alt="Սառը թեյ"
+                                    fill
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-sky-700">
+                                    <CupSoda className="h-10 w-10" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex min-w-0 flex-1 flex-col justify-center py-3 pr-3">
+                                <p className="text-lg font-bold text-gray-900">
+                                  Սառը թեյ
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {flavorGroupsFor('iced_tea').length} համ ·
+                                  հետո չափը
+                                </p>
+                              </div>
+                              {categoryCartQty('iced_tea') > 0 && (
+                                <span className="absolute right-2 top-2 rounded-full bg-sky-500 px-2.5 py-1 text-sm font-bold text-white">
+                                  {categoryCartQty('iced_tea')}
+                                </span>
+                              )}
+                            </button>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-10">
-                    <ShoppingCart className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-                    <p className="text-sm text-gray-400">
-                      {searchQuery || selectedCategory
-                        ? 'Ապրանքներ չեն գտնվել'
-                        : 'Ապրանքներ չկան'}
-                    </p>
+                      </div>
+                    )}
+
+                    {otherProducts.length > 0 && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                          Այլ ապրանքներ
+                        </p>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                          {otherProducts.map((product) => {
+                            const quantity =
+                              currentSeatProducts.get(product.id) || 0;
+                            return (
+                              <div
+                                key={product.id}
+                                className={`overflow-hidden rounded-2xl border transition-all ${
+                                  quantity > 0
+                                    ? 'border-purple-300 bg-purple-50'
+                                    : 'border-gray-100 bg-white'
+                                }`}
+                              >
+                                <div className="relative aspect-square bg-gray-100">
+                                  {product.image ? (
+                                    <Image
+                                      src={product.image}
+                                      alt={product.name}
+                                      fill
+                                      className="object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full items-center justify-center">
+                                      <ShoppingCart className="h-8 w-8 text-gray-300" />
+                                    </div>
+                                  )}
+                                  {quantity > 0 && (
+                                    <span className="absolute right-1.5 top-1.5 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white">
+                                      {quantity}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="p-2.5">
+                                  <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">
+                                    {product.name}
+                                  </p>
+                                  <p className="mt-1 text-sm font-bold text-purple-600">
+                                    {product.price.toFixed(0)} ֏
+                                  </p>
+                                  <div className="mt-2 flex items-center justify-end gap-1.5">
+                                    {quantity > 0 && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleProductQuantityChange(
+                                              product.id,
+                                              -1
+                                            )
+                                          }
+                                          className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-600 active:scale-90"
+                                        >
+                                          <Minus className="h-3.5 w-3.5" />
+                                        </button>
+                                        <span className="w-5 text-center text-sm font-bold text-gray-900">
+                                          {quantity}
+                                        </span>
+                                      </>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleProductQuantityChange(
+                                          product.id,
+                                          1
+                                        )
+                                      }
+                                      className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-white active:scale-90"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {quantityProducts.length === 0 &&
+                      otherProducts.length === 0 && (
+                        <div className="py-10 text-center">
+                          <ShoppingCart className="mx-auto mb-3 h-12 w-12 text-gray-200" />
+                          <p className="text-sm text-gray-400">Ապրանքներ չկան</p>
+                        </div>
+                      )}
                   </div>
                 )}
+
+                {/* Քայլ 1՝ համեր */}
+                {pickerCategory != null && pickerFlavorKey == null && (
+                  <div>
+                    <div className="mb-4 flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickerCategory(null);
+                          setPickerFlavorKey(null);
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Ետ
+                      </button>
+                      <div>
+                        <p className="text-base font-bold text-gray-900">
+                          {pickerCategory === 'popcorn'
+                            ? 'Պոպկորն — ընտրեք համը'
+                            : 'Սառը թեյ — ընտրեք համը'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Հաջորդ քայլում կընտրեք Փոքր կամ Մեծ
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                      {activeFlavorGroups.map((group) => {
+                        const inCart = flavorCartQty(group);
+                        const cover = flavorCoverImage(group);
+                        return (
+                          <button
+                            key={group.flavorKey}
+                            type="button"
+                            onClick={() =>
+                              setPickerFlavorKey(group.flavorKey)
+                            }
+                            className={`relative overflow-hidden rounded-2xl border text-left transition ${
+                              inCart > 0
+                                ? 'border-purple-400 bg-purple-50 ring-2 ring-purple-200'
+                                : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-sm'
+                            }`}
+                          >
+                            <div className="relative aspect-square bg-gray-100">
+                              {cover ? (
+                                <Image
+                                  src={cover}
+                                  alt={group.displayName}
+                                  fill
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-gray-300">
+                                  {pickerCategory === 'popcorn' ? (
+                                    <Popcorn className="h-10 w-10" />
+                                  ) : (
+                                    <CupSoda className="h-10 w-10" />
+                                  )}
+                                </div>
+                              )}
+                              {inCart > 0 && (
+                                <span className="absolute right-1.5 top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-purple-600 px-1.5 text-xs font-bold text-white">
+                                  {inCart}
+                                </span>
+                              )}
+                            </div>
+                            <div className="p-2.5">
+                              <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">
+                                {group.displayName}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Քայլ 2՝ չափ */}
+                {pickerCategory != null &&
+                  pickerFlavorKey != null &&
+                  activeFlavorGroup && (
+                    <div>
+                      <div className="mb-4 flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setPickerFlavorKey(null)}
+                          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          Համեր
+                        </button>
+                        <div>
+                          <p className="text-base font-bold text-gray-900">
+                            {activeFlavorGroup.displayName}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Ընտրեք չափը և քանակը
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mx-auto grid max-w-lg grid-cols-2 gap-3">
+                        {(
+                          [
+                            ['small', activeFlavorGroup.small],
+                            ['large', activeFlavorGroup.large],
+                          ] as const
+                        ).map(([size, product]) => {
+                          const sizeKey = size as QuantityProductSize;
+                          const label = quantitySizeLabel(sizeKey);
+                          if (!product) {
+                            return (
+                              <div
+                                key={sizeKey}
+                                className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 opacity-50"
+                              >
+                                <p className="text-lg font-bold text-gray-400">
+                                  {label}
+                                </p>
+                                <p className="mt-1 text-xs text-gray-400">
+                                  Չկա տեսականու մեջ
+                                </p>
+                              </div>
+                            );
+                          }
+                          const quantity =
+                            currentSeatProducts.get(product.id) || 0;
+                          return (
+                            <div
+                              key={sizeKey}
+                              className={`overflow-hidden rounded-2xl border transition ${
+                                quantity > 0
+                                  ? 'border-purple-400 bg-purple-50 ring-2 ring-purple-200'
+                                  : 'border-gray-200 bg-white'
+                              }`}
+                            >
+                              <div className="relative aspect-square bg-gray-100">
+                                {product.image ? (
+                                  <Image
+                                    src={product.image}
+                                    alt={`${activeFlavorGroup.displayName} — ${label}`}
+                                    fill
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full flex-col items-center justify-center gap-1 text-gray-300">
+                                    {pickerCategory === 'popcorn' ? (
+                                      <Popcorn className="h-10 w-10" />
+                                    ) : (
+                                      <CupSoda className="h-10 w-10" />
+                                    )}
+                                    <span className="text-sm font-bold text-gray-400">
+                                      {label}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="p-3 text-center">
+                                <p className="text-lg font-extrabold text-gray-900">
+                                  {label}
+                                </p>
+                                <p className="mt-0.5 text-base font-bold text-purple-600">
+                                  {product.price.toFixed(0)} ֏
+                                </p>
+                                <div className="mt-3 flex items-center justify-center gap-2">
+                                  {quantity > 0 && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleProductQuantityChange(
+                                            product.id,
+                                            -1
+                                          )
+                                        }
+                                        className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-100 text-purple-600 active:scale-90"
+                                      >
+                                        <Minus className="h-4 w-4" />
+                                      </button>
+                                      <span className="w-6 text-center text-base font-bold text-gray-900">
+                                        {quantity}
+                                      </span>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleProductQuantityChange(
+                                        product.id,
+                                        1
+                                      )
+                                    }
+                                    className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-600 text-white active:scale-90"
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
               </div>
 
               {/* Footer */}
@@ -1274,6 +1715,72 @@ export default function BookingPageClient({
                     Ավելացնել →
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Ամրագրման նախազգուշացում — վճարել մուտքի մոտ */}
+      <AnimatePresence>
+        {reserveWarningOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
+            onClick={() => !isReserving && setReserveWarningOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+            >
+              <div className="px-5 pt-5 pb-2">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <h3 className="text-center text-lg font-bold text-gray-900">
+                  Խնդրում ենք լինել բարեխիղճ
+                </h3>
+                <div className="mt-3 space-y-2.5 text-sm leading-relaxed text-gray-600">
+                  <p>
+                    Այս տարբերակով տեղերը պահվում են ձեզ համար մինչև մուտքի մոտ
+                    վճարելը։ Եթե ամրագրեք և չգաք, այդ տեղերը մնում են զբաղված,
+                    և այլ հանդիսատեսներ չեն կարող դրանք վերցնել։
+                  </p>
+                  <p>
+                    Խնդրում ենք ամրագրել միայն այն դեպքում, երբ իսկապես
+                    պլանավորում եք գալ և վճարել դրամարկղում։
+                  </p>
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
+                    Կրկնակի չեղարկումների կամ չգալու դեպքում հաշիվը կարող է
+                    արգելափակվել, և այս հնարավորությունից կզրկվեք։
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 px-5 py-4 sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={handleReserveAtCounter}
+                  disabled={isReserving}
+                  className="flex-1 rounded-xl bg-purple-600 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isReserving
+                    ? 'Ամրագրվում է...'
+                    : 'Հասկանում եմ, ամրագրել'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReserveWarningOpen(false)}
+                  disabled={isReserving}
+                  className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 disabled:opacity-60"
+                >
+                  Չեղարկել
+                </button>
               </div>
             </motion.div>
           </motion.div>

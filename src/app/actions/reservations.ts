@@ -13,6 +13,7 @@ import {
   AWAITING_PAYMENT_STATUS,
   isActivePaymentHold,
 } from '@/lib/reservation';
+import { isAdminRole } from '@/lib/roles';
 import { releaseExpiredReservations } from './tickets';
 import { createNotification, formatAmd } from '@/lib/notifications';
 
@@ -91,18 +92,23 @@ export async function createCounterReservation(
     // Legacy hook է. այլևս ավտոմատ ամրագրում չի չեղարկում։
     await releaseExpiredReservations(data.screeningId);
 
-    // 4-աթոռ սահմանաչափ՝ ակտիվ ամրագրումներ + նոր աթոռներ
-    const { count: activeCount } = await getActiveReservationCount(userId);
-    if (activeCount + data.seatIds.length > MAX_FREE_RESERVED_SEATS) {
-      const remaining = Math.max(0, MAX_FREE_RESERVED_SEATS - activeCount);
-      return {
-        success: false,
-        limitReached: true,
-        error:
-          remaining > 0
-            ? `Կարող եք անվճար ամրագրել առավելագույնը ${MAX_FREE_RESERVED_SEATS} աթոռ։ Մնացել է ${remaining} տեղ։`
-            : `Դուք արդեն ունեք ${activeCount} ակտիվ ամրագրում։ Անվճար ամրագրման սահմանաչափը ${MAX_FREE_RESERVED_SEATS} աթոռ է. վճարեք կամ սպասեք ցուցադրությանը։`,
-      };
+    // 4-աթոռ սահմանաչափ՝ միայն սովորական օգտատերերի համար։
+    // Ադմինը կարող է անսահմանափակ ամրագրել (վճարում մուտքի մոտ)։
+    const sessionRole = (session.user as { role?: string | null }).role;
+    const isAdmin = isAdminRole(sessionRole);
+    if (!isAdmin) {
+      const { count: activeCount } = await getActiveReservationCount(userId);
+      if (activeCount + data.seatIds.length > MAX_FREE_RESERVED_SEATS) {
+        const remaining = Math.max(0, MAX_FREE_RESERVED_SEATS - activeCount);
+        return {
+          success: false,
+          limitReached: true,
+          error:
+            remaining > 0
+              ? `Կարող եք անվճար ամրագրել առավելագույնը ${MAX_FREE_RESERVED_SEATS} աթոռ։ Մնացել է ${remaining} տեղ։`
+              : `Դուք արդեն ունեք ${activeCount} ակտիվ ամրագրում։ Անվճար ամրագրման սահմանաչափը ${MAX_FREE_RESERVED_SEATS} աթոռ է. վճարեք կամ սպասեք ցուցադրությանը։`,
+        };
+      }
     }
 
     const screening = await prisma.screening.findUnique({
@@ -331,18 +337,22 @@ export async function convertAwaitingPaymentOrderToCounter(orderId: number) {
       };
     }
 
-    // 4-աթոռ սահմանաչափ՝ արդեն ակտիվ counter reserved + այս awaiting-ները
-    const { count: activeCount } = await getActiveReservationCount(userId);
-    if (activeCount + awaiting.length > MAX_FREE_RESERVED_SEATS) {
-      const remaining = Math.max(0, MAX_FREE_RESERVED_SEATS - activeCount);
-      return {
-        success: false,
-        limitReached: true,
-        error:
-          remaining > 0
-            ? `Կարող եք անվճար ամրագրել առավելագույնը ${MAX_FREE_RESERVED_SEATS} աթոռ։ Մնացել է ${remaining} տեղ։`
-            : `Անվճար ամրագրման սահմանը լրացել է (${MAX_FREE_RESERVED_SEATS} աթոռ)։`,
-      };
+    // 4-աթոռ սահմանաչափ՝ միայն սովորական օգտատերերի համար։
+    // Ադմինը կարող է անսահմանափակ ամրագրել։
+    const sessionRole = (session.user as { role?: string | null }).role;
+    if (!isAdminRole(sessionRole)) {
+      const { count: activeCount } = await getActiveReservationCount(userId);
+      if (activeCount + awaiting.length > MAX_FREE_RESERVED_SEATS) {
+        const remaining = Math.max(0, MAX_FREE_RESERVED_SEATS - activeCount);
+        return {
+          success: false,
+          limitReached: true,
+          error:
+            remaining > 0
+              ? `Կարող եք անվճար ամրագրել առավելագույնը ${MAX_FREE_RESERVED_SEATS} աթոռ։ Մնացել է ${remaining} տեղ։`
+              : `Անվճար ամրագրման սահմանը լրացել է (${MAX_FREE_RESERVED_SEATS} աթոռ)։`,
+        };
+      }
     }
 
     const screeningEnd =

@@ -706,7 +706,7 @@ export default function BookingPageClient({
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-4 pt-4 pb-2">
                 <h2 className="text-base font-bold text-gray-900">
-                  Ընտրեք նստատեղ
+                  Ընտրեք նստատեղssss
                 </h2>
               </div>
 
@@ -1233,7 +1233,7 @@ export default function BookingPageClient({
           ) : (
             <div className="flex items-center gap-3 w-full">
               <div className="flex-1 text-sm text-gray-400 text-center">
-                Ընտրեք նստատեղsss
+                Ընտրեք նստատեղ
               </div>
               <Link
                 href={SITE_URL.SCHEDULE}

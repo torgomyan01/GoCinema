@@ -14,6 +14,10 @@ import {
   Boxes,
   QrCode,
   ScanLine,
+  Tag,
+  FileDown,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import Image from 'next/image';
 import AdminLayout from './admin-layout';
@@ -27,6 +31,7 @@ import {
   restockProductQuantity,
 } from '@/app/actions/products';
 import { isQuantityOnlyProduct } from '@/lib/product-units';
+import { openProductPriceTagsPdf } from '@/lib/product-price-tags';
 import ProductUnitsModal from './product-units-modal';
 
 interface AdminProductsClientProps {
@@ -117,6 +122,11 @@ export default function AdminProductsClient({
 
   // QR միավորների կառավարում
   const [unitsTarget, setUnitsTarget] = useState<Product | null>(null);
+
+  // Գնապիտակների ընտրություն
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(
+    () => new Set()
+  );
 
   const handleProductStockUpdated = useCallback(
     (productId: number, stock: number) => {
@@ -410,13 +420,100 @@ export default function AdminProductsClient({
     return groupedProducts.filter((g) => g.category === activeCategory);
   }, [activeCategory, groupedProducts]);
 
-  const renderProductCard = (product: Product) => (
+  const displayedProducts = useMemo(
+    () => displayedSections.flatMap((s) => s.products),
+    [displayedSections]
+  );
+
+  const selectedTagProducts = useMemo(
+    () => products.filter((p) => selectedTagIds.has(p.id)),
+    [products, selectedTagIds]
+  );
+
+  const allDisplayedSelected =
+    displayedProducts.length > 0 &&
+    displayedProducts.every((p) => selectedTagIds.has(p.id));
+
+  const toggleTagSelection = (productId: number) => {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllDisplayed = () => {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (allDisplayedSelected) {
+        for (const p of displayedProducts) next.delete(p.id);
+      } else {
+        for (const p of displayedProducts) next.add(p.id);
+      }
+      return next;
+    });
+  };
+
+  const handlePrintPriceTags = (items: Product[]) => {
+    if (items.length === 0) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Ընտրեք առնվազն մեկ ապրանք գնապիտակի համար',
+      });
+      return;
+    }
+    const ok = openProductPriceTagsPdf(
+      items.map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        category: p.category,
+      }))
+    );
+    if (!ok) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Պատուհանը արգելափակված է։ Թույլատրեք popup-ները և կրկին փորձեք։',
+      });
+      return;
+    }
+    setStatusMessage({
+      type: 'success',
+      text:
+        items.length === 1
+          ? 'Գնապիտակը բացվեց · տպեք կամ պահեք որպես PDF'
+          : `${items.length} գնապիտակ բացվեց · տպեք կամ պահեք որպես PDF`,
+    });
+  };
+
+  const renderProductCard = (product: Product) => {
+    const isTagSelected = selectedTagIds.has(product.id);
+    return (
     <motion.div
       key={product.id}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md"
+      className={`relative flex h-full flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md ${
+        isTagSelected ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-100'
+      }`}
     >
+      <button
+        type="button"
+        onClick={() => toggleTagSelection(product.id)}
+        className={`absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg border bg-white/95 shadow-sm transition ${
+          isTagSelected
+            ? 'border-purple-500 text-purple-700'
+            : 'border-gray-200 text-gray-400 hover:text-gray-700'
+        }`}
+        title={isTagSelected ? 'Հանել ընտրությունից' : 'Ընտրել գնապիտակի համար'}
+      >
+        {isTagSelected ? (
+          <CheckSquare className="h-4 w-4" />
+        ) : (
+          <Square className="h-4 w-4" />
+        )}
+      </button>
       {product.image ? (
         <div className="relative aspect-[4/3] w-full bg-gray-100 sm:aspect-video">
           <img
@@ -474,6 +571,14 @@ export default function AdminProductsClient({
           <div className="flex shrink-0 gap-0.5 sm:gap-1">
             <button
               type="button"
+              onClick={() => handlePrintPriceTags([product])}
+              className="rounded-lg p-1.5 text-amber-700 transition-colors hover:bg-amber-50 sm:p-2"
+              title="Գնապիտակ (PDF)"
+            >
+              <Tag className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
               onClick={() => openRestockModal(product)}
               className="rounded-lg p-1.5 text-green-600 transition-colors hover:bg-green-50 sm:p-2"
               title={
@@ -514,7 +619,8 @@ export default function AdminProductsClient({
         </div>
       </div>
     </motion.div>
-  );
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -620,6 +726,40 @@ export default function AdminProductsClient({
               />
               Ցույց տալ անակտիվները
             </label>
+            {displayedProducts.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleSelectAllDisplayed}
+                className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50 sm:text-sm"
+                title={
+                  allDisplayedSelected
+                    ? 'Հանել բոլոր ընտրությունները'
+                    : 'Ընտրել երևացող բոլոր ապրանքները'
+                }
+              >
+                {allDisplayedSelected ? (
+                  <CheckSquare className="h-4 w-4 text-purple-600" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+                {allDisplayedSelected ? 'Հանել ընտրությունը' : 'Ընտրել բոլորը'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handlePrintPriceTags(selectedTagProducts)}
+              disabled={selectedTagIds.size === 0}
+              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition sm:text-sm ${
+                selectedTagIds.size === 0
+                  ? 'cursor-not-allowed border border-gray-200 bg-gray-100 text-gray-400'
+                  : 'border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+              }`}
+              title="Ընտրված ապրանքների գնապիտակներ PDF"
+            >
+              <FileDown className="h-4 w-4" />
+              Գնապիտակներ
+              {selectedTagIds.size > 0 ? ` (${selectedTagIds.size})` : ''}
+            </button>
             <button
               onClick={handleOpenAddModal}
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm text-white transition-colors hover:bg-purple-700 sm:flex-none"

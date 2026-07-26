@@ -1,50 +1,48 @@
 'use client';
 
-type TicketStatus = 'all' | 'reserved' | 'paid' | 'used' | 'cancelled';
+import type { TicketsViewFilter } from './ticket-types';
 
 interface TicketsFilterProps {
-  selectedStatus: TicketStatus;
-  onStatusChange: (status: TicketStatus) => void;
-  statusCounts?: {
-    all: number;
-    reserved: number;
-    paid: number;
-    used: number;
+  selectedFilter: TicketsViewFilter;
+  onFilterChange: (filter: TicketsViewFilter) => void;
+  counts?: {
+    upcoming: number;
+    past: number;
     cancelled: number;
   };
 }
 
-const statusOptions: Array<{ value: TicketStatus; label: string }> = [
-  { value: 'all', label: 'Բոլորը' },
-  { value: 'reserved', label: 'Չվճարված' },
-  { value: 'paid', label: 'Վճարված' },
-  { value: 'used', label: 'Օգտագործված' },
+const filterOptions: Array<{ value: TicketsViewFilter; label: string }> = [
+  { value: 'upcoming', label: 'Առաջիկա' },
+  { value: 'past', label: 'Անցյալ' },
   { value: 'cancelled', label: 'Չեղարկված' },
 ];
 
 export default function TicketsFilter({
-  selectedStatus,
-  onStatusChange,
-  statusCounts,
+  selectedFilter,
+  onFilterChange,
+  counts,
 }: TicketsFilterProps) {
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-      <div className="flex flex-wrap gap-3">
-        {statusOptions.map((option) => {
-          const count = statusCounts?.[option.value];
+    <div className="mb-6 rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
+      <div className="flex flex-wrap gap-2">
+        {filterOptions.map((option) => {
+          const count = counts?.[option.value];
+          const active = selectedFilter === option.value;
           return (
             <button
               key={option.value}
-              onClick={() => onStatusChange(option.value)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                selectedStatus === option.value
+              type="button"
+              onClick={() => onFilterChange(option.value)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                active
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               {option.label}
               {count !== undefined && (
-                <span className="ml-2 text-sm opacity-75">({count})</span>
+                <span className="ml-1.5 text-xs opacity-80">({count})</span>
               )}
             </button>
           );

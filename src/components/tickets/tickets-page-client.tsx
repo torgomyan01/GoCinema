@@ -1,69 +1,34 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Ticket as TicketIcon, AlertCircle } from 'lucide-react';
+import { Ticket as TicketIcon, AlertCircle, QrCode, CreditCard } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import TicketCard from './ticket-card';
+import Link from 'next/link';
 import TicketsFilter from './tickets-filter';
+import TicketGroupCard from './ticket-group-card';
 import { SITE_URL } from '@/utils/consts';
 import { getUserTickets } from '@/app/actions/tickets';
-
-type TicketStatus = 'all' | 'reserved' | 'paid' | 'used' | 'cancelled';
-
-interface Ticket {
-  id: number;
-  price: number;
-  status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled';
-  qrCode?: string | null;
-  createdAt: Date | string;
-  screening: {
-    id: number;
-    startTime: Date | string;
-    endTime: Date | string;
-    movie: {
-      id: number;
-      title: string;
-      slug?: string | null | undefined;
-      image?: string | null;
-      duration: number;
-    };
-    hall: {
-      id: number;
-      name: string;
-    };
-  };
-  seat: {
-    id: number;
-    row: string;
-    number: number;
-  };
-  order?: {
-    id: number;
-    paymentMethod?: string | null;
-    orderItems: Array<{
-      id: number;
-      quantity: number;
-      price: number;
-      product: {
-        id: number;
-        name: string;
-        image?: string | null;
-        category: string;
-      };
-    }>;
-  } | null;
-}
+import {
+  filterTicketGroups,
+  getNextUpGroup,
+  groupUserTickets,
+  type TicketsViewFilter,
+  type UserTicket,
+} from './ticket-types';
 
 export default function TicketsPageClient() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
-  const [selectedStatus, setSelectedStatus] = useState<TicketStatus>('all');
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [selectedFilter, setSelectedFilter] =
+    useState<TicketsViewFilter>('upcoming');
+  const [tickets, setTickets] = useState<UserTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showReservedNotice, setShowReservedNotice] = useState(false);
+  const [showStickyCta, setShowStickyCta] = useState(false);
+  const nextUpRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (
@@ -75,29 +40,27 @@ export default function TicketsPageClient() {
   }, []);
 
   useEffect(() => {
-    // Redirect if not authenticated
     if (sessionStatus === 'unauthenticated') {
       router.push(SITE_URL.ACCOUNT);
       return;
     }
 
-    // Load tickets if authenticated
     if (sessionStatus === 'authenticated' && session?.user) {
       const loadTickets = async () => {
         setIsLoading(true);
         setError(null);
         try {
-          const user = session.user as any;
+          const user = session.user as { id?: string | number };
           const userId =
             typeof user.id === 'string' ? parseInt(user.id, 10) : user.id;
-          if (isNaN(userId)) {
+          if (userId == null || Number.isNaN(Number(userId))) {
             setError('Օգտատիրոջ ID-ն վավեր չէ');
             setIsLoading(false);
             return;
           }
-          const result = await getUserTickets(userId);
+          const result = await getUserTickets(Number(userId));
           if (result.success && result.tickets) {
-            setTickets(result.tickets as Ticket[]);
+            setTickets(result.tickets as UserTicket[]);
           } else {
             setError(result.error || 'Տոմսերը բեռնելիս սխալ է տեղի ունեցել');
           }
@@ -109,62 +72,52 @@ export default function TicketsPageClient() {
         }
       };
 
-      loadTickets();
+      void loadTickets();
     }
   }, [session, sessionStatus, router]);
 
-  const filteredTickets = useMemo(() => {
-    const statusOrder: Record<Ticket['status'], number> = {
-      awaiting_payment: 0, // սպասում է վճարման (օնլայն)
-      reserved: 0, // ամրագրված (դրամարկղ)
-      paid: 1,
-      used: 2,
-      cancelled: 3,
-    };
+  const allGroups = useMemo(() => groupUserTickets(tickets), [tickets]);
 
-    // «Ամրագրված» ֆիլտրը ընդգրկում է և՛ դրամարկղ-ամրագրումը, և՛ օնլայն «սպասում է վճարման»-ը։
-    const matchesStatus = (ticket: Ticket) =>
-      selectedStatus === 'reserved'
-        ? ticket.status === 'reserved' ||
-          ticket.status === 'awaiting_payment'
-        : ticket.status === selectedStatus;
+  const filterCounts = useMemo(
+    () => ({
+      upcoming: filterTicketGroups(allGroups, 'upcoming').length,
+      past: filterTicketGroups(allGroups, 'past').length,
+      cancelled: filterTicketGroups(allGroups, 'cancelled').length,
+    }),
+    [allGroups]
+  );
 
-    let list =
-      selectedStatus === 'all'
-        ? [...tickets]
-        : tickets.filter(matchesStatus);
+  const filteredGroups = useMemo(
+    () => filterTicketGroups(allGroups, selectedFilter),
+    [allGroups, selectedFilter]
+  );
 
-    list.sort((a, b) => {
-      const byStatus = statusOrder[a.status] - statusOrder[b.status];
-      if (byStatus !== 0) return byStatus;
-      // Նույն կարգավիճակում՝ ավելի նոր ցուցադրությունները վերևում
-      const dateA = new Date(a.screening.startTime).getTime();
-      const dateB = new Date(b.screening.startTime).getTime();
-      return dateB - dateA;
-    });
+  const nextUp = useMemo(() => getNextUpGroup(allGroups), [allGroups]);
 
-    return list;
-  }, [tickets, selectedStatus]);
-
-  const statusCounts = useMemo(() => {
-    return {
-      all: tickets.length,
-      reserved: tickets.filter(
-        (t) => t.status === 'reserved' || t.status === 'awaiting_payment'
-      ).length,
-      paid: tickets.filter((t) => t.status === 'paid').length,
-      used: tickets.filter((t) => t.status === 'used').length,
-      cancelled: tickets.filter((t) => t.status === 'cancelled').length,
-    };
-  }, [tickets]);
+  // Sticky CTA՝ երբ NextUp հերոն այլևս տեսադաշտում չէ
+  useEffect(() => {
+    if (!nextUpRef.current || !nextUp) {
+      setShowStickyCta(false);
+      return;
+    }
+    const el = nextUpRef.current;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowStickyCta(!entry.isIntersecting);
+      },
+      { threshold: 0.15, rootMargin: '-48px 0px 0px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [nextUp]);
 
   if (sessionStatus === 'loading' || isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pt-24 pb-20">
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-20 pt-24">
         <div className="container mx-auto px-4">
-          <div className="text-center py-20">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
-            <p className="text-xl text-gray-600">Բեռնվում է...</p>
+          <div className="py-20 text-center">
+            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-purple-600" />
+            <p className="text-lg text-gray-600">Բեռնվում է...</p>
           </div>
         </div>
       </div>
@@ -173,21 +126,22 @@ export default function TicketsPageClient() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pt-24 pb-20">
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-20 pt-24">
         <div className="container mx-auto px-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center py-20"
+            className="py-20 text-center"
           >
-            <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">
+            <AlertCircle className="mx-auto mb-4 h-14 w-14 text-red-600" />
+            <h3 className="mb-2 text-2xl font-bold text-gray-900">
               Սխալ է տեղի ունեցել
             </h3>
-            <p className="text-gray-600 mb-6">{error}</p>
+            <p className="mb-6 text-gray-600">{error}</p>
             <button
+              type="button"
               onClick={() => window.location.reload()}
-              className="inline-block px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors"
+              className="inline-block rounded-lg bg-purple-600 px-6 py-3 font-semibold text-white hover:bg-purple-700"
             >
               Կրկին փորձել
             </button>
@@ -197,42 +151,42 @@ export default function TicketsPageClient() {
     );
   }
 
+  const stickyIsPay =
+    nextUp?.status === 'awaiting_payment' && nextUp.orderId != null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pt-24 pb-20">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-28 pt-20 sm:pb-20 sm:pt-24">
       <div className="container mx-auto px-4">
-        {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
+          className="mb-6 text-center sm:mb-8"
         >
-          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-4">
+          <h1 className="mb-1 text-3xl font-bold text-gray-900 sm:text-4xl">
             Իմ տոմսերը
           </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Դիտեք ձեր բոլոր ամրագրված և գնված տոմսերը
+          <p className="text-sm text-gray-600 sm:text-base">
+            Հաջորդ ցուցադրությունը և ձեր QR-ը՝ մեկ տեղում
           </p>
         </motion.div>
 
-        {/* Reserved (pay at counter) notice */}
         {showReservedNotice && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3"
+            className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"
           >
-            <TicketIcon className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <TicketIcon className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <div className="text-sm text-amber-800">
-              <p className="font-semibold mb-0.5">
+              <p className="mb-0.5 font-semibold">
                 Տոմսը ամրագրված է։ Վճարումը՝ մուտքի մոտ։
               </p>
               <p>
-                Ցույց տվեք ձեր QR կոդը դրամարկղում և վճարեք մուտքի մոտ։ QR-ը
-                մնում է հասանելի, իսկ սպասարկողը կտեսնի տոմսի ընթացիկ
-                կարգավիճակը։
+                Ցույց տվեք QR կոդը դրամարկղում։ QR-ը մնում է հասանելի։
               </p>
             </div>
             <button
+              type="button"
               onClick={() => setShowReservedNotice(false)}
               className="ml-auto text-amber-500 hover:text-amber-700"
             >
@@ -241,46 +195,116 @@ export default function TicketsPageClient() {
           </motion.div>
         )}
 
-        {/* Filter */}
+        {/* Հաջորդ տոմս հերո */}
+        {nextUp && (
+          <div ref={nextUpRef} className="mb-8">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-purple-600">
+              Հաջորդ ցուցադրություն
+            </p>
+            <TicketGroupCard
+              group={nextUp}
+              index={0}
+              showInlineQr={
+                nextUp.status === 'paid' ||
+                nextUp.status === 'reserved' ||
+                nextUp.status === 'awaiting_payment'
+              }
+              compact
+            />
+          </div>
+        )}
+
         <TicketsFilter
-          selectedStatus={selectedStatus}
-          onStatusChange={setSelectedStatus}
-          statusCounts={statusCounts}
+          selectedFilter={selectedFilter}
+          onFilterChange={setSelectedFilter}
+          counts={filterCounts}
         />
 
-        {/* Tickets List */}
-        {filteredTickets.length > 0 ? (
-          <div className="space-y-6">
-            {filteredTickets.map((ticket, index) => (
-              <TicketCard key={ticket.id} ticket={ticket} index={index} />
-            ))}
-          </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center py-20"
-          >
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-6">
-              <TicketIcon className="w-10 h-10 text-gray-400" />
+        {(() => {
+          const list =
+            selectedFilter === 'upcoming' && nextUp
+              ? filteredGroups.filter((g) => g.key !== nextUp.key)
+              : filteredGroups;
+
+          if (filteredGroups.length === 0) {
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="py-16 text-center"
+              >
+                <div className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                  <TicketIcon className="h-8 w-8 text-gray-400" />
+                </div>
+                <h3 className="mb-2 text-xl font-bold text-gray-900">
+                  Տոմսեր չեն գտնվել
+                </h3>
+                <p className="mb-6 text-gray-600">
+                  {selectedFilter === 'upcoming'
+                    ? 'Առաջիկա տոմսեր չկան'
+                    : selectedFilter === 'past'
+                      ? 'Անցյալ տոմսեր չկան'
+                      : 'Չեղարկված տոմսեր չկան'}
+                </p>
+                <Link
+                  href={SITE_URL.SCHEDULE}
+                  className="inline-block rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-semibold text-white hover:from-purple-700 hover:to-pink-700"
+                >
+                  Դիտել ժամանակացույց
+                </Link>
+              </motion.div>
+            );
+          }
+
+          if (list.length === 0) {
+            return (
+              <p className="py-6 text-center text-sm text-gray-500">
+                Այլ առաջիկա տոմսեր չկան
+              </p>
+            );
+          }
+
+          return (
+            <div className="space-y-4">
+              {list.map((group, index) => (
+                <TicketGroupCard key={group.key} group={group} index={index} />
+              ))}
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">
-              Տոմսեր չեն գտնվել
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {selectedStatus === 'all'
-                ? 'Դուք դեռ չունեք ամրագրված տոմսեր'
-                : `Չկան ${selectedStatus === 'reserved' ? 'ամրագրված' : selectedStatus === 'paid' ? 'վճարված' : selectedStatus === 'used' ? 'օգտագործված' : 'չեղարկված'} տոմսեր`}
-            </p>
-            <a
-              href={SITE_URL.SCHEDULE}
-              className="inline-block px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all"
-            >
-              Դիտել ժամանակացույց
-            </a>
-          </motion.div>
-        )}
+          );
+        })()}
       </div>
+
+      {/* Mobile sticky CTA */}
+      {nextUp && showStickyCta && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 p-3 shadow-2xl backdrop-blur sm:hidden">
+          <div className="mb-1 truncate text-xs text-gray-500">
+            {nextUp.screening.movie.title}
+          </div>
+          {stickyIsPay ? (
+            <Link
+              href={SITE_URL.PAYMENT(nextUp.orderId!)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 py-3 text-sm font-semibold text-white"
+            >
+              <CreditCard className="h-4 w-4" />
+              Վճարել հիմա
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                nextUpRef.current?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start',
+                });
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 py-3 text-sm font-semibold text-white"
+            >
+              <QrCode className="h-4 w-4" />
+              {nextUp.status === 'reserved' ? 'Ցույց տալ QR' : 'Մուտքի QR'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

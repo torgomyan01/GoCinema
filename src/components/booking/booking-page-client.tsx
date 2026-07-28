@@ -706,7 +706,7 @@ export default function BookingPageClient({
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-4 pt-4 pb-2">
                 <h2 className="text-base font-bold text-gray-900">
-                  Ընտրեք նստատեղssss
+                  Ընտրեք նստատեղ
                 </h2>
               </div>
 

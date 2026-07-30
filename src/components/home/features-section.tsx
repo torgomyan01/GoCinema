@@ -24,11 +24,11 @@ const features = [
   {
     icon: Armchair,
     title: 'Հարմարավետ դահլիճ',
-    description: '80 պրեմիում նստատեղ՝ իդեալական տեսանելիությամբ։',
+    description: '42 պրեմիում նստատեղ՝ իդեալական տեսանելիությամբ։',
   },
   {
     icon: Volume2,
-    title: 'Dolby ձայն ու 4K',
+    title: 'Dolby ձայն ու 8K',
     description: 'Կինոթատրոնային որակ, որը զգում ես ամբողջ մարմնով։',
   },
   {

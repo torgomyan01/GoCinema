@@ -1231,7 +1231,6 @@ export async function unmarkTicketAsUsed(ticketId: number) {
 
     revalidatePath('/admin/scanner');
     revalidatePath('/admin/tickets');
-    revalidatePath('/admin/preparation');
 
     return {
       success: true,

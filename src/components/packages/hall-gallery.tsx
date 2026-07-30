@@ -78,7 +78,7 @@ export default function HallGallery() {
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
               <span className="block text-2xl font-black text-white">42</span>
-              նստատեղ · 4K էկրան
+              նստատեղ · 8K էկրան
             </div>
           </div>
         </div>

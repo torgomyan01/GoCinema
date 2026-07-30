@@ -7,6 +7,7 @@ import 'swiper/css/pagination';
 
 import './tailwind.css';
 
+import type { Metadata } from 'next';
 import NextTopLoader from 'nextjs-toploader';
 import { Noto_Sans_Armenian, Roboto } from 'next/font/google';
 
@@ -25,6 +26,13 @@ const notoSansArmenian = Noto_Sans_Armenian({
   display: 'swap',
   variable: '--font-noto-armenian',
 });
+
+export const metadata: Metadata = {
+  verification: {
+    google: 'sIKtSAxr0Ad13m2js8Xwbj0KEGe4DDesqocS3NjrKPo',
+    yandex: 'fd366c106ad19775',
+  },
+};
 
 export default async function RootLayout({
   children,

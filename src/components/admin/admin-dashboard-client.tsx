@@ -7,18 +7,14 @@ import {
   Users,
   Film,
   Ticket,
-  Calendar,
   DollarSign,
-  BarChart3,
-  Settings,
   Phone,
   User as UserIcon,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
-import Link from 'next/link';
 import AdminLayout from './admin-layout';
-import { adminMenuItems } from '@/config/admin-menu';
+import ProductDemandSection from './product-demand-section';
 import { getDashboardStats, getRecentActivity } from '@/app/actions/dashboard';
 
 interface AdminDashboardClientProps {
@@ -141,32 +137,6 @@ export default function AdminDashboardClient({
       ]
     : [];
 
-  const quickActions = adminMenuItems
-    .filter((item) => item.href !== '/admin')
-    .map((item) => ({
-      title: item.title,
-      description: `Դիտել ${item.title.toLowerCase()}`,
-      icon: item.icon,
-      href: item.href,
-      color: item.href.includes('movies')
-        ? 'from-purple-500 to-pink-500'
-        : item.href.includes('screenings')
-          ? 'from-blue-500 to-cyan-500'
-          : item.href.includes('tickets')
-            ? 'from-green-500 to-emerald-500'
-            : item.href.includes('users')
-              ? 'from-orange-500 to-red-500'
-              : item.href.includes('analytics')
-                ? 'from-indigo-500 to-purple-500'
-                : item.href.includes('settings')
-                  ? 'from-gray-500 to-gray-700'
-                  : item.href.includes('products')
-                    ? 'from-amber-500 to-yellow-500'
-                    : item.href.includes('seats')
-                      ? 'from-indigo-500 to-blue-500'
-                      : 'from-purple-500 to-pink-500',
-    }));
-
   return (
     <AdminLayout user={user}>
       <div className="flex-1 overflow-y-auto py-8">
@@ -269,39 +239,7 @@ export default function AdminDashboardClient({
             </div>
           )}
 
-          {/* Quick Actions */}
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">
-              Արագ գործողություններ
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {quickActions.map((action, index) => (
-                <motion.div
-                  key={action.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <Link
-                    href={action.href}
-                    className="block bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-all group"
-                  >
-                    <div
-                      className={`w-12 h-12 bg-gradient-to-r ${action.color} rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
-                    >
-                      <action.icon className="w-6 h-6 text-white" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      {action.title}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {action.description}
-                    </p>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-          </div>
+          <ProductDemandSection />
 
           {/* Recent Activity */}
           <div className="bg-white rounded-xl shadow-lg p-6">

@@ -22,7 +22,7 @@ import HallGallery from '@/components/packages/hall-gallery';
 const amenities = [
   {
     icon: MonitorPlay,
-    title: '4K պրոյեկտոր',
+    title: '8K պրոյեկտոր',
     text: 'Հստակ ու վառ պատկեր մեծ էկրանին',
   },
   {

@@ -874,6 +874,42 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     return phone;
   };
 
+  /** Հեռախոսի մասկ՝ 0XX XXX XXX (ինչպես կայքում) */
+  const formatPhoneInput = (value: string): string => {
+    let cleaned = value.replace(/\D/g, '');
+    if (cleaned.startsWith('374')) {
+      cleaned = '0' + cleaned.slice(3);
+    }
+    cleaned = cleaned.slice(0, 9);
+    if (cleaned.length === 0) return '';
+    if (!cleaned.startsWith('0')) {
+      cleaned = '0' + cleaned.slice(0, 8);
+    }
+    const digits = cleaned.slice(1);
+    if (digits.length <= 2) return `0${digits}`;
+    if (digits.length <= 5) return `0${digits.slice(0, 2)} ${digits.slice(2)}`;
+    return `0${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 8)}`;
+  };
+
+  const handleSearchQueryChange = (value: string) => {
+    // #պատվեր կամ անուն՝ առանց մասկի
+    if (value.startsWith('#') || /[^\d\s+]/.test(value)) {
+      setSearchQuery(value);
+      return;
+    }
+    const digits = value.replace(/\D/g, '');
+    // 0… / 374… → հեռախոսի մասկ; մյուս թվերը՝ պատվերի համար
+    if (
+      digits.startsWith('0') ||
+      digits.startsWith('374') ||
+      value.includes(' ')
+    ) {
+      setSearchQuery(formatPhoneInput(value));
+      return;
+    }
+    setSearchQuery(digits);
+  };
+
   const getSeatTypeLabel = (seatType: string): string => {
     const types: Record<string, string> = {
       standard: 'Ստանդարտ',
@@ -1139,12 +1175,14 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
+                    inputMode="tel"
+                    autoComplete="tel"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleSearchQueryChange(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSearch();
                     }}
-                    placeholder="Հեռախոս, անուն կամ պատվերի համար (#)"
+                    placeholder="0XX XXX XXX, անուն կամ #պատվեր"
                     className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>

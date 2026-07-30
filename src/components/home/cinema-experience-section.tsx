@@ -53,7 +53,7 @@ const journeySteps = [
 
 const stats = [
   { value: '42', label: 'նստատեղ' },
-  { value: '4K', label: 'պատկեր' },
+  { value: '8K', label: 'պատկեր' },
   { value: 'QR', label: 'անցում' },
 ];
 

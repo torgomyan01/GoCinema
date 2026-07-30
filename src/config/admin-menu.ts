@@ -18,7 +18,6 @@ import {
   Bell,
   CreditCard,
   History,
-  ClipboardList,
   Receipt,
   ReceiptText,
   Wallet,
@@ -97,13 +96,6 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/packages',
     color: 'text-fuchsia-600',
     bgColor: 'bg-fuchsia-50',
-  },
-  {
-    title: 'Նախապատրաստում',
-    icon: ClipboardList,
-    href: '/admin/preparation',
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-50',
   },
   {
     title: 'Պրեմիերաներ',

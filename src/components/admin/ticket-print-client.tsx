@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { formatPrice } from '@/lib/format';
 
 interface PrintProductItem {
   name: string;
@@ -13,32 +14,18 @@ interface PrintTicket {
   id: number;
   price: number;
   qrCode: string;
-  seat: { row: string; number: number; seatType: string };
+  /** Ամսաթիվ՝ սերվերում ձևավորված (hydration mismatch չլինի) */
+  formattedStartTime: string;
+  seat?: { row: string; number: number; seatType: string };
+  orderId?: number;
   screening: {
-    startTime: string;
     movie: { title: string };
-    hall: { name: string };
   };
   items?: PrintProductItem[];
   total?: number;
-  payment?: {
-    method: string;
-    amountPaid: number | null;
-  } | null;
 }
 
 const CINEMA_NAME = 'GoCinema';
-const CINEMA_ADDRESS = 'Ք. Մարտունի, Երևանյան 74/7';
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('hy-AM', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 const printStyles = `
   @page { size: 72mm 120mm; margin: 0; }
@@ -54,6 +41,12 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
     const timer = setTimeout(() => window.print(), 400);
     return () => clearTimeout(timer);
   }, []);
+
+  const isOrderPrint = Boolean(ticket.orderId);
+  const total = ticket.total ?? ticket.price;
+  const refLabel = isOrderPrint
+    ? `Պատվեր #${ticket.orderId ?? ticket.id}`
+    : `Տոմս #${ticket.id}`;
 
   return (
     <div
@@ -104,7 +97,6 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
         </button>
       </div>
 
-      {/* 72mm լայնությամբ տոմս */}
       <div
         style={{
           width: '72mm',
@@ -137,39 +129,7 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
         </div>
 
         <div style={{ fontSize: '9pt', marginTop: '2mm' }}>
-          {formatDateTime(ticket.screening.startTime)}
-        </div>
-        <div style={{ fontSize: '9pt', marginTop: '1mm' }}>
-          {ticket.screening.hall.name}
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            margin: '3mm 0',
-            padding: '2mm 0',
-            borderTop: '1px dashed #000',
-            borderBottom: '1px dashed #000',
-          }}
-        >
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: '7pt' }}>ՏԵՂ</div>
-            <div style={{ fontSize: '18pt', fontWeight: 800 }}>
-              {ticket.seat.row}
-              {ticket.seat.number}
-            </div>
-            {ticket.seat.seatType === 'vip' && (
-              <div style={{ fontSize: '7pt', fontWeight: 700 }}>VIP</div>
-            )}
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '7pt' }}>ԳԻՆ</div>
-            <div style={{ fontSize: '14pt', fontWeight: 800 }}>
-              {ticket.price.toLocaleString()} ֏
-            </div>
-          </div>
+          {ticket.formattedStartTime}
         </div>
 
         {ticket.items && ticket.items.length > 0 && (
@@ -177,12 +137,15 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
             style={{
               textAlign: 'left',
               fontSize: '9pt',
-              marginBottom: '3mm',
-              paddingBottom: '2mm',
+              margin: '3mm 0',
+              padding: '2mm 0',
+              borderTop: '1px dashed #000',
               borderBottom: '1px dashed #000',
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: '1.5mm' }}>Ապրանքներ</div>
+            <div style={{ fontWeight: 700, marginBottom: '1.5mm' }}>
+              Ապրանքներ
+            </div>
             {ticket.items.map((item, index) => (
               <div
                 key={index}
@@ -196,7 +159,7 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
                   {item.name} × {item.quantity}
                 </span>
                 <span style={{ fontWeight: 700 }}>
-                  {(item.price * item.quantity).toLocaleString()} ֏
+                  {formatPrice(item.price * item.quantity)} ֏
                 </span>
               </div>
             ))}
@@ -210,92 +173,18 @@ export default function TicketPrintClient({ ticket }: { ticket: PrintTicket }) {
               }}
             >
               <span>Ընդհանուր</span>
-              <span>
-                {(ticket.total ?? ticket.price).toLocaleString()} ֏
-              </span>
+              <span>{formatPrice(total)} ֏</span>
             </div>
           </div>
         )}
 
-        {ticket.payment && (
-          <div
-            style={{
-              textAlign: 'left',
-              fontSize: '9pt',
-              marginBottom: '3mm',
-              paddingBottom: '2mm',
-              borderBottom: '1px dashed #000',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: '0.5mm',
-              }}
-            >
-              <span>Վճարման եղանակ</span>
-              <span style={{ fontWeight: 700 }}>
-                {ticket.payment.method === 'card' ? 'Քարտով' : 'Կանխիկ'}
-              </span>
-            </div>
-            {ticket.payment.method === 'cash' &&
-              ticket.payment.amountPaid != null && (
-                <>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: '0.5mm',
-                    }}
-                  >
-                    <span>Ստացված կանխիկ</span>
-                    <span style={{ fontWeight: 700 }}>
-                      {ticket.payment.amountPaid.toLocaleString()} ֏
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      fontWeight: 800,
-                    }}
-                  >
-                    <span>Մանր</span>
-                    <span>
-                      {Math.max(
-                        ticket.payment.amountPaid -
-                          (ticket.total ?? ticket.price),
-                        0
-                      ).toLocaleString()}{' '}
-                      ֏
-                    </span>
-                  </div>
-                </>
-              )}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'center', margin: '2mm 0' }}>
+        <div
+          style={{ display: 'flex', justifyContent: 'center', margin: '3mm 0' }}
+        >
           <QRCodeSVG value={ticket.qrCode} size={130} level="M" />
         </div>
 
-        <div style={{ fontSize: '8pt', fontWeight: 700 }}>
-          Տոմս #{ticket.id}
-        </div>
-
-        <div
-          style={{
-            borderTop: '1px dashed #000',
-            margin: '3mm 0',
-          }}
-        />
-        <div style={{ fontSize: '7.5pt', lineHeight: 1.3 }}>
-          {CINEMA_ADDRESS}
-        </div>
-        <div style={{ fontSize: '7.5pt', marginTop: '1mm' }}>
-          Խնդրում ենք ներկայանալ ցուցադրությունից 15 րոպե շուտ։
-        </div>
+        <div style={{ fontSize: '8pt', fontWeight: 700 }}>{refLabel}</div>
       </div>
     </div>
   );

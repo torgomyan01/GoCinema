@@ -22,7 +22,7 @@ import {
 import {
   cancelBoxOfficeTicket,
   createBoxOfficeProductOrder,
-  createBoxOfficeTicket,
+  createBoxOfficeTicketOrder,
   getBoxOfficeProducts,
   getBoxOfficeScreenings,
   getBoxOfficeSeatMap,
@@ -32,13 +32,13 @@ import {
 } from '@/app/actions/box-office';
 import ProductScanSaleModal from '@/components/admin/product-scan-sale-modal';
 import ProductReturnExchangeModal from '@/components/admin/product-return-exchange-modal';
-import TicketSaleModal from '@/components/admin/box-office-ticket-sale-modal';
-import { type PaymentMethod } from '@/components/admin/box-office-payment-panel';
+import PaymentPanel, {
+  type PaymentMethod,
+} from '@/components/admin/box-office-payment-panel';
 import { lookupSaleProductByQr } from '@/app/actions/products';
 import { isQuantityOnlyProduct } from '@/lib/product-units';
 import {
   buildProductSaleInput,
-  buildTicketSaleInput,
   checkHdmAgentHealth,
   isHdmAgentEnabled,
 } from '@/lib/hdm-agent';
@@ -76,17 +76,11 @@ interface SeatMap {
   seats: SeatItem[];
 }
 
-interface CreatedTicket {
-  id: number;
-  price: number;
-  orderId?: number | null;
-  order?: { id: number } | null;
-  seat: { row: string; number: number };
-  screening: {
-    startTime: Date | string;
-    movie: { title: string };
-    hall: { name: string };
-  };
+interface LastTicketSale {
+  orderId: number;
+  total: number;
+  seatLabels: string;
+  movieTitle: string;
 }
 
 interface TakenTicketInfo {
@@ -160,11 +154,13 @@ export default function BoxOfficeClient() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [seatMap, setSeatMap] = useState<SeatMap | null>(null);
   const [isSeatLoading, setIsSeatLoading] = useState(false);
-  const [selectedSeat, setSelectedSeat] = useState<SeatItem | null>(null);
-  const [price, setPrice] = useState<number>(0);
+  const [selectedSeats, setSelectedSeats] = useState<SeatItem[]>([]);
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('cash');
+  const [payCash, setPayCash] = useState<number | ''>('');
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const [isCreating, setIsCreating] = useState(false);
-  const [lastTicket, setLastTicket] = useState<CreatedTicket | null>(null);
+  const [lastSale, setLastSale] = useState<LastTicketSale | null>(null);
 
   const [takenTicket, setTakenTicket] = useState<TakenTicketInfo | null>(null);
   const [isTakenLoading, setIsTakenLoading] = useState(false);
@@ -173,8 +169,6 @@ export default function BoxOfficeClient() {
   const [takenModalError, setTakenModalError] = useState<string | null>(null);
 
   const [products, setProducts] = useState<ProductItem[]>([]);
-  // productId -> quantity (տոմսի հետ վաճառվող ապրանքներ)
-  const [cart, setCart] = useState<Record<number, number>>({});
 
   // Ինքնուրույն ապրանքների վաճառք (առանց տոմսի)
   const [productSaleOpen, setProductSaleOpen] = useState(false);
@@ -237,27 +231,6 @@ export default function BoxOfficeClient() {
     void loadProducts();
     void refreshHdmAgentStatus();
   }, []);
-
-  const setProductQty = (productId: number, qty: number) => {
-    setCart((prev) => {
-      const next = { ...prev };
-      if (qty <= 0) {
-        delete next[productId];
-      } else {
-        next[productId] = qty;
-      }
-      return next;
-    });
-  };
-
-  const productsTotal = useMemo(
-    () =>
-      Object.entries(cart).reduce((sum, [id, qty]) => {
-        const product = products.find((p) => p.id === Number(id));
-        return product ? sum + product.price * qty : sum;
-      }, 0),
-    [cart, products]
-  );
 
   const openProductSale = () => {
     setError(null);
@@ -498,7 +471,16 @@ export default function BoxOfficeClient() {
     }
   };
 
-  const grandTotal = (Number.isFinite(price) ? price : 0) + productsTotal;
+  const ticketsTotal = useMemo(() => {
+    if (!seatMap || selectedSeats.length === 0) return 0;
+    return selectedSeats.reduce((sum, seat) => {
+      const price =
+        seat.seatType === 'vip'
+          ? Math.round(seatMap.basePrice * 1.5)
+          : seatMap.basePrice;
+      return sum + price;
+    }, 0);
+  }, [seatMap, selectedSeats]);
 
   const movies = useMemo(() => {
     const map = new Map<
@@ -573,7 +555,8 @@ export default function BoxOfficeClient() {
   const selectMovie = (movieId: number) => {
     setSelectedMovieId(movieId);
     setSeatMap(null);
-    setSelectedSeat(null);
+    setSelectedSeats([]);
+    setCheckoutOpen(false);
     setSelectedDay(null);
     setError(null);
   };
@@ -581,27 +564,27 @@ export default function BoxOfficeClient() {
   const backToMovies = () => {
     setSelectedMovieId(null);
     setSeatMap(null);
-    setSelectedSeat(null);
+    setSelectedSeats([]);
+    setCheckoutOpen(false);
     setSelectedDay(null);
     setError(null);
   };
 
   const backToScreenings = () => {
     setSeatMap(null);
-    setSelectedSeat(null);
+    setSelectedSeats([]);
+    setCheckoutOpen(false);
     setError(null);
   };
 
   const openSeatMap = async (screeningId: number) => {
     setIsSeatLoading(true);
-    setSelectedSeat(null);
-    setCart({});
+    setSelectedSeats([]);
+    setCheckoutOpen(false);
     setError(null);
     const result = await getBoxOfficeSeatMap(screeningId);
     if (result.success && result.data) {
-      const data = result.data as SeatMap;
-      setSeatMap(data);
-      setPrice(data.basePrice);
+      setSeatMap(result.data as SeatMap);
     } else {
       setError(result.error || 'Նստատեղերը բեռնելիս սխալ է տեղի ունեցել');
     }
@@ -613,14 +596,11 @@ export default function BoxOfficeClient() {
       void openTakenSeat(seat);
       return;
     }
-    setSelectedSeat(seat);
-    if (seatMap) {
-      setPrice(
-        seat.seatType === 'vip'
-          ? Math.round(seatMap.basePrice * 1.5)
-          : seatMap.basePrice
-      );
-    }
+    setSelectedSeats((prev) => {
+      const exists = prev.some((s) => s.id === seat.id);
+      if (exists) return prev.filter((s) => s.id !== seat.id);
+      return [...prev, seat];
+    });
   };
 
   const openTakenSeat = async (seat: SeatItem) => {
@@ -675,6 +655,26 @@ export default function BoxOfficeClient() {
         return;
       }
 
+      if (isHdmAgentEnabled() && result.returnFiscal) {
+        const refundAmount = Number(result.returnFiscal.amount);
+        if (Number.isFinite(refundAmount) && refundAmount > 0) {
+          const notice = await submitReturnFiscal({
+            input: {
+              crn: result.returnFiscal.crn,
+              returnTicketId: result.returnFiscal.rseq,
+              paymentMethod: result.returnFiscal.paymentMethod,
+              // Պարտադիր՝ մասնակի վերադարձ միայն այս տոմսի գնով
+              amount: refundAmount,
+            },
+            source: 'box_office',
+            ticketId: takenTicket.id,
+            orderId: result.orderId ?? null,
+          });
+          setFiscalNotice(notice);
+          void refreshHdmAgentStatus();
+        }
+      }
+
       setSeatMap((prev) =>
         prev
           ? {
@@ -717,96 +717,113 @@ export default function BoxOfficeClient() {
     );
   };
 
-  const closeSale = () => {
-    if (isCreating) return;
-    setSelectedSeat(null);
-    setCart({});
+  const openSalePrint = (orderId: number) => {
+    window.open(
+      `/admin/box-office/print-sale/${orderId}`,
+      '_blank',
+      'width=420,height=640'
+    );
   };
 
-  const handleCreate = async (payment: {
-    method: 'cash' | 'card';
-    amountPaid: number;
-  }) => {
-    if (!seatMap || !selectedSeat || isCreating) return;
-    if (!Number.isFinite(price) || price < 0) {
-      setError('Մուտքագրեք վավեր գին');
+  const clearSelection = () => {
+    if (isCreating) return;
+    setSelectedSeats([]);
+    setCheckoutOpen(false);
+    setPayCash('');
+    setPayMethod('cash');
+  };
+
+  const handleCreate = async () => {
+    if (!seatMap || selectedSeats.length === 0 || isCreating) return;
+
+    const amountPaid =
+      payMethod === 'cash'
+        ? payCash === ''
+          ? ticketsTotal
+          : Number(payCash)
+        : ticketsTotal;
+
+    if (payMethod === 'cash' && amountPaid < ticketsTotal) {
+      setError('Ստացված գումարը պակաս է ընդհանուրից');
       return;
     }
+
     setIsCreating(true);
     setError(null);
     try {
-      const result = await createBoxOfficeTicket({
+      const result = await createBoxOfficeTicketOrder({
         screeningId: seatMap.id,
-        seatId: selectedSeat.id,
-        price,
-        products: Object.entries(cart).map(([id, qty]) => ({
-          productId: Number(id),
-          quantity: qty,
-        })),
-        paymentMethod: payment.method,
-        amountPaid: payment.amountPaid,
+        seatIds: selectedSeats.map((s) => s.id),
+        paymentMethod: payMethod,
+        amountPaid,
       });
-      if (!result.success || !result.ticket) {
-        setError(result.error || 'Տոմս ստեղծելիս սխալ է տեղի ունեցել');
+      if (!result.success) {
+        setError(result.error || 'Տոմսեր ստեղծելիս սխալ է տեղի ունեցել');
         return;
       }
-      const ticket = result.ticket as unknown as CreatedTicket;
-      setLastTicket(ticket);
-      openPrint(ticket.id);
+
+      const ok = result as {
+        orderId: number;
+        total: number;
+      };
+      const orderId = ok.orderId;
+      const saleTotal = ok.total ?? ticketsTotal;
+      const seatLabels = selectedSeats
+        .map((s) => `${s.row}${s.number}`)
+        .join(', ');
+      setLastSale({
+        orderId,
+        total: saleTotal,
+        seatLabels,
+        movieTitle: seatMap.movie.title,
+      });
+      openSalePrint(orderId);
 
       if (isHdmAgentEnabled()) {
-        const productsTotal = Object.entries(cart).reduce((sum, [id, qty]) => {
-          const product = products.find((p) => p.id === Number(id));
-          return sum + (product?.price ?? 0) * qty;
-        }, 0);
-        const productLines = Object.entries(cart)
-          .filter(([, qty]) => qty > 0)
-          .map(([id, qty]) => {
-            const product = products.find((p) => p.id === Number(id));
-            return {
-              name: product?.name ?? 'Ապրանք',
-              price: product?.price ?? 0,
-              qty,
-            };
-          });
-        const soldEmarks =
-          (result as { soldUnitQrCodes?: string[] }).soldUnitQrCodes ?? [];
+        const lines = selectedSeats.map((seat) => {
+          const seatPrice =
+            seat.seatType === 'vip'
+              ? Math.round(seatMap.basePrice * 1.5)
+              : seatMap.basePrice;
+          return {
+            name: `Տոմս · ${seatMap.movie.title} · ${seat.row}${seat.number}`,
+            price: seatPrice,
+            qty: 1,
+            isTicket: true as const,
+          };
+        });
         const notice = await submitSaleFiscal({
-          input: buildTicketSaleInput({
-            movieTitle: seatMap.movie.title,
-            seatLabel: `${selectedSeat.row}${selectedSeat.number}`,
-            ticketPrice: price,
-            paymentMethod: payment.method,
-            total: price + productsTotal,
-            products: productLines,
-            eMarks: soldEmarks,
+          input: buildProductSaleInput({
+            paymentMethod: payMethod,
+            total: saleTotal,
+            lines,
           }),
           source: 'box_office',
-          ticketId: ticket.id,
-          orderId: ticket.orderId ?? ticket.order?.id ?? null,
+          orderId,
         });
         setFiscalNotice(notice);
         void refreshHdmAgentStatus();
       }
 
-      // Թարմացնել նստատեղերի քարտեզը՝ նոր զբաղված տեղով
+      const selectedIds = new Set(selectedSeats.map((s) => s.id));
       setSeatMap((prev) =>
         prev
           ? {
               ...prev,
               seats: prev.seats.map((s) =>
-                s.id === selectedSeat.id ? { ...s, taken: true } : s
+                selectedIds.has(s.id) ? { ...s, taken: true } : s
               ),
             }
           : prev
       );
-      setSelectedSeat(null);
-      setCart({});
+      setSelectedSeats([]);
+      setCheckoutOpen(false);
+      setPayCash('');
+      setPayMethod('cash');
       void loadScreenings();
-      void loadProducts();
     } catch (err) {
       console.error('Box office create error:', err);
-      setError('Տոմս ստեղծելիս սխալ է տեղի ունեցել');
+      setError('Տոմսեր ստեղծելիս սխալ է տեղի ունեցել');
     } finally {
       setIsCreating(false);
     }
@@ -927,18 +944,17 @@ export default function BoxOfficeClient() {
         </div>
       )}
 
-      {lastTicket && (
+      {lastSale && (
         <div className="mb-4 flex flex-col gap-3 rounded-xl border border-green-200 bg-green-50 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3 text-sm text-green-800">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
             <span>
-              Տոմս #{lastTicket.id} ստեղծվեց՝ {lastTicket.screening.movie.title}
-              , տեղ {lastTicket.seat.row}
-              {lastTicket.seat.number}, {lastTicket.price.toLocaleString()} ֏
+              Պատվեր #{lastSale.orderId}՝ {lastSale.movieTitle}, տեղեր{' '}
+              {lastSale.seatLabels}, {lastSale.total.toLocaleString()} ֏
             </span>
           </div>
           <button
-            onClick={() => openPrint(lastTicket.id)}
+            onClick={() => openSalePrint(lastSale.orderId)}
             className="flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500"
           >
             <Printer className="h-4 w-4" />
@@ -1101,7 +1117,12 @@ export default function BoxOfficeClient() {
                   {movieDays.map(({ key, date }) => (
                     <button
                       key={key}
-                      onClick={() => setSelectedDay(key)}
+                      onClick={() => {
+                        setSelectedDay(key);
+                        setSeatMap(null);
+                        setSelectedSeats([]);
+                        setCheckoutOpen(false);
+                      }}
                       className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                         selectedDay === key
                           ? 'border-green-500 bg-green-50 text-green-700'
@@ -1211,7 +1232,9 @@ export default function BoxOfficeClient() {
                       </span>
                       <div className="flex flex-1 flex-wrap justify-center gap-1.5">
                         {seats.map((seat) => {
-                          const isSelected = selectedSeat?.id === seat.id;
+                          const isSelected = selectedSeats.some(
+                            (s) => s.id === seat.id
+                          );
                           const isVip = seat.seatType === 'vip';
                           const isAwaitingHold =
                             seat.taken && seat.holdStatus === 'awaiting_payment';
@@ -1280,31 +1303,99 @@ export default function BoxOfficeClient() {
               </div>
 
               <p className="text-center text-xs text-gray-400">
-                Ընտրեք ազատ նստատեղ՝ վաճառքը սկսելու համար
+                Ընտրեք մեկ կամ մի քանի ազատ նստատեղ, ապա հաստատեք վաճառքը
               </p>
+
+              {selectedSeats.length > 0 && (
+                <div className="mt-4 rounded-xl border border-green-200 bg-green-50/60 p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        Ընտրված՝ {selectedSeats.length} տեղ
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {selectedSeats
+                          .map((s) => `${s.row}${s.number}`)
+                          .join(', ')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-green-700">
+                        {ticketsTotal.toLocaleString('hy-AM')} ֏
+                      </p>
+                      <button
+                        type="button"
+                        onClick={clearSelection}
+                        className="text-xs font-medium text-gray-500 hover:text-gray-800"
+                      >
+                        Մաքրել
+                      </button>
+                    </div>
+                  </div>
+
+                  {!checkoutOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setCheckoutOpen(true);
+                        setPayCash(ticketsTotal);
+                      }}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white hover:bg-green-500"
+                    >
+                      <TicketIcon className="h-4 w-4" />
+                      Հաստատել և վճարել
+                    </button>
+                  ) : (
+                    <div className="space-y-3 rounded-xl border border-green-100 bg-white p-3">
+                      <PaymentPanel
+                        total={ticketsTotal}
+                        method={payMethod}
+                        setMethod={setPayMethod}
+                        cashReceived={payCash}
+                        setCashReceived={setPayCash}
+                        accent="green"
+                        disabled={isCreating}
+                      />
+                      {error && (
+                        <p className="text-sm text-red-600">{error}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={clearSelection}
+                          disabled={isCreating}
+                          className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Չեղարկել
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleCreate()}
+                          disabled={isCreating}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-500 disabled:opacity-50"
+                        >
+                          {isCreating ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Ստեղծվում է...
+                            </>
+                          ) : (
+                            <>
+                              <Printer className="h-4 w-4" />
+                              Վաճառել և տպել
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
-
-      {/* Վաճառքի մոդալ՝ ապրանքների ընտրությամբ */}
-      {seatMap && selectedSeat && (
-        <TicketSaleModal
-          movieTitle={seatMap.movie.title}
-          startTime={seatMap.startTime}
-          seat={selectedSeat}
-          price={price}
-          setPrice={setPrice}
-          products={products}
-          cart={cart}
-          setQty={setProductQty}
-          productsTotal={productsTotal}
-          grandTotal={grandTotal}
-          isCreating={isCreating}
-          onClose={closeSale}
-          onSubmit={handleCreate}
-        />
-      )}
 
       {/* Ինքնուրույն ապրանքների վաճառքի մոդալ */}
       {productSaleOpen && (

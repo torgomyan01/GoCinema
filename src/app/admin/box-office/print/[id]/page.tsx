@@ -5,6 +5,7 @@ import TicketPrintClient from '@/components/admin/ticket-print-client';
 import { getTicketById } from '@/app/actions/tickets';
 import { authOptions } from '@/lib/auth';
 import { isStaffRole } from '@/lib/roles';
+import { formatDateTimeHy } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -18,7 +19,7 @@ export default async function BoxOfficePrintPage({
 
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect('/account');
-  const user = session.user as any;
+  const user = session.user as { role?: string };
   if (!isStaffRole(user?.role)) redirect('/account');
 
   const { id } = await params;
@@ -44,28 +45,27 @@ export default async function BoxOfficePrintPage({
     0
   );
 
-  const ticket = {
-    id: t.id,
-    price: t.price,
-    qrCode: t.qrCode || `TICKET-${t.id}`,
-    seat: { row: t.seat.row, number: t.seat.number, seatType: t.seat.seatType },
-    screening: {
-      startTime:
-        typeof t.screening.startTime === 'string'
-          ? t.screening.startTime
-          : t.screening.startTime.toISOString(),
-      movie: { title: t.screening.movie.title },
-      hall: { name: t.screening.hall.name },
-    },
-    items,
-    total: t.price + productsTotal,
-    payment: t.payment
-      ? {
-          method: t.payment.method,
-          amountPaid: t.payment.amountPaid ?? null,
-        }
-      : null,
-  };
+  const startTime =
+    typeof t.screening.startTime === 'string'
+      ? t.screening.startTime
+      : t.screening.startTime.toISOString();
 
-  return <TicketPrintClient ticket={ticket} />;
+  return (
+    <TicketPrintClient
+      ticket={{
+        id: t.id,
+        price: t.price,
+        qrCode: t.qrCode || `TICKET-${t.id}`,
+        formattedStartTime: formatDateTimeHy(startTime),
+        seat: {
+          row: t.seat.row,
+          number: t.seat.number,
+          seatType: t.seat.seatType,
+        },
+        screening: { movie: { title: t.screening.movie.title } },
+        items,
+        total: t.price + productsTotal,
+      }}
+    />
+  );
 }

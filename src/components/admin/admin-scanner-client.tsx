@@ -29,6 +29,7 @@ import {
 import { Search, Banknote } from 'lucide-react';
 import QRScanner from './qr-scanner';
 import TicketCard from './ticket-card';
+import TicketsEntryFullscreen from './tickets-entry-fullscreen';
 import ProductScanSaleModal from './product-scan-sale-modal';
 import TicketPreOrderScanModal from './ticket-preorder-scan-modal';
 import PaymentPanel, { type PaymentMethod } from './box-office-payment-panel';
@@ -51,9 +52,14 @@ import {
   mergeReservedTicketsIntoOrder,
   type CustomerScannerTicketRow,
 } from '@/app/actions/scanner';
+import { cancelBoxOfficeTicket } from '@/app/actions/box-office';
 import { lookupSaleProductByQr } from '@/app/actions/products';
 import { buildProductSaleInput, isHdmAgentEnabled } from '@/lib/hdm-agent';
-import { submitSaleFiscal, type FiscalNotice } from '@/lib/fiscal-flow';
+import {
+  submitReturnFiscal,
+  submitSaleFiscal,
+  type FiscalNotice,
+} from '@/lib/fiscal-flow';
 import { ticketNeedsQrScan, ticketQrScanProgress } from '@/lib/preorder-entry';
 import Image from 'next/image';
 
@@ -196,6 +202,10 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     Set<number>
   >(new Set());
   const [isMergingTickets, setIsMergingTickets] = useState(false);
+  const [ticketsFullscreenOpen, setTicketsFullscreenOpen] = useState(false);
+  const [cancellingTicketId, setCancellingTicketId] = useState<number | null>(
+    null
+  );
 
   // Load windows from localStorage on mount
   useEffect(() => {
@@ -742,6 +752,47 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       return handleMarkTicketUsed(ticketId);
     }
     return handleUnmarkTicketUsed(ticketId);
+  };
+
+  const handleCancelTicket = async (ticketId: number): Promise<boolean> => {
+    const win = activeWindow;
+    if (!win?.qrCode) return false;
+
+    setCancellingTicketId(ticketId);
+    try {
+      const result = await cancelBoxOfficeTicket(ticketId);
+      if (result.success) {
+        if (isHdmAgentEnabled() && result.returnFiscal) {
+          const refundAmount = Number(result.returnFiscal.amount);
+          if (Number.isFinite(refundAmount) && refundAmount > 0) {
+            const notice = await submitReturnFiscal({
+              input: {
+                crn: result.returnFiscal.crn,
+                returnTicketId: result.returnFiscal.rseq,
+                paymentMethod: result.returnFiscal.paymentMethod,
+                amount: refundAmount,
+              },
+              source: 'box_office',
+              ticketId,
+              orderId: result.orderId ?? null,
+            });
+            if (notice.message) {
+              alert(notice.message);
+            }
+          }
+        }
+        await handleScanSuccess(win.id, win.qrCode);
+        return true;
+      }
+      alert(result.error || 'Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
+      return false;
+    } catch (err) {
+      console.error('Error cancelling ticket:', err);
+      alert('Տոմսը չեղարկելիս սխալ է տեղի ունեցել');
+      return false;
+    } finally {
+      setCancellingTicketId(null);
+    }
   };
 
   const handleMarkAsUsed = async (windowId: string) => {
@@ -1406,51 +1457,60 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                         {formatTime(activeWindow.scannedData.data.createdAt)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-purple-200">
+                    <div className="flex items-center justify-between border-t border-purple-200 pt-2">
                       <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-green-600" />
+                        <DollarSign className="h-4 w-4 text-green-600" />
                         <span className="font-medium text-gray-900">
                           Ընդհանուր գումար:
                         </span>
                       </div>
-                      <span className="font-bold text-lg text-green-600">
-                        {activeWindow.scannedData.data.totalAmount?.toLocaleString(
-                          'hy-AM'
-                        )}{' '}
+                      <span className="text-lg font-bold text-green-600">
+                        {(
+                          activeWindow.scannedData.data.tickets?.reduce(
+                            (sum: number, t: any) => {
+                              if (t.status === 'cancelled') return sum;
+                              const products =
+                                t.orderItems?.reduce(
+                                  (s: number, item: any) =>
+                                    s + item.price * item.quantity,
+                                  0
+                                ) || 0;
+                              return sum + (t.price || 0) + products;
+                            },
+                            0
+                          ) ?? 0
+                        ).toLocaleString('hy-AM')}{' '}
                         ֏
                       </span>
                     </div>
 
                     {/* Calculate totals */}
                     {(() => {
-                      const ticketsTotal =
-                        activeWindow.scannedData.data.tickets?.reduce(
-                          (sum: number, t: any) => sum + (t.price || 0),
-                          0
-                        ) || 0;
-                      const productsTotal =
-                        activeWindow.scannedData.data.tickets?.reduce(
-                          (sum: number, t: any) => {
-                            const ticketProducts =
-                              t.orderItems?.reduce(
-                                (itemSum: number, item: any) =>
-                                  itemSum + item.price * item.quantity,
-                                0
-                              ) || 0;
-                            return sum + ticketProducts;
-                          },
-                          0
-                        ) || 0;
+                      const activeTickets =
+                        activeWindow.scannedData.data.tickets?.filter(
+                          (t: any) => t.status !== 'cancelled'
+                        ) ?? [];
+                      const ticketsTotal = activeTickets.reduce(
+                        (sum: number, t: any) => sum + (t.price || 0),
+                        0
+                      );
+                      const productsTotal = activeTickets.reduce(
+                        (sum: number, t: any) => {
+                          const ticketProducts =
+                            t.orderItems?.reduce(
+                              (itemSum: number, item: any) =>
+                                itemSum + item.price * item.quantity,
+                              0
+                            ) || 0;
+                          return sum + ticketProducts;
+                        },
+                        0
+                      );
 
                       return (
-                        <div className="text-xs text-gray-500 space-y-1 pt-2 border-t border-purple-200">
+                        <div className="space-y-1 border-t border-purple-200 pt-2 text-xs text-gray-500">
                           <div className="flex justify-between">
-                            <span>
-                              Տոմսեր (
-                              {activeWindow.scannedData.data.tickets?.length ||
-                                0}
-                              ):
-                            </span>
+                            <span>Տոմսեր ({activeTickets.length}):</span>
                             <span>
                               {ticketsTotal.toLocaleString('hy-AM')} ֏
                             </span>
@@ -1471,37 +1531,50 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
 
                 {/* Tickets */}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <Ticket className="w-5 h-5" />
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="flex items-center gap-2 font-semibold text-gray-900">
+                      <Ticket className="h-5 w-5" />
                       Տոմսեր ({activeWindow.scannedData.data.tickets.length})
                     </h4>
-                    {(() => {
-                      const usedCount =
-                        activeWindow.scannedData.data.tickets.filter(
-                          (t: any) => t.status === 'used'
-                        ).length;
-                      const total =
-                        activeWindow.scannedData.data.tickets.length;
-                      return (
-                        <div className="text-sm text-gray-600 flex items-center gap-4">
-                          <span className="flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4 text-green-600" />
-                            Մուտք գործած:{' '}
-                            <span className="font-semibold text-green-600">
-                              {usedCount}
+                    <div className="flex flex-wrap items-center gap-3">
+                      {(() => {
+                        const usedCount =
+                          activeWindow.scannedData.data.tickets.filter(
+                            (t: any) => t.status === 'used'
+                          ).length;
+                        const total =
+                          activeWindow.scannedData.data.tickets.length;
+                        return (
+                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <span className="flex items-center gap-1">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              Մուտք գործած:{' '}
+                              <span className="font-semibold text-green-600">
+                                {usedCount}
+                              </span>
                             </span>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <XCircle className="w-4 h-4 text-gray-400" />
-                            Չի մուտք գործել:{' '}
-                            <span className="font-semibold text-gray-600">
-                              {total - usedCount}
+                            <span className="flex items-center gap-1">
+                              <XCircle className="h-4 w-4 text-gray-400" />
+                              Չի մուտք գործել:{' '}
+                              <span className="font-semibold text-gray-600">
+                                {total - usedCount}
+                              </span>
                             </span>
-                          </span>
-                        </div>
-                      );
-                    })()}
+                          </div>
+                        );
+                      })()}
+                      {activeWindow.scannedData.data.tickets.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setTicketsFullscreenOpen(true)}
+                          className="flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 transition hover:bg-purple-100"
+                          title="Բոլոր տոմսերը լրիվ էկրանով"
+                        >
+                          <Maximize2 className="h-3.5 w-3.5" />
+                          Լրիվ էկրան
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {activeWindow.scannedData.data.tickets.map(
@@ -1522,6 +1595,8 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                           onScanPreOrderProducts={openScanModal}
                           onRemoveOrderItem={handleRemoveOrderItem}
                           removingOrderItemId={removingOrderItemId}
+                          onCancelTicket={handleCancelTicket}
+                          isCancelling={cancellingTicketId === Number(ticket.id)}
                         />
                       )
                     )}
@@ -1970,6 +2045,21 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           onComplete={handleScanModalComplete}
         />
       )}
+
+      {ticketsFullscreenOpen &&
+        activeWindow?.scannedData?.data?.tickets &&
+        activeWindow.scannedData.data.tickets.length > 0 && (
+          <TicketsEntryFullscreen
+            open={ticketsFullscreenOpen}
+            onClose={() => setTicketsFullscreenOpen(false)}
+            tickets={activeWindow.scannedData.data.tickets}
+            formatTime={formatTime}
+            getStatusBadge={getStatusBadge}
+            getSeatTypeLabel={getSeatTypeLabel}
+            onEntryChange={handleTicketEntryChange}
+            onScanPreOrderProducts={openScanModal}
+          />
+        )}
 
       {productModalTicketId !== null && (
         <ProductScanSaleModal

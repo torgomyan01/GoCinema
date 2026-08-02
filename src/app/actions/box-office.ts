@@ -519,6 +519,298 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
   }
 }
 
+export interface CreateBoxOfficeTicketOrderData {
+  screeningId: number;
+  seatIds: number[];
+  paymentMethod?: BoxOfficePaymentMethod;
+  amountPaid?: number;
+}
+
+/**
+ * Դրամարկղից մեկ կամ մի քանի աթոռ — մեկ Order, վճարված տոմսեր,
+ * մուտքի QR՝ ORDER-{id} (մեկ տպում)։
+ */
+export async function createBoxOfficeTicketOrder(
+  data: CreateBoxOfficeTicketOrderData
+) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const screeningId = Number(data.screeningId);
+    const seatIds = Array.from(
+      new Set(
+        (data.seatIds ?? [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      )
+    );
+
+    if (!screeningId || seatIds.length === 0) {
+      return { success: false, error: 'Ընտրեք առնվազն մեկ նստատեղ' };
+    }
+
+    await releaseExpiredReservations(screeningId);
+
+    const screening = await prisma.screening.findUnique({
+      where: { id: screeningId },
+      include: {
+        movie: { select: { title: true } },
+        hall: { select: { id: true, name: true } },
+      },
+    });
+    if (!screening) {
+      return { success: false, error: 'Ցուցադրությունը չի գտնվել' };
+    }
+
+    const seats = await prisma.seat.findMany({
+      where: { id: { in: seatIds }, hallId: screening.hallId },
+      select: { id: true, row: true, number: true, seatType: true },
+    });
+    if (seats.length !== seatIds.length) {
+      return { success: false, error: 'Որոշ նստատեղեր անվավեր են' };
+    }
+
+    const occupied = await prisma.ticket.findMany({
+      where: {
+        screeningId,
+        seatId: { in: seatIds },
+        ...occupiedTicketWhere(),
+      },
+      select: { seatId: true },
+    });
+    if (occupied.length > 0) {
+      return {
+        success: false,
+        error: 'Որոշ նստատեղեր արդեն զբաղված են, թարմացրեք և կրկին փորձեք',
+      };
+    }
+
+    const seatPrice = (seatType: string) =>
+      seatType === 'vip'
+        ? Math.round(screening.basePrice * 1.5)
+        : screening.basePrice;
+
+    const seatsWithPrice = seats.map((seat) => ({
+      ...seat,
+      price: seatPrice(seat.seatType),
+    }));
+    const grandTotal = seatsWithPrice.reduce((sum, s) => sum + s.price, 0);
+
+    const payment = resolvePayment(
+      data.paymentMethod,
+      data.amountPaid,
+      grandTotal
+    );
+    if (!payment.ok) {
+      return { success: false, error: payment.error };
+    }
+
+    const walkInUserId = await getOrCreateWalkInUser();
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // Կրկնակի ստուգում transaction-ում
+        const taken = await tx.ticket.findMany({
+          where: {
+            screeningId,
+            seatId: { in: seatIds },
+            ...occupiedTicketWhere(),
+          },
+          select: { seatId: true },
+        });
+        if (taken.length > 0) {
+          throw new Error('SEAT_TAKEN');
+        }
+
+        const order = await tx.order.create({
+          data: {
+            userId: walkInUserId,
+            totalAmount: grandTotal,
+            status: 'completed',
+            paymentMethod: payment.method,
+            amountPaid: payment.amountPaid,
+          },
+        });
+
+        const createdTickets: Array<{
+          id: number;
+          price: number;
+          seat: { row: string; number: number; seatType: string };
+        }> = [];
+
+        for (const seat of seatsWithPrice) {
+          const ticket = await tx.ticket.create({
+            data: {
+              userId: walkInUserId,
+              screeningId,
+              seatId: seat.id,
+              price: seat.price,
+              status: 'paid',
+              orderId: order.id,
+            },
+          });
+          await tx.ticket.update({
+            where: { id: ticket.id },
+            data: { qrCode: `TICKET-${ticket.id}` },
+          });
+
+          await tx.payment.create({
+            data: {
+              userId: walkInUserId,
+              ticketId: ticket.id,
+              amount: seat.price,
+              // Կանխիկի ամբողջ գումարը՝ առաջին տոմսի վրա (մանրի համար)
+              amountPaid:
+                createdTickets.length === 0
+                  ? payment.amountPaid
+                  : payment.method === 'cash'
+                    ? seat.price
+                    : seat.price,
+              method: payment.method,
+              status: 'completed',
+              transactionId: `BOXOFFICE-ORDER-${order.id}-${ticket.id}`,
+            },
+          });
+
+          createdTickets.push({
+            id: ticket.id,
+            price: seat.price,
+            seat: {
+              row: seat.row,
+              number: seat.number,
+              seatType: seat.seatType,
+            },
+          });
+        }
+
+        return {
+          orderId: order.id,
+          qrCode: `ORDER-${order.id}`,
+          tickets: createdTickets,
+          total: grandTotal,
+          paymentMethod: payment.method,
+          amountPaid: payment.amountPaid,
+          movieTitle: screening.movie.title,
+          startTime: screening.startTime,
+        };
+      },
+      { timeout: 15000 }
+    );
+
+    const seatLabels = result.tickets
+      .map((t) => `${t.seat.row}${t.seat.number}`)
+      .join(', ');
+    await createNotification({
+      type: 'box_office',
+      title: 'Դրամարկղի վաճառք (պատվեր)',
+      message: `${result.movieTitle}, տեղեր ${seatLabels} — ${formatAmd(result.total)} (${payment.method === 'card' ? 'քարտով' : 'կանխիկ'})`,
+      link: '/admin/tickets',
+    });
+
+    revalidatePath('/admin/box-office');
+    revalidatePath('/admin/tickets');
+    revalidatePath('/admin/scanner');
+    revalidatePath('/admin/notifications');
+
+    return {
+      success: true as const,
+      orderId: result.orderId,
+      qrCode: result.qrCode,
+      tickets: result.tickets,
+      total: result.total,
+      paymentMethod: result.paymentMethod,
+      amountPaid: result.amountPaid,
+      movieTitle: result.movieTitle,
+      startTime: result.startTime,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message === 'SEAT_TAKEN') {
+      return {
+        success: false as const,
+        error: 'Որոշ նստատեղեր արդեն զբաղված են, թարմացրեք և կրկին փորձեք',
+      };
+    }
+    console.error('[Create Box Office Ticket Order] Error:', error);
+    return {
+      success: false as const,
+      error: 'Տոմսեր ստեղծելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** Տպման համար՝ դրամարկղի տոմսերի պատվեր (մեկ ORDER QR) */
+export async function getBoxOfficeTicketOrderForPrint(orderId: number) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        tickets: {
+          where: { status: { not: 'cancelled' } },
+          include: {
+            seat: true,
+            screening: { include: { movie: true, hall: true } },
+            payment: true,
+          },
+          orderBy: [{ seat: { row: 'asc' } }, { seat: { number: 'asc' } }],
+        },
+      },
+    });
+
+    if (!order || order.tickets.length === 0) {
+      return { success: false, error: 'Պատվերը չի գտնվել' };
+    }
+
+    const first = order.tickets[0]!;
+    const payment =
+      order.tickets.find((t) => t.payment)?.payment ?? null;
+
+    return {
+      success: true,
+      print: {
+        orderId: order.id,
+        qrCode: `ORDER-${order.id}`,
+        total: order.totalAmount,
+        seats: order.tickets.map((t) => ({
+          row: t.seat.row,
+          number: t.seat.number,
+          seatType: t.seat.seatType,
+          price: t.price,
+        })),
+        screening: {
+          startTime:
+            typeof first.screening.startTime === 'string'
+              ? first.screening.startTime
+              : first.screening.startTime.toISOString(),
+          movie: { title: first.screening.movie.title },
+          hall: { name: first.screening.hall.name },
+        },
+        payment: payment
+          ? {
+              method: payment.method,
+              amountPaid: order.amountPaid ?? payment.amountPaid ?? null,
+            }
+          : order.paymentMethod
+            ? {
+                method: order.paymentMethod,
+                amountPaid: order.amountPaid ?? null,
+              }
+            : null,
+      },
+    };
+  } catch (error) {
+    console.error('[Get Box Office Ticket Order For Print] Error:', error);
+    return { success: false, error: 'Պատվերը բեռնելիս սխալ է տեղի ունեցել' };
+  }
+}
+
 export interface CreateBoxOfficeOrderData {
   /** Սկանավորված QR կոդեր (ոչ-պոպկորն ապրանքներ) */
   units?: string[];
@@ -872,17 +1164,47 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
             id: { not: ticketId },
             status: { not: 'cancelled' },
           },
-          select: { status: true },
+          select: { id: true, status: true, price: true },
         });
+        const remainingIds = remainingTickets.map((t) => t.id);
+        const remainingItems =
+          remainingIds.length > 0
+            ? await tx.orderItem.findMany({
+                where: {
+                  orderId: ticket.orderId,
+                  OR: [
+                    { ticketId: { in: remainingIds } },
+                    { ticketId: null },
+                  ],
+                },
+                select: { price: true, quantity: true, ticketId: true },
+              })
+            : [];
+        // Միայն մնացած տոմսերին կապված ապրանքներ (+ ընդհանուր առանց ticketId)
+        const productsTotal = remainingItems
+          .filter(
+            (item) =>
+              item.ticketId == null || remainingIds.includes(item.ticketId)
+          )
+          .reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const ticketsTotal = remainingTickets.reduce(
+          (sum, t) => sum + (t.price || 0),
+          0
+        );
         const nextOrderStatus =
           remainingTickets.length === 0
             ? 'cancelled'
-            : remainingTickets.some((t) => t.status === 'paid' || t.status === 'used')
+            : remainingTickets.some(
+                  (t) => t.status === 'paid' || t.status === 'used'
+                )
               ? 'completed'
               : 'pending';
         await tx.order.update({
           where: { id: ticket.orderId },
-          data: { status: nextOrderStatus },
+          data: {
+            status: nextOrderStatus,
+            totalAmount: ticketsTotal + productsTotal,
+          },
         });
       }
     });
@@ -898,6 +1220,96 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       link: '/admin/tickets',
     });
 
+    // Դրամարկղից վաճառված վճարված տոմս՝ ՀԴՄ վերադարձ միայն այս տոմսի գնով
+    let returnFiscal: {
+      crn: string;
+      rseq: number;
+      paymentMethod: 'cash' | 'card';
+      amount: number;
+    } | null = null;
+
+    const wasBoxOfficeSale =
+      ticket.status === 'paid' &&
+      Boolean(ticket.payment?.transactionId?.startsWith('BOXOFFICE'));
+
+    if (wasBoxOfficeSale && ticket.price > 0) {
+      const alreadyReturned = await prisma.fiscalReceipt.findFirst({
+        where: {
+          ticketId,
+          operation: 'return',
+          status: 'printed',
+        },
+        select: { id: true },
+      });
+
+      if (!alreadyReturned) {
+        const originalReceipt = await prisma.fiscalReceipt.findFirst({
+          where: {
+            operation: 'sale',
+            status: 'printed',
+            source: 'box_office',
+            crn: { not: null },
+            rseq: { not: null },
+            OR: [
+              { ticketId },
+              ...(ticket.orderId ? [{ orderId: ticket.orderId }] : []),
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            crn: true,
+            rseq: true,
+            paymentMethod: true,
+            total: true,
+            orderId: true,
+            ticketId: true,
+          },
+        });
+
+        if (originalReceipt?.crn && originalReceipt.rseq != null) {
+          // Նախորդ մասնակի վերադարձները նույն վաճառքի կտրոնից
+          const priorReturns = await prisma.fiscalReceipt.findMany({
+            where: {
+              operation: 'return',
+              status: 'printed',
+              OR: [
+                ...(originalReceipt.orderId
+                  ? [{ orderId: originalReceipt.orderId }]
+                  : []),
+                ...(originalReceipt.ticketId
+                  ? [{ ticketId: originalReceipt.ticketId }]
+                  : []),
+                { ticketId },
+              ],
+            },
+            select: { total: true },
+          });
+          const alreadyReturnedSum = priorReturns.reduce(
+            (sum, r) => sum + (r.total || 0),
+            0
+          );
+          const remainingOnReceipt = Math.max(
+            0,
+            (originalReceipt.total || 0) - alreadyReturnedSum
+          );
+
+          // Միայն այս տոմսի գինը — ոչ ամբողջ պատվերը
+          const refundAmount = Math.min(ticket.price, remainingOnReceipt);
+
+          if (refundAmount > 0) {
+            returnFiscal = {
+              crn: originalReceipt.crn,
+              rseq: originalReceipt.rseq,
+              paymentMethod:
+                originalReceipt.paymentMethod === 'card' ? 'card' : 'cash',
+              amount: refundAmount,
+            };
+          }
+        }
+      }
+    }
+
     revalidatePath('/admin/box-office');
     revalidatePath('/admin/tickets');
     revalidatePath('/admin/fiscal');
@@ -907,6 +1319,9 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
       success: true,
       seatId: ticket.seatId,
       screeningId: ticket.screeningId,
+      orderId: ticket.orderId ?? null,
+      ticketId,
+      returnFiscal,
     };
   } catch (error) {
     console.error('[Cancel Box Office Ticket] Error:', error);

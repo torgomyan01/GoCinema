@@ -286,7 +286,8 @@ model Product {
   id          Int      @id @default(autoincrement())
   name        String   @db.VarChar(255)
   description String?  @db.Text
-  price       Float
+  price       Float // վաճառքի գին
+  costPrice   Float    @default(0) // ինքնաարժեք (շահույթի հաշվարկի համար)
   image       String?  @db.VarChar(500)
   category    String   @db.VarChar(50) // snack, drink, combo
   stock       Int      @default(0) // պահեստի առկա քանակ (հանվում է դրամարկղի վաճառքից)
@@ -359,7 +360,8 @@ model OrderItem {
   ticketId    Int? // Optional: if null, product belongs to order; if set, product belongs to specific ticket
   productId   Int
   quantity    Int       @default(1)
-  price       Float // Price at time of order
+  price       Float // Վաճառքի գին պատվերի պահին
+  costPrice   Float     @default(0) // Ինքնաարժեք պատվերի պահին (շահույթի հաշվարկ)
   fulfilledAt DateTime? // մուտքի ժամանակ պահեստից հանվել է
 
   order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)

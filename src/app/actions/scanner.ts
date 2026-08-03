@@ -2030,6 +2030,7 @@ export async function addTicketProducts(data: TicketProductScanInput) {
               id: true,
               name: true,
               price: true,
+              costPrice: true,
               category: true,
               isActive: true,
             },
@@ -2061,6 +2062,7 @@ export async function addTicketProducts(data: TicketProductScanInput) {
 
         const group = unitsByProduct.get(unit.product.id) ?? {
           price: unit.product.price,
+          costPrice: unit.product.costPrice,
           name: unit.product.name,
           unitIds: [],
         };
@@ -2088,6 +2090,7 @@ export async function addTicketProducts(data: TicketProductScanInput) {
               id: true,
               name: true,
               price: true,
+              costPrice: true,
               stock: true,
               category: true,
             },
@@ -2194,6 +2197,7 @@ export async function addTicketProducts(data: TicketProductScanInput) {
             productId,
             quantity: group.unitIds.length,
             price: group.price,
+            costPrice: group.costPrice ?? 0,
             // sellNow՝ անմիջապես տրվում է; հակառակ դեպքում՝ ամրագրվում է մինչև վճարում
             fulfilledAt: sellNow ? new Date() : null,
           },
@@ -2217,6 +2221,7 @@ export async function addTicketProducts(data: TicketProductScanInput) {
             productId: sel.productId,
             quantity: qty,
             price: product.price,
+            costPrice: product.costPrice ?? 0,
             fulfilledAt: sellNow ? new Date() : null,
           },
         });

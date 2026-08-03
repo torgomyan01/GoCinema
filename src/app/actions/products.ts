@@ -25,6 +25,7 @@ export interface CreateProductData {
   name: string;
   description?: string | null;
   price: number;
+  costPrice?: number;
   image?: string | null;
   category: string;
   stock?: number;
@@ -113,6 +114,10 @@ export async function createProduct(data: CreateProductData) {
         name: data.name,
         description: data.description || null,
         price: data.price,
+        costPrice:
+          Number.isFinite(Number(data.costPrice)) && Number(data.costPrice) >= 0
+            ? Number(data.costPrice)
+            : 0,
         image: data.image || null,
         category: data.category,
         // Պաշարը կառավարվում է QR-միավորներով (restock սկան)՝ սկզբում 0
@@ -165,7 +170,13 @@ export async function updateProduct(data: UpdateProductData) {
         ...(data.description !== undefined && {
           description: data.description,
         }),
-        ...(data.price && { price: data.price }),
+        ...(data.price !== undefined &&
+          Number.isFinite(Number(data.price)) && { price: Number(data.price) }),
+        ...(data.costPrice !== undefined &&
+          Number.isFinite(Number(data.costPrice)) &&
+          Number(data.costPrice) >= 0 && {
+            costPrice: Number(data.costPrice),
+          }),
         ...(data.image !== undefined && { image: data.image }),
         ...(data.category && { category: data.category }),
         // Պաշարը (stock) չի փոխվում ձեռքով՝ կառավարվում է QR-միավորներով

@@ -355,7 +355,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
     if (selections.length > 0) {
       dbProducts = await prisma.product.findMany({
         where: { id: { in: selections.map((s) => s.productId) }, isActive: true },
-        select: { id: true, name: true, price: true, stock: true, category: true },
+        select: { id: true, name: true, price: true, costPrice: true, stock: true, category: true },
       });
       for (const sel of selections) {
         const product = dbProducts.find((p) => p.id === sel.productId);
@@ -426,6 +426,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
               productId: sel.productId,
               quantity: Math.floor(Number(sel.quantity)),
               price: product.price,
+              costPrice: product.costPrice ?? 0,
               fulfilledAt: new Date(),
             };
           }),
@@ -857,6 +858,7 @@ export async function createBoxOfficeProductOrder(
               id: true,
               name: true,
               price: true,
+              costPrice: true,
               category: true,
               isActive: true,
             },
@@ -883,6 +885,7 @@ export async function createBoxOfficeProductOrder(
         }
         const group = unitsByProduct.get(unit.product.id) ?? {
           price: unit.product.price,
+          costPrice: unit.product.costPrice,
           name: unit.product.name,
           unitIds: [],
         };
@@ -904,6 +907,7 @@ export async function createBoxOfficeProductOrder(
               id: true,
               name: true,
               price: true,
+              costPrice: true,
               stock: true,
               category: true,
             },
@@ -964,6 +968,7 @@ export async function createBoxOfficeProductOrder(
             productId,
             quantity: group.unitIds.length,
             price: group.price,
+            costPrice: group.costPrice ?? 0,
             fulfilledAt: new Date(),
           },
         });
@@ -985,6 +990,7 @@ export async function createBoxOfficeProductOrder(
             productId: sel.productId,
             quantity: qty,
             price: product.price,
+            costPrice: product.costPrice ?? 0,
             fulfilledAt: new Date(),
           },
         });
@@ -1488,6 +1494,7 @@ export async function processBoxOfficeProductReturnExchange(
                 id: true,
                 name: true,
                 price: true,
+                costPrice: true,
                 category: true,
                 isActive: true,
               },
@@ -1508,6 +1515,7 @@ export async function processBoxOfficeProductReturnExchange(
         }
         const group = unitsByProduct.get(unit.product.id) ?? {
           price: unit.product.price,
+          costPrice: unit.product.costPrice,
           name: unit.product.name,
           unitIds: [],
         };
@@ -1527,6 +1535,7 @@ export async function processBoxOfficeProductReturnExchange(
                 id: true,
                 name: true,
                 price: true,
+                costPrice: true,
                 stock: true,
                 category: true,
               },
@@ -1587,6 +1596,7 @@ export async function processBoxOfficeProductReturnExchange(
             productId,
             quantity: group.unitIds.length,
             price: group.price,
+            costPrice: group.costPrice ?? 0,
             fulfilledAt: new Date(),
           },
         });
@@ -1615,6 +1625,7 @@ export async function processBoxOfficeProductReturnExchange(
             productId: sel.productId,
             quantity: qty,
             price: product.price,
+            costPrice: product.costPrice ?? 0,
             fulfilledAt: new Date(),
           },
         });

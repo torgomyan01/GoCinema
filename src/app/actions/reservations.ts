@@ -144,12 +144,12 @@ export async function createCounterReservation(
 
     // Ընդհանուր գումար (տոմսեր + ապրանքներ)
     let totalAmount = data.seatIds.length * screening.basePrice;
-    let productList: { id: number; price: number }[] = [];
+    let productList: { id: number; price: number; costPrice: number }[] = [];
     if (data.products.length > 0) {
       const productIds = data.products.map((p) => p.productId);
       productList = await prisma.product.findMany({
         where: { id: { in: productIds }, isActive: true },
-        select: { id: true, price: true },
+        select: { id: true, price: true, costPrice: true },
       });
       data.products.forEach((op) => {
         const product = productList.find((p) => p.id === op.productId);
@@ -218,6 +218,7 @@ export async function createCounterReservation(
                   productId: p.productId,
                   quantity: p.quantity,
                   price: product?.price || 0,
+                  costPrice: product?.costPrice || 0,
                   ...(ticketId ? { ticketId } : {}),
                 };
               }),

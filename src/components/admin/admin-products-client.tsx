@@ -49,6 +49,7 @@ interface Product {
   name: string;
   description?: string | null;
   price: number;
+  costPrice: number;
   image?: string | null;
   category: string;
   stock: number;
@@ -106,6 +107,7 @@ export default function AdminProductsClient({
     name: '',
     description: '',
     price: '',
+    costPrice: '',
     image: '',
     category: 'snack',
     stock: '0',
@@ -161,6 +163,7 @@ export default function AdminProductsClient({
       name: '',
       description: '',
       price: '',
+      costPrice: '',
       image: '',
       category: 'snack',
       stock: '0',
@@ -175,6 +178,7 @@ export default function AdminProductsClient({
       name: product.name,
       description: product.description || '',
       price: product.price.toString(),
+      costPrice: (product.costPrice ?? 0).toString(),
       image: product.image || '',
       category: product.category,
       stock: product.stock.toString(),
@@ -191,6 +195,7 @@ export default function AdminProductsClient({
       name: '',
       description: '',
       price: '',
+      costPrice: '',
       image: '',
       category: 'snack',
       stock: '0',
@@ -564,49 +569,61 @@ export default function AdminProductsClient({
           </span>
         </div>
 
-        <div className="mt-auto flex items-center justify-between gap-2">
-          <span className="text-lg font-bold text-gray-900 sm:text-xl">
-            {product.price.toFixed(0)} ֏
-          </span>
-          <div className="flex shrink-0 gap-0.5 sm:gap-1">
-            <button
-              type="button"
-              onClick={() => handlePrintPriceTags([product])}
-              className="rounded-lg p-1.5 text-amber-700 transition-colors hover:bg-amber-50 sm:p-2"
-              title="Գնապիտակ (PDF)"
-            >
-              <Tag className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => openRestockModal(product)}
-              className="rounded-lg p-1.5 text-green-600 transition-colors hover:bg-green-50 sm:p-2"
-              title={
-                isQuantityOnlyProduct(product.category)
-                  ? 'Ավելացնել քանակ'
-                  : 'Ավելացնել քանակ · QR սկան'
-              }
-            >
-              <PackagePlus className="h-4 w-4" />
-            </button>
-            {!isQuantityOnlyProduct(product.category) && (
+        <div className="mt-auto">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <span className="text-lg font-bold text-gray-900 sm:text-xl">
+                {product.price.toFixed(0)} ֏
+              </span>
+              <p className="text-[11px] text-gray-500">
+                Ինքնաարժեք՝ {(product.costPrice ?? 0).toFixed(0)} ֏
+                {(product.costPrice ?? 0) > 0 && (
+                  <span className="ml-1 text-emerald-600">
+                    · շահույթ{' '}
+                    {(product.price - (product.costPrice ?? 0)).toFixed(0)} ֏
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-0.5 sm:gap-1">
               <button
                 type="button"
-                onClick={() => setUnitsTarget(product)}
-                className="rounded-lg p-1.5 text-purple-600 transition-colors hover:bg-purple-50 sm:p-2"
-                title="QR միավորներ"
+                onClick={() => handlePrintPriceTags([product])}
+                className="rounded-lg p-1.5 text-amber-700 transition-colors hover:bg-amber-50 sm:p-2"
+                title="Գնապիտակ (PDF)"
               >
-                <QrCode className="h-4 w-4" />
+                <Tag className="h-4 w-4" />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => handleOpenEditModal(product)}
-              className="rounded-lg p-1.5 text-blue-600 transition-colors hover:bg-blue-50 sm:p-2"
-              title="Խմբագրել"
-            >
-              <Edit className="h-4 w-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => openRestockModal(product)}
+                className="rounded-lg p-1.5 text-green-600 transition-colors hover:bg-green-50 sm:p-2"
+                title={
+                  isQuantityOnlyProduct(product.category)
+                    ? 'Ավելացնել քանակ'
+                    : 'Ավելացնել քանակ · QR սկան'
+                }
+              >
+                <PackagePlus className="h-4 w-4" />
+              </button>
+              {!isQuantityOnlyProduct(product.category) && (
+                <button
+                  type="button"
+                  onClick={() => setUnitsTarget(product)}
+                  className="rounded-lg p-1.5 text-purple-600 transition-colors hover:bg-purple-50 sm:p-2"
+                  title="QR միավորներ"
+                >
+                  <QrCode className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal(product)}
+                className="rounded-lg p-1.5 text-blue-600 transition-colors hover:bg-blue-50 sm:p-2"
+                title="Խմբագրել"
+              >
+                <Edit className="h-4 w-4" />
+              </button>
             <button
               type="button"
               onClick={() => handleDeleteProduct(product)}
@@ -615,6 +632,7 @@ export default function AdminProductsClient({
             >
               <Trash2 className="h-4 w-4" />
             </button>
+            </div>
           </div>
         </div>
       </div>
@@ -633,6 +651,7 @@ export default function AdminProductsClient({
           name: formData.name,
           description: formData.description || null,
           price: parseFloat(formData.price),
+          costPrice: parseFloat(formData.costPrice) || 0,
           image: formData.image || null,
           category: formData.category as string,
           stock: parseInt(formData.stock, 10) || 0,
@@ -658,6 +677,7 @@ export default function AdminProductsClient({
           name: formData.name,
           description: formData.description || null,
           price: parseFloat(formData.price),
+          costPrice: parseFloat(formData.costPrice) || 0,
           image: formData.image || null,
           category: formData.category as string,
           stock: parseInt(formData.stock, 10) || 0,
@@ -916,7 +936,7 @@ export default function AdminProductsClient({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Գին (֏) *
+                        Վաճառքի գին (֏) *
                       </label>
                       <input
                         type="number"
@@ -933,42 +953,65 @@ export default function AdminProductsClient({
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Կատեգորիա *
+                        Ինքնաարժեք (֏)
                       </label>
-                      <select
-                        value={formData.category}
+                      <input
+                        type="number"
+                        value={formData.costPrice}
                         onChange={(e) =>
                           setFormData({
                             ...formData,
-                            category: e.target.value,
+                            costPrice: e.target.value,
                           })
                         }
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        required
-                      >
-                        <option value="snack">Նախուտեստ</option>
-                        <option value="drink">Խմիչք</option>
-                        <option value="combo">Կոմբո</option>
-                        <option value="popcorn">Պոպկորն</option>
-                        <option value="iced_tea">Սառը թեյ</option>
-                        <option value="soda">Գազավորված խմիչք</option>
-                        <option value="candy">Քաղցրավենիք</option>
-                        <option value="hot_dog">Հոթ-դոգ</option>
-                        <option value="nachos">Նաչոս</option>
-                        <option value="coffee">Սրճարանային խմիչք</option>
-                        <option value="tea">Թեյ</option>
-                        <option value="juice">Հյութ</option>
-                        <option value="water">Ջուր</option>
-                        <option value="chips">Չիպս</option>
-                        <option value="chocolate">Շոկոլադ</option>
-                        <option value="ice_cream">Պաղպաղակ</option>
-                        <option value="sandwich">Սենդվիչ</option>
-                        <option value="pizza">Պիցցա</option>
-                        <option value="burger">Բուրգեր</option>
-                        <option value="salad">Աղցան</option>
-                        <option value="other">Այլ</option>
-                      </select>
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Գնումի արժեքը՝ շահույթի հաշվարկի համար
+                      </p>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Կատեգորիա *
+                    </label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          category: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      required
+                    >
+                      <option value="snack">Նախուտեստ</option>
+                      <option value="drink">Խմիչք</option>
+                      <option value="combo">Կոմբո</option>
+                      <option value="popcorn">Պոպկորն</option>
+                      <option value="iced_tea">Սառը թեյ</option>
+                      <option value="soda">Գազավորված խմիչք</option>
+                      <option value="candy">Քաղցրավենիք</option>
+                      <option value="hot_dog">Հոթ-դոգ</option>
+                      <option value="nachos">Նաչոս</option>
+                      <option value="coffee">Սրճարանային խմիչք</option>
+                      <option value="tea">Թեյ</option>
+                      <option value="juice">Հյութ</option>
+                      <option value="water">Ջուր</option>
+                      <option value="chips">Չիպս</option>
+                      <option value="chocolate">Շոկոլադ</option>
+                      <option value="ice_cream">Պաղպաղակ</option>
+                      <option value="sandwich">Սենդվիչ</option>
+                      <option value="pizza">Պիցցա</option>
+                      <option value="burger">Բուրգեր</option>
+                      <option value="salad">Աղցան</option>
+                      <option value="other">Այլ</option>
+                    </select>
                   </div>
 
                   <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">

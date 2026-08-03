@@ -120,6 +120,7 @@ export async function createOrder(data: CreateOrderData) {
               productId: p.productId,
               quantity: p.quantity,
               price: product?.price || 0,
+              costPrice: product?.costPrice || 0,
               ...(ticketId && { ticketId }),
             };
           }),
@@ -260,6 +261,7 @@ export async function updateOrderProducts(data: UpdateOrderProductsData) {
             productId: p.productId,
             quantity: p.quantity,
             price: product?.price || 0,
+            costPrice: product?.costPrice || 0,
           };
         }),
       });

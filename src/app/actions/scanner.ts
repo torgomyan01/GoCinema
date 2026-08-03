@@ -2010,7 +2010,7 @@ export async function addTicketProducts(data: TicketProductScanInput) {
     // QR միավորների վալիդացիա (խմբավորում ըստ ապրանքի)
     const unitsByProduct = new Map<
       number,
-      { price: number; name: string; unitIds: number[] }
+      { price: number; costPrice: number; name: string; unitIds: number[] }
     >();
     let productsTotal = 0;
     // Ֆիսկալ կտրոնի տողերը (միայն անմիջական վաճառքի դեպքում է ուղարկվում ՀԴՄ)

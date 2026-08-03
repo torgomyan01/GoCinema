@@ -348,6 +348,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
       id: number;
       name: string;
       price: number;
+      costPrice: number;
       stock: number;
       category: string;
     }[] = [];
@@ -845,7 +846,7 @@ export async function createBoxOfficeProductOrder(
     // QR միավորների վալիդացիա (խմբավորում ըստ ապրանքի)
     const unitsByProduct = new Map<
       number,
-      { price: number; name: string; unitIds: number[] }
+      { price: number; costPrice: number; name: string; unitIds: number[] }
     >();
     let total = 0;
 
@@ -1482,7 +1483,7 @@ export async function processBoxOfficeProductReturnExchange(
 
       const unitsByProduct = new Map<
         number,
-        { price: number; name: string; unitIds: number[] }
+        { price: number; costPrice: number; name: string; unitIds: number[] }
       >();
 
       for (const code of newUnitCodes) {

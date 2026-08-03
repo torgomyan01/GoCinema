@@ -18,6 +18,7 @@ import {
   User,
   X,
   Ban,
+  FileBarChart,
 } from 'lucide-react';
 import {
   cancelBoxOfficeTicket,
@@ -32,6 +33,7 @@ import {
 } from '@/app/actions/box-office';
 import ProductScanSaleModal from '@/components/admin/product-scan-sale-modal';
 import ProductReturnExchangeModal from '@/components/admin/product-return-exchange-modal';
+import BoxOfficeDailyReportModal from '@/components/admin/box-office-daily-report-modal';
 import PaymentPanel, {
   type PaymentMethod,
 } from '@/components/admin/box-office-payment-panel';
@@ -145,7 +147,11 @@ function dayKey(value: Date | string) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-export default function BoxOfficeClient() {
+export default function BoxOfficeClient({
+  isAdmin = false,
+}: {
+  isAdmin?: boolean;
+}) {
   const [screenings, setScreenings] = useState<ScreeningListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +179,7 @@ export default function BoxOfficeClient() {
   // Ինքնուրույն ապրանքների վաճառք (առանց տոմսի)
   const [productSaleOpen, setProductSaleOpen] = useState(false);
   const [returnExchangeOpen, setReturnExchangeOpen] = useState(false);
+  const [dailyReportOpen, setDailyReportOpen] = useState(false);
   const [isProcessingReturn, setIsProcessingReturn] = useState(false);
   const [lastReturnMessage, setLastReturnMessage] = useState<string | null>(null);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
@@ -870,6 +877,15 @@ export default function BoxOfficeClient() {
                   : 'ՀԴՄ agent…'}
             </div>
           )}
+          {isAdmin && (
+            <button
+              onClick={() => setDailyReportOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700 shadow-sm transition hover:bg-violet-100"
+            >
+              <FileBarChart className="h-4 w-4" />
+              Օրվա հաշվետվություն
+            </button>
+          )}
           <button
             onClick={openReturnExchange}
             className="flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-100"
@@ -1411,6 +1427,11 @@ export default function BoxOfficeClient() {
           subtitle="Սկանավորեք ապրանքի QR-ը, պոպկորնը՝ ձեռքով"
         />
       )}
+
+      <BoxOfficeDailyReportModal
+        open={dailyReportOpen}
+        onClose={() => setDailyReportOpen(false)}
+      />
 
       {returnExchangeOpen && (
         <ProductReturnExchangeModal

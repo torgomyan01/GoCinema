@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import AdminLayout from '@/components/admin/admin-layout';
 import BoxOfficeClient from '@/components/admin/box-office-client';
 import { authOptions } from '@/lib/auth';
-import { isStaffRole } from '@/lib/roles';
+import { isAdminRole, isStaffRole } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,7 +33,7 @@ export default async function AdminBoxOfficePage() {
 
   return (
     <AdminLayout user={adminUser}>
-      <BoxOfficeClient />
+      <BoxOfficeClient isAdmin={isAdminRole(user?.role)} />
     </AdminLayout>
   );
 }

@@ -1,9 +1,4 @@
-import {
-  Briefcase,
-  Heart,
-  PartyPopper,
-  type LucideIcon,
-} from 'lucide-react';
+import { Briefcase, Heart, PartyPopper, type LucideIcon } from 'lucide-react';
 
 export interface PackageItem {
   id: string;
@@ -66,7 +61,6 @@ export const packages: PackageItem[] = [
     features: [
       'Ամբողջ դահլիճը՝ միայն երկուսի համար',
       'Իդեալական ամուսնության առաջարկության համար',
-      'Համագործակցություն ծաղկի սրահների հետ',
       'Անհատական անակնկալների կազմակերպում',
     ],
     gradient: 'from-rose-600 via-red-600 to-orange-600',

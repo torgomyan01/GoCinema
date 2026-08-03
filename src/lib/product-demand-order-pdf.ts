@@ -43,12 +43,14 @@ function buildOrderHtml(data: ProductDemandAnalytics) {
   const rows = data.orderList
     .map(
       (item, index) => `
-      <tr>
+      <tr${item.isCritical ? ' class="critical"' : ''}>
         <td>${index + 1}</td>
-        <td>${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(item.name)}${item.isCritical ? ' <span class="badge">Սպառվում է</span>' : ''}</td>
         <td>${escapeHtml(CATEGORY_LABELS[item.category] ?? item.category)}</td>
-        <td class="num">${item.stock}</td>
-        <td class="num">${item.forecastDemand}</td>
+        <td class="num">${item.available}</td>
+        <td class="num">${item.expectedDemand}</td>
+        <td class="num">+${item.safetyStock}</td>
+        <td class="num">${item.targetStock}</td>
         <td class="num strong">${item.suggestedOrder}</td>
       </tr>`
     )
@@ -128,6 +130,18 @@ function buildOrderHtml(data: ProductDemandAnalytics) {
     }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .strong { font-weight: 700; color: #7c3aed; }
+    tr.critical { background: #fef2f2; }
+    .badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #fee2e2;
+      color: #b91c1c;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
     .note {
       margin-top: 24px;
       padding: 14px 16px;
@@ -159,20 +173,20 @@ function buildOrderHtml(data: ProductDemandAnalytics) {
 
     <div class="meta">
       <div class="meta-card">
-        <strong>Վերլուծության ժամանակահատված</strong>
-        ${escapeHtml(formatDate(data.periodStart))} — ${escapeHtml(formatDate(data.periodEnd))}
+        <strong>Վերլուծության հիմք</strong>
+        ${data.historyDays} օր պատմություն · ${data.historyTickets} տոմս
       </div>
       <div class="meta-card">
-        <strong>Հաջորդ պատվեր (չորեքշաբթի)</strong>
-        ${escapeHtml(formatDate(data.nextOrderDate))}
+        <strong>Պատվեր → ստացում</strong>
+        ${escapeHtml(formatDate(data.nextOrderDate))} → ${escapeHtml(formatDate(data.deliveryDate))}
       </div>
       <div class="meta-card">
-        <strong>Կանխատեսման գործակից</strong>
-        ${data.coefficient.toLocaleString('hy-AM')}
+        <strong>Ծածկում / պահուստ</strong>
+        ${data.coverDays} օր · +${Math.round(data.safetyBufferPct * 100)}%
       </div>
       <div class="meta-card">
-        <strong>Առաջիկա 7 օր — ցուցադրություններ / տոմսեր</strong>
-        ${data.upcomingScreenings} / ${data.upcomingTicketsSold + data.upcomingTicketsReserved}
+        <strong>Սպասվող տոմսեր (ծածկման ժամանակ)</strong>
+        ${data.coverExpectedTickets} · ${data.coverScreenings} ցուցադրություն
       </div>
     </div>
 
@@ -182,18 +196,24 @@ function buildOrderHtml(data: ProductDemandAnalytics) {
           <th>#</th>
           <th>Ապրանք</th>
           <th>Կատեգորիա</th>
-          <th class="num">Պաշար</th>
-          <th class="num">Կանխատեսում</th>
+          <th class="num">Հասանելի</th>
+          <th class="num">Սպասվող</th>
+          <th class="num">Պահուստ</th>
+          <th class="num">Թիրախ</th>
           <th class="num">Պատվիրել</th>
         </tr>
       </thead>
       <tbody>
-        ${rows || '<tr><td colspan="6">Պատվերի առաջարկներ չկան</td></tr>'}
+        ${rows || '<tr><td colspan="8">Պատվերի առաջարկներ չկան</td></tr>'}
       </tbody>
     </table>
 
     <div class="note">
-      Պատվերը ուղարկվում է չորեքշաբթի, ստացում՝ հինգշաբթի։
+      Ընդհանուր՝ <strong>${data.totals.orderUnits}</strong> միավոր ${data.totals.orderProductCount} ապրանքից
+      (${data.totals.criticalCount} կրիտիկական)։<br />
+      Պատվերը ուղարկվում է չորեքշաբթի, ստացում՝ հինգշաբթի։ Քանակը ծածկում է սպասվող
+      սպառումը մինչև հաջորդ մատակարարումը՝ +${Math.round(data.safetyBufferPct * 100)}% պահուստով,
+      հաշվի առնելով առաջիկա ֆիլմերի սպասվող տոմսերը։
       Պոպկորնը և սառը թեյը հաշվարկից բացառված են։
     </div>
   </div>

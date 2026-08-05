@@ -25,8 +25,18 @@ model User {
   telegramChatId String?   @db.VarChar(100) // Telegram chat ID for OTP delivery
   isBlocked      Boolean   @default(false) // արգելափակված է անվճար ամրագրումից (no-show-ի պատճառով)
   blockedAt      DateTime? // երբ է արգելափակվել
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+
+  // ── Բոնուսային համակարգ ──────────────────────────────────────────────────
+  bonusPoints       Int       @default(0) // ընթացիկ մնացորդ (միշտ = ledger-ի գումար)
+  bonusTier         String    @default("silver") @db.VarChar(20) // silver, gold, platinum
+  bonusVisits       Int       @default(0) // վճարված այցեր՝ մակարդակի հաշվարկի համար
+  referralCode      String?   @unique @db.VarChar(20) // սեփական հրավերի կոդ
+  referredById      Int? // ո՞վ է հրավիրել
+  welcomeBonusAt    DateTime? // welcome բոնուսը տրվել է
+  birthdayBonusYear Int? // ո՞ր տարվա ծննդյան բոնուսն է տրված
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tickets             Ticket[]
   payments            Payment[]
@@ -40,10 +50,18 @@ model User {
   expenses            Expense[]            @relation("ExpenseCreatedBy")
   packageBookings     PackageBooking[]     @relation("PackageBookingCreatedBy")
 
+  referredBy               User?              @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals                User[]             @relation("UserReferrals")
+  bonusTransactions        BonusTransaction[] @relation("BonusOwner")
+  bonusTransactionsCreated BonusTransaction[] @relation("BonusCreatedBy")
+
   @@index([email])
   @@index([phone])
   @@index([role])
   @@index([telegramChatId])
+  @@index([referralCode])
+  @@index([referredById])
+  @@index([bonusTier])
   @@map("users")
 }
 
@@ -184,14 +202,15 @@ model Ticket {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  screening      Screening       @relation(fields: [screeningId], references: [id], onDelete: Cascade)
-  seat           Seat            @relation(fields: [seatId], references: [id], onDelete: Cascade)
-  payment        Payment?
-  order          Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  orderId        Int?
-  orderItems     OrderItem[]
-  fiscalReceipts FiscalReceipt[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  screening         Screening          @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  seat              Seat               @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  payment           Payment?
+  order             Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId           Int?
+  orderItems        OrderItem[]
+  fiscalReceipts    FiscalReceipt[]
+  bonusTransactions BonusTransaction[]
 
   @@index([userId])
   @@index([screeningId])
@@ -295,8 +314,9 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  orderItems OrderItem[]
-  units      ProductUnit[]
+  orderItems   OrderItem[]
+  units        ProductUnit[]
+  bonusRewards BonusReward[]
 
   @@index([category])
   @@index([isActive])
@@ -344,10 +364,11 @@ model Order {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orderItems     OrderItem[]
-  tickets        Ticket[]
-  fiscalReceipts FiscalReceipt[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems        OrderItem[]
+  tickets           Ticket[]
+  fiscalReceipts    FiscalReceipt[]
+  bonusTransactions BonusTransaction[]
 
   @@index([userId])
   @@index([status])
@@ -566,6 +587,101 @@ model PackageBooking {
   @@index([packageType])
   @@index([createdById])
   @@map("package_bookings")
+}
+
+// ============================================
+// Բոնուսային համակարգ
+// Միավորները վաստակվում են վճարված տոմսերից և ապրանքներից,
+// ծախսվում են `BonusReward` կատալոգի պարգևների վրա։
+// `User.bonusPoints`-ը միշտ հավասար է `BonusTransaction`-ների գումարին։
+// ============================================
+
+/** Համակարգի կանոնները՝ մեկ տողով (id=1), խմբագրվում է ադմին էջից։ */
+model BonusSettings {
+  id       Int     @id @default(1)
+  isActive Boolean @default(true)
+
+  // Վաստակ. միավոր = floor(գումար / amountPerPoint × multiplier-ներ)
+  amountPerPoint    Float @default(100) // քանի՞ դրամի դիմաց 1 միավոր
+  ticketMultiplier  Float @default(1)
+  productMultiplier Float @default(1.5) // բուֆետը խրախուսելու համար
+
+  // Միանվագ բոնուսներ
+  welcomePoints         Int @default(50)
+  birthdayPoints        Int @default(100)
+  referralInviterPoints Int @default(100) // հրավիրողին
+  referralInvitedPoints Int @default(50) // հրավիրվածին
+
+  // Թույլ օրերի խթանում (0=կիրակի … 6=շաբաթ)
+  bonusWeekdays      String @default("2,3") @db.VarChar(20)
+  bonusDayMultiplier Float  @default(2)
+
+  // Մակարդակներ՝ ըստ վճարված այցերի քանակի
+  goldVisits         Int   @default(8)
+  platinumVisits     Int   @default(15)
+  goldMultiplier     Float @default(1.25)
+  platinumMultiplier Float @default(1.5)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("bonus_settings")
+}
+
+/** Պարգևների կատալոգ՝ ինչի վրա կարելի է ծախսել միավորները։ */
+model BonusReward {
+  id          Int     @id @default(autoincrement())
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  pointsCost  Int
+  kind        String  @default("product") @db.VarChar(20) // product, ticket, discount
+  productId   Int? // kind=product → որ ապրանքն է
+  // kind=discount → զեղչի գումար (֏)։ product/ticket՝ 0 = ամբողջովին անվճար
+  discountAmount Float   @default(0)
+  isActive       Boolean @default(true)
+  sortOrder      Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product      Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  transactions BonusTransaction[]
+
+  @@index([isActive])
+  @@index([productId])
+  @@map("bonus_rewards")
+}
+
+/** Միավորների շարժի մատյան (audit trail)՝ ամեն մուտք/ելք։ */
+model BonusTransaction {
+  id           Int    @id @default(autoincrement())
+  userId       Int
+  type         String @db.VarChar(30) // earn, redeem, welcome, birthday, referral_inviter, referral_invited, admin_adjust, revoke
+  points       Int // + վաստակ / − ծախս
+  balanceAfter Int
+  description  String @db.VarChar(255)
+
+  orderId     Int?
+  ticketId    Int?
+  rewardId    Int?
+  createdById Int? // ադմին/գանձապահ (ձեռքով ճշգրտում, դրամարկղում ծախս)
+
+  createdAt DateTime @default(now())
+
+  user      User         @relation("BonusOwner", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User?        @relation("BonusCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  order     Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  ticket    Ticket?      @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  reward    BonusReward? @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([orderId])
+  @@index([ticketId])
+  @@index([rewardId])
+  @@index([createdById])
+  @@map("bonus_transactions")
 }
 
 model Expense {

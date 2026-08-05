@@ -4,6 +4,7 @@ export const SITE_URL = {
   MOVIE_DETAIL: (slugOrId: string | number) => `/movies/${slugOrId}`,
   SCHEDULE: '/schedule',
   TICKETS: '/tickets',
+  BONUS: '/bonus',
   BOOKING: (screeningId: string | number) => `/booking/${screeningId}`,
   CHECKOUT: (orderId: string | number) => `/checkout/${orderId}`,
   PAYMENT: (orderId: string | number) => `/payment/${orderId}`,

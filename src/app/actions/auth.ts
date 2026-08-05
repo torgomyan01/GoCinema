@@ -5,12 +5,19 @@ import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { getServerSession } from 'next-auth';
 import { validateBirthDate } from '@/lib/birth-date';
+import {
+  applyReferralCode,
+  ensureReferralCode,
+  grantWelcomeBonus,
+} from '@/lib/bonus';
 
 export async function registerUser(formData: {
   name: string;
   password: string;
   phone: string;
   birthDate: string;
+  /** Ընկերոջ հրավերի կոդ (ոչ պարտադիր) */
+  referralCode?: string;
 }) {
   try {
     const { name, password, phone, birthDate } = formData;
@@ -87,9 +94,32 @@ export async function registerUser(formData: {
       },
     });
 
+    // Բոնուս՝ ողջույն, հրավերի կոդ և սեփական կոդի գեներացում։
+    // Ձախողումը չպետք է խանգարի գրանցմանը։
+    let bonusPoints = 0;
+    let referralError: string | null = null;
+    try {
+      bonusPoints = await grantWelcomeBonus(user.id);
+      await ensureReferralCode(user.id);
+
+      const code = formData.referralCode?.trim();
+      if (code) {
+        const referral = await applyReferralCode(prisma, user.id, code);
+        if (referral.ok) {
+          bonusPoints += referral.points;
+        } else {
+          referralError = referral.error ?? null;
+        }
+      }
+    } catch (bonusError) {
+      console.error('[Register Action] Bonus error:', bonusError);
+    }
+
     return {
       message: 'Գրանցումը հաջողությամբ ավարտվեց',
       user,
+      bonusPoints,
+      referralError,
       success: true,
     };
   } catch (error: any) {

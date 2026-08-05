@@ -22,6 +22,7 @@ import {
   ReceiptText,
   Wallet,
   PartyPopper,
+  Gift,
   LucideIcon,
 } from 'lucide-react';
 
@@ -154,6 +155,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/users',
     color: 'text-orange-600',
     bgColor: 'bg-orange-50',
+  },
+  {
+    title: 'Բոնուսային համակարգ',
+    icon: Gift,
+    href: '/admin/bonus',
+    color: 'text-violet-600',
+    bgColor: 'bg-violet-50',
   },
   {
     title: 'Հաճախակի հարցեր',

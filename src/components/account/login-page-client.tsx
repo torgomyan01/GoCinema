@@ -18,6 +18,9 @@ import {
   Clapperboard,
   Shield,
   Film,
+  Gift,
+  Coins,
+  Crown,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -27,6 +30,8 @@ import { SITE_URL } from '@/utils/consts';
 import { hasRole } from '@/lib/roles';
 import { formatDateHy, formatTimeHy } from '@/lib/format';
 import { getUserTickets } from '@/app/actions/tickets';
+import { getMyBonus, type MyBonusData } from '@/app/actions/bonus';
+import { TIER_LABELS_HY } from '@/lib/bonus-labels';
 import {
   formatSeatsLabel,
   getNextUpGroup,
@@ -82,6 +87,8 @@ export default function LoginPageClient() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [nextTickets, setNextTickets] = useState<UserTicket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [bonus, setBonus] = useState<MyBonusData | null>(null);
+  const [bonusLoading, setBonusLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl');
@@ -102,6 +109,8 @@ export default function LoginPageClient() {
 
     let cancelled = false;
     setTicketsLoading(true);
+    setBonusLoading(true);
+
     void getUserTickets(userId)
       .then((result) => {
         if (cancelled) return;
@@ -111,6 +120,17 @@ export default function LoginPageClient() {
       })
       .finally(() => {
         if (!cancelled) setTicketsLoading(false);
+      });
+
+    void getMyBonus()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success && result.data) {
+          setBonus(result.data);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBonusLoading(false);
       });
 
     return () => {
@@ -264,6 +284,70 @@ export default function LoginPageClient() {
               </div>
             </motion.div>
 
+            {/* Բոնուսներ */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.04 }}
+              className="overflow-hidden rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-600 to-indigo-600 shadow-md"
+            >
+              {bonusLoading ? (
+                <div className="flex items-center justify-center gap-2 px-5 py-6 text-sm text-violet-100">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
+                  Բոնուսները բեռնվում են...
+                </div>
+              ) : bonus?.isActive ? (
+                <Link
+                  href={SITE_URL.BONUS}
+                  className="block p-5 text-white transition hover:opacity-95 sm:p-6"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-violet-100">
+                      <Gift className="h-3.5 w-3.5" />
+                      Իմ բոնուսները
+                    </p>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">
+                      <Crown className="h-3 w-3" />
+                      {TIER_LABELS_HY[bonus.tier] ?? bonus.tier}
+                    </span>
+                  </div>
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="flex items-center gap-1.5 text-sm text-violet-100">
+                        <Coins className="h-4 w-4" />
+                        Հասանելի միավորներ
+                      </p>
+                      <p className="mt-1 text-3xl font-bold tabular-nums">
+                        {bonus.points.toLocaleString('hy-AM')}
+                      </p>
+                      <p className="mt-1 text-xs text-violet-200">
+                        {bonus.visits} այց
+                        {bonus.nextTier
+                          ? ` · մնացել է ${bonus.visitsToNextTier}՝ ${TIER_LABELS_HY[bonus.nextTier] ?? bonus.nextTier}`
+                          : ''}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-xs font-semibold">
+                      Մանրամասն
+                      <ChevronRight className="h-4 w-4" />
+                    </span>
+                  </div>
+                  {bonus.rewards.some((r) => r.affordable) && (
+                    <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-xs text-violet-50">
+                      Ունեք հասանելի պարգև — դրամարկղում ասեք ձեր հեռախոսահամարը
+                    </p>
+                  )}
+                </Link>
+              ) : (
+                <div className="px-5 py-6 text-center text-violet-100">
+                  <Gift className="mx-auto mb-2 h-7 w-7 opacity-70" />
+                  <p className="text-sm">
+                    Բոնուսային ծրագիրը ժամանակավորապես անհասանելի է
+                  </p>
+                </div>
+              )}
+            </motion.div>
+
             {/* Next ticket */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -351,6 +435,13 @@ export default function LoginPageClient() {
               >
                 <Ticket className="h-4 w-4" />
                 Իմ տոմսերը
+              </Link>
+              <Link
+                href={SITE_URL.BONUS}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-5 py-3.5 text-sm font-semibold text-violet-700 transition hover:bg-violet-100"
+              >
+                <Gift className="h-4 w-4" />
+                Բոնուսներ և պարգևներ
               </Link>
               <Link
                 href={SITE_URL.SCHEDULE}

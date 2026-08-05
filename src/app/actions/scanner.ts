@@ -10,6 +10,7 @@ import {
   isUnpaidHeldStatus,
 } from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
+import { awardBonusForSale } from '@/lib/bonus';
 import {
   isQuantityOnlyProduct,
   QUANTITY_ONLY_CATEGORIES,
@@ -1620,6 +1621,15 @@ export async function payReservationAtCounter(input: {
           paymentMethod: method,
           amountPaid,
         },
+      });
+
+      // Բոնուսային միավորներ՝ ամրագրումը վճարող օգտատիրոջը
+      await awardBonusForSale(tx, {
+        userId: order.userId,
+        ticketAmount: ticketsTotal,
+        productAmount: productsTotal,
+        orderId: order.id,
+        source: 'scanner',
       });
     });
 

@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Popcorn,
   CupSoda,
+  Gift,
 } from 'lucide-react';
 import {
   isQuantityOnlyProduct,
@@ -1020,6 +1021,11 @@ export default function BookingPageClient({
                       ? 'Ամրագրվում է...'
                       : 'Ամրագրել, վճարել մուտքի մոտ'}
                   </button>
+                  <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug text-violet-700">
+                    <Gift className="mt-0.5 h-3 w-3 shrink-0" />
+                    Բոնուսային միավորները կուտակվում են դրամարկղում վճարելուց
+                    հետո
+                  </p>
 
                   {error && (
                     <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-1.5">
@@ -1759,6 +1765,14 @@ export default function BookingPageClient({
                   <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
                     Կրկնակի չեղարկումների կամ չգալու դեպքում հաշիվը կարող է
                     արգելափակվել, և այս հնարավորությունից կզրկվեք։
+                  </p>
+                  <p className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-violet-900">
+                    <Gift className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
+                    <span>
+                      Բոնուսային միավորները <strong>չեն գրվում</strong>{' '}
+                      ամրագրելիս։ Դրանք կուտակվում են միայն դրամարկղում
+                      վճարելուց հետո՝ ձեր հաշվին։
+                    </span>
                   </p>
                 </div>
               </div>

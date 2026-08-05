@@ -15,6 +15,7 @@ import {
   MessageSquare,
   RefreshCw,
   Calendar,
+  Gift,
 } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
@@ -44,6 +45,7 @@ export default function RegisterPageClient() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>('form');
@@ -172,6 +174,7 @@ export default function RegisterPageClient() {
         phone: cleanPhone,
         password,
         birthDate,
+        referralCode: referralCode.trim() || undefined,
       });
       if (!result.success || !result.user) {
         setError(result.error || 'Գրանցումը ձախողվեց');
@@ -301,6 +304,29 @@ export default function RegisterPageClient() {
                         className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
+                  </div>
+
+                  {/* Referral code */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ընկերոջ հրավերի կոդ
+                    </label>
+                    <div className="relative">
+                      <Gift className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                      <input
+                        type="text"
+                        value={referralCode}
+                        onChange={(e) =>
+                          setReferralCode(e.target.value.toUpperCase())
+                        }
+                        maxLength={20}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="GCXXXXXX (ոչ պարտադիր)"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Կոդի դեպքում բոնուսային միավորներ ստանում եք երկուսդ
+                    </p>
                   </div>
 
                   {/* Password */}

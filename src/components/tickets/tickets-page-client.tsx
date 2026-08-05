@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Ticket as TicketIcon, AlertCircle, QrCode, CreditCard } from 'lucide-react';
+import { Ticket as TicketIcon, AlertCircle, QrCode, CreditCard, Gift } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -183,6 +183,13 @@ export default function TicketsPageClient() {
               </p>
               <p>
                 Ցույց տվեք QR կոդը դրամարկղում։ QR-ը մնում է հասանելի։
+              </p>
+              <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-2 text-violet-800">
+                <Gift className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
+                <span>
+                  Բոնուսները կուտակվում են վճարումից հետո։ Վճարելուց հետո
+                  միավորները կհայտնվեն ձեր հաշվում։
+                </span>
               </p>
             </div>
             <button

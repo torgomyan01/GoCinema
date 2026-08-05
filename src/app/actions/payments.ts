@@ -43,6 +43,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isAdminRole } from '@/lib/roles';
 import { releaseExpiredReservations } from '@/app/actions/tickets';
+import { awardBonusForSale } from '@/lib/bonus';
 
 function paymentServerLog(event: string, payload: Record<string, unknown>) {
   const log =
@@ -315,6 +316,42 @@ async function finalizeOrderAsPaid(order: {
         where: { id: order.id },
         data: { status: allConflicted ? 'failed' : 'completed' },
       });
+
+      // Բոնուսային միավորներ՝ միայն իրականում վճարված տոմսերի և ապրանքների համար
+      if (!allConflicted) {
+        const conflictedIds = new Set(
+          order.tickets
+            .filter((ticket) =>
+              conflicts.some(
+                (conflict) =>
+                  ticket.seat &&
+                  conflict.row === ticket.seat.row &&
+                  conflict.number === ticket.seat.number
+              )
+            )
+            .map((ticket) => ticket.id)
+        );
+        const ticketAmount = order.tickets
+          .filter((ticket) => !conflictedIds.has(ticket.id))
+          .reduce((sum, ticket) => sum + (ticket.price || 0), 0);
+
+        const items = await tx.orderItem.findMany({
+          where: { orderId: order.id },
+          select: { price: true, quantity: true },
+        });
+        const productAmount = items.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0
+        );
+
+        await awardBonusForSale(tx, {
+          userId: order.userId,
+          ticketAmount,
+          productAmount,
+          orderId: order.id,
+          source: 'online',
+        });
+      }
     },
     { timeout: 15000 }
   );

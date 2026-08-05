@@ -35,9 +35,6 @@ export function counterHoldUntil(screeningEnd: Date | string): Date {
   );
 }
 
-/** Անվճար (դրամարկղ) ամրագրման առավելագույն աթոռների քանակ՝ մեկ հաշվի վրա։ */
-export const MAX_FREE_RESERVED_SEATS = 4;
-
 /**
  * Օնլայն պատվերի ժամանակավոր hold ստատուս՝ «սպասում է վճարման»։
  * vPost հաստատումից հետո → `paid`։ Timeout-ից հետո → `cancelled`։

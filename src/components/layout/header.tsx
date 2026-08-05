@@ -14,6 +14,7 @@ import {
   Ticket,
   Package,
   Clapperboard,
+  Gift,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
@@ -53,6 +54,9 @@ export default function Header() {
 
   const navItems = [
     { href: SITE_URL.MOVIES, label: 'Ֆիլմեր', icon: Film },
+    ...(session?.user
+      ? [{ href: SITE_URL.BONUS, label: 'Բոնուսներ', icon: Gift }]
+      : []),
     { href: SITE_URL.SCHEDULE, label: 'Ժամանակացույց', icon: Calendar },
     { href: SITE_URL.PACKAGES, label: 'Փաթեթներ', icon: Package },
     { href: SITE_URL.TICKETS, label: 'Իմ տոմսերը', icon: Ticket },

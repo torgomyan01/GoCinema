@@ -19,6 +19,18 @@ import {
   sellSpecificProductUnits,
   UNIT_STOCK_INSUFFICIENT,
 } from '@/lib/product-units';
+import {
+  awardBonusForSale,
+  revokeBonusForOrder,
+  revokeBonusForTicket,
+} from '@/lib/bonus';
+import {
+  applyPlanToProductUnitPrice,
+  applyPlanToTicketPrice,
+  commitRedemption,
+  loadRedemptionPlan,
+  RedemptionPlan,
+} from '@/lib/bonus-redeem';
 
 const WALK_IN_PHONE = '000000000';
 const WALK_IN_NAME = 'Դրամարկղ (walk-in)';
@@ -33,6 +45,80 @@ async function requireStaff() {
     return null;
   }
   return user;
+}
+
+/**
+ * Բոնուսային պարգևի ստուգում վաճառքից առաջ։
+ * Առանց հաճախորդի՝ պարգև չի թույլատրվում։
+ */
+async function resolveBonusForSale(
+  customerId: number | null,
+  rewardId: number | null
+): Promise<{ plan: RedemptionPlan | null; error?: string }> {
+  if (!rewardId) return { plan: null };
+  if (!customerId) {
+    return { plan: null, error: 'Պարգև կիրառելու համար ընտրեք հաճախորդին' };
+  }
+  const loaded = await loadRedemptionPlan(rewardId, customerId);
+  if (!loaded.ok) return { plan: null, error: loaded.error };
+  return { plan: loaded.plan };
+}
+
+interface SaleProductLine {
+  productId: number;
+  quantity: number;
+  price: number;
+  costPrice: number;
+  category: string;
+}
+
+/**
+ * Ապրանքների տողերը վաճառքի համար։ Ապրանքային պարգևի դեպքում մեկ միավորը
+ * առանձնացվում է 0 գնով տողի մեջ՝ որպեսզի ՀԴՄ գումարը ճշգրիտ լինի։
+ */
+function buildProductLines(
+  selections: BoxOfficeProductSelection[],
+  dbProducts: Array<{
+    id: number;
+    price: number;
+    costPrice: number;
+    category: string;
+  }>,
+  plan: RedemptionPlan | null
+): { lines: SaleProductLine[]; rewardApplied: boolean } {
+  const lines: SaleProductLine[] = [];
+  let rewardApplied = false;
+
+  for (const sel of selections) {
+    const product = dbProducts.find((p) => p.id === sel.productId);
+    if (!product) continue;
+    const qty = Math.floor(Number(sel.quantity));
+    if (qty <= 0) continue;
+
+    const base = {
+      productId: product.id,
+      costPrice: product.costPrice ?? 0,
+      category: product.category,
+    };
+
+    const isFreeUnit =
+      plan &&
+      !rewardApplied &&
+      plan.kind === 'product' &&
+      plan.productId === product.id;
+
+    if (isFreeUnit) {
+      rewardApplied = true;
+      if (qty > 1) {
+        lines.push({ ...base, quantity: qty - 1, price: product.price });
+      }
+      lines.push({ ...base, quantity: 1, price: 0 });
+    } else {
+      lines.push({ ...base, quantity: qty, price: product.price });
+    }
+  }
+
+  return { lines, rewardApplied };
 }
 
 /** Ընդհանուր «դրամարկղ» օգտատեր՝ բոլոր կանխիկ վաճառքների համար */
@@ -307,6 +393,10 @@ export interface CreateBoxOfficeTicketData {
   products?: BoxOfficeProductSelection[];
   paymentMethod?: BoxOfficePaymentMethod;
   amountPaid?: number;
+  /** Բոնուսային հաճախորդ (հեռախոսով նույնացված)՝ միավորները նրան են գրվում */
+  bonusCustomerId?: number;
+  /** Կիրառվող պարգևը կատալոգից */
+  bonusRewardId?: number;
 }
 
 /** Կանխիկ վաճառք դրամարկղից՝ ստեղծում է վճարված տոմս + ապրանքներ + Payment + QR */
@@ -373,11 +463,48 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
                 : `«${product.name}» ապրանքի պաշարը բավարար չէ (առկա է ${product.stock})`,
           };
         }
-        productsTotal += product.price * qty;
       }
     }
 
-    const grandTotal = price + productsTotal;
+    // ── Բոնուս. հաճախորդի նույնացում և պարգևի կիրառում ──────────────────────
+    const bonusCustomerId = Number(data.bonusCustomerId) || null;
+    const bonusResolved = await resolveBonusForSale(
+      bonusCustomerId,
+      Number(data.bonusRewardId) || null
+    );
+    if (bonusResolved.error) {
+      return { success: false, error: bonusResolved.error };
+    }
+    const plan = bonusResolved.plan;
+
+    // Զեղչը կիրառվում է մեկ թիրախի վրա՝ տոմսի կամ ապրանքի մեկ միավորի
+    let ticketPrice = price;
+    let rewardApplied = false;
+    if (plan) {
+      const applied = applyPlanToTicketPrice(plan, price);
+      if (applied.applied) {
+        ticketPrice = applied.price;
+        rewardApplied = true;
+      }
+    }
+
+    const productLines = buildProductLines(
+      selections,
+      dbProducts,
+      rewardApplied ? null : plan
+    );
+    if (plan && !rewardApplied && !productLines.rewardApplied) {
+      return {
+        success: false,
+        error: `«${plan.rewardName}» պարգևը չի կիրառվում այս վաճառքին`,
+      };
+    }
+
+    productsTotal = productLines.lines.reduce(
+      (sum, line) => sum + line.price * line.quantity,
+      0
+    );
+    const grandTotal = ticketPrice + productsTotal;
 
     const payment = resolvePayment(
       data.paymentMethod,
@@ -396,7 +523,7 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
           userId: walkInUserId,
           screeningId,
           seatId,
-          price,
+          price: ticketPrice,
           status: 'paid',
         },
       });
@@ -409,7 +536,8 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
 
       // Ապրանքների դեպքում՝ ստեղծել Order + OrderItem-ներ, կապել տոմսին
       let soldUnitQrCodes: string[] = [];
-      if (selections.length > 0) {
+      let orderId: number | null = null;
+      if (productLines.lines.length > 0) {
         const order = await tx.order.create({
           data: {
             userId: walkInUserId,
@@ -417,38 +545,27 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
             status: 'completed',
           },
         });
+        orderId = order.id;
 
-        await tx.orderItem.createMany({
-          data: selections.map((sel) => {
-            const product = dbProducts.find((p) => p.id === sel.productId)!;
-            return {
+        // Ամեն տող առանձին՝ պարգևի անվճար միավորը իր (0 գնով) տողն ունի
+        for (const line of productLines.lines) {
+          const item = await tx.orderItem.create({
+            data: {
               orderId: order.id,
               ticketId: created.id,
-              productId: sel.productId,
-              quantity: Math.floor(Number(sel.quantity)),
-              price: product.price,
-              costPrice: product.costPrice ?? 0,
+              productId: line.productId,
+              quantity: line.quantity,
+              price: line.price,
+              costPrice: line.costPrice,
               fulfilledAt: new Date(),
-            };
-          }),
-        });
-
-        // Վաճառել ֆիզիկական միավորները (QR)՝ նշել sold, կապել պատվերի տողին
-        const createdItems = await tx.orderItem.findMany({
-          where: { orderId: order.id },
-          select: { id: true, productId: true },
-        });
-        const itemByProduct = new Map(
-          createdItems.map((i) => [i.productId, i.id])
-        );
-        for (const sel of selections) {
-          const product = dbProducts.find((p) => p.id === sel.productId)!;
+            },
+          });
           const soldCodes = await fulfillOrderItemStock(
             tx,
-            sel.productId,
-            product.category,
-            Math.floor(Number(sel.quantity)),
-            itemByProduct.get(sel.productId) ?? null
+            line.productId,
+            line.category,
+            line.quantity,
+            item.id
           );
           soldUnitQrCodes = soldUnitQrCodes.concat(soldCodes);
         }
@@ -470,6 +587,24 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
           transactionId: `BOXOFFICE-${created.id}`,
         },
       });
+
+      if (bonusCustomerId) {
+        if (plan) {
+          await commitRedemption(tx, plan, {
+            orderId,
+            ticketId: created.id,
+            cashierId: Number(staff.id),
+          });
+        }
+        await awardBonusForSale(tx, {
+          userId: bonusCustomerId,
+          ticketAmount: ticketPrice,
+          productAmount: productsTotal,
+          orderId,
+          ticketId: created.id,
+          source: 'box_office',
+        });
+      }
 
       const ticketRow = await tx.ticket.findUnique({
         where: { id: created.id },
@@ -526,6 +661,8 @@ export interface CreateBoxOfficeTicketOrderData {
   seatIds: number[];
   paymentMethod?: BoxOfficePaymentMethod;
   amountPaid?: number;
+  bonusCustomerId?: number;
+  bonusRewardId?: number;
 }
 
 /**
@@ -599,6 +736,33 @@ export async function createBoxOfficeTicketOrder(
       ...seat,
       price: seatPrice(seat.seatType),
     }));
+
+    // ── Բոնուս. զեղչը կիրառվում է ամենաթանկ տոմսի վրա ────────────────────────
+    const bonusCustomerId = Number(data.bonusCustomerId) || null;
+    const bonusResolved = await resolveBonusForSale(
+      bonusCustomerId,
+      Number(data.bonusRewardId) || null
+    );
+    if (bonusResolved.error) {
+      return { success: false as const, error: bonusResolved.error };
+    }
+    const plan = bonusResolved.plan;
+
+    if (plan) {
+      const target = seatsWithPrice.reduce(
+        (best, seat) => (seat.price > best.price ? seat : best),
+        seatsWithPrice[0]!
+      );
+      const applied = applyPlanToTicketPrice(plan, target.price);
+      if (!applied.applied) {
+        return {
+          success: false as const,
+          error: `«${plan.rewardName}» պարգևը կիրառելի չէ տոմսերի վաճառքին`,
+        };
+      }
+      target.price = applied.price;
+    }
+
     const grandTotal = seatsWithPrice.reduce((sum, s) => sum + s.price, 0);
 
     const payment = resolvePayment(
@@ -685,6 +849,22 @@ export async function createBoxOfficeTicketOrder(
               number: seat.number,
               seatType: seat.seatType,
             },
+          });
+        }
+
+        if (bonusCustomerId) {
+          if (plan) {
+            await commitRedemption(tx, plan, {
+              orderId: order.id,
+              cashierId: Number(staff.id),
+            });
+          }
+          await awardBonusForSale(tx, {
+            userId: bonusCustomerId,
+            ticketAmount: grandTotal,
+            productAmount: 0,
+            orderId: order.id,
+            source: 'box_office',
           });
         }
 
@@ -820,6 +1000,8 @@ export interface CreateBoxOfficeOrderData {
   popcorn?: BoxOfficeProductSelection[];
   paymentMethod?: BoxOfficePaymentMethod;
   amountPaid?: number;
+  bonusCustomerId?: number;
+  bonusRewardId?: number;
 }
 
 /** Ինքնուրույն ապրանքների վաճառք դրամարկղից՝ առանց տոմսի (կանխիկ, QR սկանավորմամբ) */
@@ -942,6 +1124,101 @@ export async function createBoxOfficeProductOrder(
       total += product.price * qty;
     }
 
+    // ── Բոնուս. պարգևը կիրառվում է ապրանքի մեկ միավորի վրա ──────────────────
+    const bonusCustomerId = Number(data.bonusCustomerId) || null;
+    const bonusResolved = await resolveBonusForSale(
+      bonusCustomerId,
+      Number(data.bonusRewardId) || null
+    );
+    if (bonusResolved.error) {
+      return { success: false, error: bonusResolved.error };
+    }
+    const plan = bonusResolved.plan;
+
+    /** Առանձնացված (զեղչված) միավորի տողը՝ ՀԴՄ գումարը ճշգրիտ պահելու համար */
+    let bonusLine: {
+      productId: number;
+      price: number;
+      costPrice: number;
+      unitId: number | null;
+    } | null = null;
+
+    if (plan) {
+      if (plan.kind === 'ticket') {
+        return {
+          success: false,
+          error: 'Անվճար տոմսի պարգևը կիրառելի չէ ապրանքային վաճառքին',
+        };
+      }
+
+      type Candidate = {
+        productId: number;
+        price: number;
+        costPrice: number;
+        unitId: number | null;
+      };
+      const candidates: Candidate[] = [];
+      for (const [productId, group] of unitsByProduct) {
+        for (const unitId of group.unitIds) {
+          candidates.push({
+            productId,
+            price: group.price,
+            costPrice: group.costPrice ?? 0,
+            unitId,
+          });
+        }
+      }
+      for (const sel of popcornSelections) {
+        const product = popcornProducts.find((p) => p.id === sel.productId);
+        if (!product) continue;
+        candidates.push({
+          productId: product.id,
+          price: product.price,
+          costPrice: product.costPrice ?? 0,
+          unitId: null,
+        });
+      }
+
+      const eligible =
+        plan.kind === 'product'
+          ? candidates.filter((c) => c.productId === plan.productId)
+          : candidates;
+      const target = eligible.reduce<Candidate | null>(
+        (best, item) => (!best || item.price > best.price ? item : best),
+        null
+      );
+      if (!target) {
+        return {
+          success: false,
+          error: `«${plan.rewardName}» պարգևի ապրանքը վաճառքի մեջ չկա`,
+        };
+      }
+
+      const applied = applyPlanToProductUnitPrice(
+        plan,
+        target.productId,
+        target.price
+      );
+      total -= target.price - applied.price;
+      bonusLine = {
+        productId: target.productId,
+        price: applied.price,
+        costPrice: target.costPrice,
+        unitId: target.unitId,
+      };
+
+      // Այս միավորը հանում ենք հիմնական տողերից՝ որպեսզի կրկնակի չվաճառվի
+      if (target.unitId !== null) {
+        const group = unitsByProduct.get(target.productId);
+        if (group) {
+          group.unitIds = group.unitIds.filter((id) => id !== target.unitId);
+          if (group.unitIds.length === 0) {
+            unitsByProduct.delete(target.productId);
+          }
+        }
+      }
+    }
+
     const payment = resolvePayment(data.paymentMethod, data.amountPaid, total);
     if (!payment.ok) {
       return { success: false, error: payment.error };
@@ -981,10 +1258,19 @@ export async function createBoxOfficeProductOrder(
         soldUnitQrCodes.push(...codes);
       }
 
-      // Պոպկորն՝ քանակով
+      // Պոպկորն՝ քանակով (բոնուսային միավորը հանվում է առանձին տողի)
       for (const sel of popcornSelections) {
         const product = popcornProducts.find((p) => p.id === sel.productId)!;
-        const qty = Math.floor(Number(sel.quantity));
+        let qty = Math.floor(Number(sel.quantity));
+        if (
+          bonusLine &&
+          bonusLine.unitId === null &&
+          bonusLine.productId === sel.productId
+        ) {
+          qty -= 1;
+        }
+        if (qty <= 0) continue;
+
         await tx.orderItem.create({
           data: {
             orderId: created.id,
@@ -996,6 +1282,46 @@ export async function createBoxOfficeProductOrder(
           },
         });
         await sellQuantityStock(tx, sel.productId, qty);
+      }
+
+      // Բոնուսային (զեղչված) միավորի տող
+      if (bonusLine) {
+        const item = await tx.orderItem.create({
+          data: {
+            orderId: created.id,
+            productId: bonusLine.productId,
+            quantity: 1,
+            price: bonusLine.price,
+            costPrice: bonusLine.costPrice,
+            fulfilledAt: new Date(),
+          },
+        });
+        if (bonusLine.unitId !== null) {
+          const codes = await sellSpecificProductUnits(
+            tx,
+            [bonusLine.unitId],
+            item.id
+          );
+          soldUnitQrCodes.push(...codes);
+        } else {
+          await sellQuantityStock(tx, bonusLine.productId, 1);
+        }
+      }
+
+      if (bonusCustomerId) {
+        if (plan) {
+          await commitRedemption(tx, plan, {
+            orderId: created.id,
+            cashierId: Number(staff.id),
+          });
+        }
+        await awardBonusForSale(tx, {
+          userId: bonusCustomerId,
+          ticketAmount: 0,
+          productAmount: total,
+          orderId: created.id,
+          source: 'box_office',
+        });
       }
 
       const orderRow = await tx.order.findUnique({
@@ -1213,6 +1539,17 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
             totalAmount: ticketsTotal + productsTotal,
           },
         });
+      }
+
+      // Բոնուս՝ այս վաճառքի համար տրված միավորները հետ վերցնել
+      await revokeBonusForTicket(tx, ticketId, Number(staff.id));
+      if (ticket.orderId) {
+        const orderFullyCancelled = await tx.ticket.count({
+          where: { orderId: ticket.orderId, status: { not: 'cancelled' } },
+        });
+        if (orderFullyCancelled === 0) {
+          await revokeBonusForOrder(tx, ticket.orderId, Number(staff.id));
+        }
       }
     });
 
@@ -1476,6 +1813,11 @@ export async function processBoxOfficeProductReturnExchange(
       refundAmount = returned.refundAmount;
       returnedProductName = returned.productName;
       originalOrderId = returned.orderId;
+
+      // Վերադարձված ապրանքի համար տրված բոնուսը հետ վերցնել
+      if (originalOrderId) {
+        await revokeBonusForOrder(tx, originalOrderId, Number(staff.id));
+      }
 
       if (data.mode === 'refund') {
         return;

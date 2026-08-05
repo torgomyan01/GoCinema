@@ -8,12 +8,10 @@ import { Prisma } from '@prisma/client';
 import {
   occupiedTicketWhere,
   COUNTER_PAYMENT_METHOD,
-  MAX_FREE_RESERVED_SEATS,
   counterHoldUntil,
   AWAITING_PAYMENT_STATUS,
   isActivePaymentHold,
 } from '@/lib/reservation';
-import { isAdminRole } from '@/lib/roles';
 import { releaseExpiredReservations } from './tickets';
 import { createNotification, formatAmd } from '@/lib/notifications';
 
@@ -25,26 +23,6 @@ export interface CreateCounterReservationData {
     quantity: number;
     seatId?: number;
   }>;
-}
-
-/**
- * Քանի՞ չվճարված դրամարկղ-ամրագրված աթոռ ունի օգտատերը։
- * Օգտագործվում է 4-աթոռ սահմանաչափը ստուգելու համար։
- */
-export async function getActiveReservationCount(userId: number) {
-  try {
-    const count = await prisma.ticket.count({
-      where: {
-        userId,
-        status: 'reserved',
-        order: { is: { paymentMethod: COUNTER_PAYMENT_METHOD } },
-      },
-    });
-    return { success: true, count };
-  } catch (error) {
-    console.error('[Get Active Reservation Count] Error:', error);
-    return { success: false, count: 0 };
-  }
 }
 
 /**
@@ -91,25 +69,6 @@ export async function createCounterReservation(
 
     // Legacy hook է. այլևս ավտոմատ ամրագրում չի չեղարկում։
     await releaseExpiredReservations(data.screeningId);
-
-    // 4-աթոռ սահմանաչափ՝ միայն սովորական օգտատերերի համար։
-    // Ադմինը կարող է անսահմանափակ ամրագրել (վճարում մուտքի մոտ)։
-    const sessionRole = (session.user as { role?: string | null }).role;
-    const isAdmin = isAdminRole(sessionRole);
-    if (!isAdmin) {
-      const { count: activeCount } = await getActiveReservationCount(userId);
-      if (activeCount + data.seatIds.length > MAX_FREE_RESERVED_SEATS) {
-        const remaining = Math.max(0, MAX_FREE_RESERVED_SEATS - activeCount);
-        return {
-          success: false,
-          limitReached: true,
-          error:
-            remaining > 0
-              ? `Կարող եք անվճար ամրագրել առավելագույնը ${MAX_FREE_RESERVED_SEATS} աթոռ։ Մնացել է ${remaining} տեղ։`
-              : `Դուք արդեն ունեք ${activeCount} ակտիվ ամրագրում։ Անվճար ամրագրման սահմանաչափը ${MAX_FREE_RESERVED_SEATS} աթոռ է. վճարեք կամ սպասեք ցուցադրությանը։`,
-        };
-      }
-    }
 
     const screening = await prisma.screening.findUnique({
       where: { id: data.screeningId },
@@ -336,24 +295,6 @@ export async function convertAwaitingPaymentOrderToCounter(orderId: number) {
         error:
           'Վճարման ժամանակը լրացել է կամ տոմսեր չկան փոխարկման համար։ Ընտրեք նոր աթոռներ։',
       };
-    }
-
-    // 4-աթոռ սահմանաչափ՝ միայն սովորական օգտատերերի համար։
-    // Ադմինը կարող է անսահմանափակ ամրագրել։
-    const sessionRole = (session.user as { role?: string | null }).role;
-    if (!isAdminRole(sessionRole)) {
-      const { count: activeCount } = await getActiveReservationCount(userId);
-      if (activeCount + awaiting.length > MAX_FREE_RESERVED_SEATS) {
-        const remaining = Math.max(0, MAX_FREE_RESERVED_SEATS - activeCount);
-        return {
-          success: false,
-          limitReached: true,
-          error:
-            remaining > 0
-              ? `Կարող եք անվճար ամրագրել առավելագույնը ${MAX_FREE_RESERVED_SEATS} աթոռ։ Մնացել է ${remaining} տեղ։`
-              : `Անվճար ամրագրման սահմանը լրացել է (${MAX_FREE_RESERVED_SEATS} աթոռ)։`,
-        };
-      }
     }
 
     const screeningEnd =

@@ -608,9 +608,9 @@ model BonusSettings {
 
   // Միանվագ բոնուսներ
   welcomePoints         Int @default(50)
-  birthdayPoints        Int @default(100)
-  referralInviterPoints Int @default(100) // հրավիրողին
-  referralInvitedPoints Int @default(50) // հրավիրվածին
+  birthdayPoints        Int @default(25)
+  referralInviterPoints Int @default(25) // հրավիրողին
+  referralInvitedPoints Int @default(20) // հրավիրվածին
 
   // Թույլ օրերի խթանում (0=կիրակի … 6=շաբաթ)
   bonusWeekdays      String @default("2,3") @db.VarChar(20)

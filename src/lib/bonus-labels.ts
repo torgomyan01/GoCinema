@@ -18,7 +18,7 @@ export const BONUS_TYPE_LABELS_HY: Record<string, string> = {
   welcome: 'Ողջույնի բոնուս',
   birthday: 'Ծննդյան բոնուս',
   referral_inviter: 'Հրավիրված ընկեր',
-  referral_invited: 'Հրավերի կոդ',
+  referral_invited: 'Հրավերի հղում',
   admin_adjust: 'Ադմինի ճշգրտում',
   revoke: 'Հետ վերցված (վերադարձ)',
 };

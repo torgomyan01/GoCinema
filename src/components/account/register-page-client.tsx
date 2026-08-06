@@ -18,6 +18,7 @@ import {
   Gift,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { SITE_URL } from '@/utils/consts';
 import { registerUser } from '@/app/actions/auth';
 import {
@@ -36,6 +37,7 @@ const SMS_VERIFICATION_ENABLED =
   process.env.NEXT_PUBLIC_SMS_VERIFICATION_ENABLED === 'true';
 
 export default function RegisterPageClient() {
+  const searchParams = useSearchParams();
   // ── Form state ─────────────────────────────────────────────────────────────
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -46,6 +48,7 @@ export default function RegisterPageClient() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [referralCode, setReferralCode] = useState('');
+  const [referralFromLink, setReferralFromLink] = useState(false);
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>('form');
@@ -63,6 +66,14 @@ export default function RegisterPageClient() {
     const t = setTimeout(() => setOtpResendCooldown((v) => v - 1), 1000);
     return () => clearTimeout(t);
   }, [otpResendCooldown]);
+
+  // ── Հրավերի հղում՝ /register?ref=GCXXXXXX ─────────────────────────────────
+  useEffect(() => {
+    const ref = (searchParams.get('ref') ?? '').trim().toUpperCase();
+    if (!ref) return;
+    setReferralCode(ref);
+    setReferralFromLink(true);
+  }, [searchParams]);
 
   // ── OTP handlers ───────────────────────────────────────────────────────────
   const handleOtpChange = (index: number, value: string) => {
@@ -306,27 +317,45 @@ export default function RegisterPageClient() {
                     </div>
                   </div>
 
-                  {/* Referral code */}
+                  {/* Referral — հղումից կամ ձեռքով */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Ընկերոջ հրավերի կոդ
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      {referralFromLink
+                        ? 'Հրավերի կոդ (կիրառված է հղումից)'
+                        : 'Ընկերոջ հրավերի կոդ'}
                     </label>
-                    <div className="relative">
-                      <Gift className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <input
-                        type="text"
-                        value={referralCode}
-                        onChange={(e) =>
-                          setReferralCode(e.target.value.toUpperCase())
-                        }
-                        maxLength={20}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        placeholder="GCXXXXXX (ոչ պարտադիր)"
-                      />
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Կոդի դեպքում բոնուսային միավորներ ստանում եք երկուսդ
-                    </p>
+                    {referralFromLink ? (
+                      <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <Gift className="h-5 w-5 shrink-0 text-emerald-600" />
+                        <div className="min-w-0">
+                          <p className="font-semibold tracking-wider text-emerald-800">
+                            {referralCode}
+                          </p>
+                          <p className="text-xs text-emerald-700/80">
+                            Գրանցվելուց երկուսդ էլ կստանաք բոնուս միավորներ
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <Gift className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            value={referralCode}
+                            onChange={(e) =>
+                              setReferralCode(e.target.value.toUpperCase())
+                            }
+                            maxLength={20}
+                            className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            placeholder="GCXXXXXX (ոչ պարտադիր)"
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Կամ գրանցվեք ընկերոջ հղումով՝ ավտոմատ կիրառման համար
+                        </p>
+                      </>
+                    )}
                   </div>
 
                   {/* Password */}

@@ -1551,7 +1551,7 @@ export async function cancelBoxOfficeTicket(ticketId: number) {
           await revokeBonusForOrder(tx, ticket.orderId, Number(staff.id));
         }
       }
-    });
+    }, { timeout: 15000 });
 
     const cancelSeatLabel = ticket.seat
       ? `${ticket.seat.row}${ticket.seat.number}`

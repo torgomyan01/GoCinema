@@ -15,26 +15,39 @@ import {
   Package,
   Clapperboard,
   Gift,
+  Coins,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { SITE_URL } from '@/utils/consts';
 import { hasRole } from '@/lib/roles';
+import { getMyBonusSummary } from '@/app/actions/bonus';
+import { TIER_LABELS_HY } from '@/lib/bonus-labels';
 import Image from 'next/image';
 import clsx from 'clsx';
 
 export default function Header() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [bonusPoints, setBonusPoints] = useState<number | null>(null);
+  const [bonusTier, setBonusTier] = useState<string | null>(null);
   const pathname = usePathname();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const user = session?.user as any;
-  const userName = user?.name || 'Հաշիվ';
+  const user = session?.user as { name?: string | null; role?: string } | undefined;
+  const userName = user?.name?.trim() || '';
+  const userInitials = (() => {
+    if (!userName) return '';
+    const parts = userName.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase();
+    }
+    return userName.slice(0, 2).toUpperCase();
+  })();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -43,6 +56,25 @@ export default function Header() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !session?.user) {
+      setBonusPoints(null);
+      setBonusTier(null);
+      return;
+    }
+
+    let cancelled = false;
+    void getMyBonusSummary().then((result) => {
+      if (cancelled || !result?.success || !result.isActive) return;
+      setBonusPoints(result.points);
+      setBonusTier(result.tier);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session, pathname]);
 
   // Header should have dark background (white bg) if:
   // 1. Not on home page, OR
@@ -64,6 +96,68 @@ export default function Header() {
       ? [{ href: SITE_URL.PRODUCER, label: 'Իմ ֆիլմերը', icon: Clapperboard }]
       : []),
   ];
+
+  const renderAccountChip = (compact = false) => {
+    if (!session?.user) {
+      return (
+        <Link
+          href={SITE_URL.ACCOUNT}
+          className={clsx(
+            'inline-flex items-center gap-1.5 rounded-lg font-medium transition-all',
+            compact ? 'px-3 py-1.5 text-sm' : 'px-4 py-2',
+            shouldHaveDarkBg
+              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:shadow-lg'
+              : 'bg-white/15 backdrop-blur-md text-white border border-white/20 hover:bg-white/20'
+          )}
+        >
+          <User className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
+          {compact ? 'Մուտք' : <span className="hidden lg:inline">Հաշիվ</span>}
+        </Link>
+      );
+    }
+
+    return (
+      <Link
+        href={SITE_URL.ACCOUNT}
+        onClick={() => setIsMobileMenuOpen(false)}
+        title={userName || 'Հաշիվ'}
+        className={clsx(
+          'inline-flex items-center overflow-hidden rounded-full font-semibold transition-all',
+          shouldHaveDarkBg
+            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-sm hover:shadow-md'
+            : 'bg-white/15 text-white ring-1 ring-white/25 backdrop-blur-md hover:bg-white/25'
+        )}
+      >
+        <span
+          className={clsx(
+            'inline-flex items-center justify-center font-bold tracking-wide',
+            compact ? 'h-8 min-w-8 px-2 text-xs' : 'h-9 min-w-9 px-2.5 text-sm'
+          )}
+        >
+          {userInitials || <User className={compact ? 'h-4 w-4' : 'h-5 w-5'} />}
+        </span>
+        {bonusPoints !== null && (
+          <span
+            className={clsx(
+              'inline-flex items-center gap-1 border-l tabular-nums mr-1 rounded-[0_20px_20px_0]',
+              compact ? 'gap-0.5 px-2 py-1 text-xs' : 'gap-1 px-2.5 py-1.5 text-sm',
+              shouldHaveDarkBg
+                ? 'border-white/25 bg-black/10'
+                : 'border-white/20 bg-white/10'
+            )}
+            title={
+              bonusTier
+                ? `${TIER_LABELS_HY[bonusTier] ?? bonusTier} · Բոնուսներ`
+                : 'Բոնուսներ'
+            }
+          >
+            <Coins className={compact ? 'h-3 w-3 shrink-0' : 'h-3.5 w-3.5 shrink-0'} />
+            {bonusPoints.toLocaleString('hy-AM')}
+          </span>
+        )}
+      </Link>
+    );
+  };
 
   return (
     <header
@@ -114,38 +208,12 @@ export default function Header() {
               </Link>
             ))}
 
-            <Link
-              href={SITE_URL.ACCOUNT}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                shouldHaveDarkBg
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:shadow-lg'
-                  : 'bg-white/10 backdrop-blur-md text-white border border-white/20 hover:bg-white/20'
-              }`}
-            >
-              <User className="w-5 h-5" />
-              <span className="hidden lg:inline">
-                {session?.user ? userName : 'Հաշիվ'}
-              </span>
-            </Link>
+            {renderAccountChip()}
           </div>
 
-          {/* Mobile: Account button + Menu toggle */}
+          {/* Mobile: Account + bonus chip + Menu toggle */}
           <div className="flex items-center gap-2 md:hidden">
-            <Link
-              href={SITE_URL.ACCOUNT}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                shouldHaveDarkBg
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                  : 'bg-white/15 backdrop-blur-md text-white border border-white/20'
-              }`}
-            >
-              <User className="w-4 h-4" />
-              {session?.user ? (
-                <span className="max-w-[80px] truncate">{userName}</span>
-              ) : (
-                'Մուտք'
-              )}
-            </Link>
+            {renderAccountChip(true)}
 
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -203,6 +271,36 @@ export default function Header() {
                         </button>
                       </div>
                     </div>
+
+                    {/* Bonus summary in mobile drawer */}
+                    {bonusPoints !== null && (
+                      <div className="px-6 pt-4">
+                        <Link
+                          href={SITE_URL.BONUS}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 px-4 py-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="rounded-xl bg-amber-100 p-2.5">
+                              <Coins className="h-5 w-5 text-amber-700" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-amber-700/80">
+                                Բոնուս միավորներ
+                              </p>
+                              <p className="text-lg font-bold tabular-nums text-amber-900">
+                                {bonusPoints.toLocaleString('hy-AM')}
+                              </p>
+                            </div>
+                          </div>
+                          {bonusTier && (
+                            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                              {TIER_LABELS_HY[bonusTier] ?? bonusTier}
+                            </span>
+                          )}
+                        </Link>
+                      </div>
+                    )}
 
                     {/* Menu Items */}
                     <div className="p-6 space-y-2">

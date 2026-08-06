@@ -13,6 +13,8 @@ import {
   Gift,
   Loader2,
   CalendarDays,
+  Link2,
+  Share2,
   Ticket,
   TrendingUp,
   Users,
@@ -21,7 +23,6 @@ import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
 import {
   getMyBonus,
-  redeemReferralCode,
   type MyBonusData,
 } from '@/app/actions/bonus';
 import { TIER_LABELS_HY } from '@/lib/bonus-labels';
@@ -72,10 +73,13 @@ export default function BonusPageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [code, setCode] = useState('');
-  const [codeMessage, setCodeMessage] = useState<string | null>(null);
-  const [codeOk, setCodeOk] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+
+  const referralLink = useMemo(() => {
+    if (!data?.referralCode) return '';
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}${SITE_URL.REGISTER}?ref=${encodeURIComponent(data.referralCode)}`;
+  }, [data?.referralCode]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,27 +103,29 @@ export default function BonusPageClient() {
     }
   }, [status, session, router, load]);
 
-  const copyCode = async () => {
-    if (!data?.referralCode) return;
-    await navigator.clipboard.writeText(data.referralCode);
+  const copyLink = async () => {
+    if (!referralLink) return;
+    await navigator.clipboard.writeText(referralLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const submitCode = async () => {
-    setSubmitting(true);
-    setCodeMessage(null);
-    const result = await redeemReferralCode(code);
-    setSubmitting(false);
-    if (!result.success) {
-      setCodeOk(false);
-      setCodeMessage(result.error ?? 'Կոդը վավեր չէ');
-      return;
+  const shareLink = async () => {
+    if (!referralLink || !data) return;
+    const text = `Գրանցվիր GoCinema-ում իմ հղումով և ստացիր +${data.referralInvitedPoints} բոնուս միավոր 🍿`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'GoCinema հրավեր',
+          text,
+          url: referralLink,
+        });
+        return;
+      } catch {
+        // օգտատերը չեղարկեց share-ը
+      }
     }
-    setCodeOk(true);
-    setCodeMessage(result.message ?? 'Կոդն ընդունված է');
-    setCode('');
-    void load();
+    await copyLink();
   };
 
   const tierProgress = useMemo(() => {
@@ -397,70 +403,56 @@ export default function BonusPageClient() {
             <div>
               <h2 className="text-lg font-bold text-white">Հրավիրեք ընկերների</h2>
               <p className="text-sm text-white/50">
-                Դուք՝ +{data.referralInviterPoints} · ընկերը՝ +
+                Ուղարկեք հղումը · դուք՝ +{data.referralInviterPoints} · ընկերը՝ +
                 {data.referralInvitedPoints} միավոր
               </p>
             </div>
           </div>
         </div>
 
-        <div className="space-y-5 px-6 py-5 sm:px-8">
-          {data.referralCode && (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex-1 rounded-2xl border border-dashed border-violet-400/40 bg-violet-500/10 px-4 py-3 text-center">
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-300/70">
-                  Ձեր կոդը
+        <div className="space-y-4 px-6 py-5 sm:px-8">
+          {referralLink ? (
+            <>
+              <div className="rounded-2xl border border-dashed border-violet-400/40 bg-violet-500/10 px-4 py-3">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-300/70">
+                  <Link2 className="h-3 w-3" />
+                  Ձեր հրավերի հղումը
                 </p>
-                <code className="text-2xl font-bold tracking-[0.2em] text-white">
-                  {data.referralCode}
-                </code>
+                <p className="break-all text-sm font-medium text-white/90">
+                  {referralLink}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={copyCode}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-violet-800 transition hover:bg-violet-50"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-                {copied ? 'Պատճենված է' : 'Պատճենել'}
-              </button>
-              <p className="text-center text-sm text-white/45 sm:text-left">
-                {data.referralCount} հրավիրված
-              </p>
-            </div>
-          )}
 
-          <div>
-            <p className="mb-2 text-sm text-white/60">Ունե՞ք ընկերոջ կոդ</p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="GCXXXXXX"
-                className="flex-1 rounded-2xl border border-white/15 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-              />
-              <button
-                type="button"
-                onClick={submitCode}
-                disabled={submitting || !code.trim()}
-                className="rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
-              >
-                {submitting ? '…' : 'Կիրառել'}
-              </button>
-            </div>
-            {codeMessage && (
-              <p
-                className={`mt-2 text-sm ${
-                  codeOk ? 'text-emerald-300' : 'text-rose-300'
-                }`}
-              >
-                {codeMessage}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => void shareLink()}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Ուղարկել ընկերոջը
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyLink()}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-violet-800 transition hover:bg-violet-50"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                  {copied ? 'Պատճենված է' : 'Պատճենել հղումը'}
+                </button>
+              </div>
+
+              <p className="text-center text-sm text-white/45">
+                {data.referralCount} հրավիրված · ընկերը գրանցվում է ձեր հղումով
               </p>
-            )}
-          </div>
+            </>
+          ) : (
+            <p className="text-sm text-white/50">Հրավերի հղումը դեռ պատրաստ չէ</p>
+          )}
         </div>
       </motion.section>
 

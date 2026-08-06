@@ -219,6 +219,36 @@ export async function getMyBonus(): Promise<{
   }
 }
 
+/** Header-ի համար՝ միայն միավորներ + մակարդակ (առանց rewards/history)։ */
+export async function getMyBonusSummary(): Promise<{
+  success: boolean;
+  points: number;
+  tier: string;
+  isActive: boolean;
+} | null> {
+  const sessionUser = await requireUser();
+  if (!sessionUser) return null;
+
+  try {
+    const settings = await getBonusSettings();
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { bonusPoints: true, bonusTier: true },
+    });
+    if (!user) return null;
+
+    return {
+      success: true,
+      points: user.bonusPoints,
+      tier: user.bonusTier,
+      isActive: settings.isActive,
+    };
+  } catch (error) {
+    console.error('[Get My Bonus Summary] Error:', error);
+    return null;
+  }
+}
+
 /** Հրավերի կոդի կիրառում՝ արդեն գրանցված օգտատիրոջ կողմից։ */
 export async function redeemReferralCode(code: string) {
   const sessionUser = await requireUser();

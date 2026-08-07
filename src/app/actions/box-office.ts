@@ -967,10 +967,7 @@ export async function getBoxOfficeTicketOrderForPrint(orderId: number) {
           price: t.price,
         })),
         screening: {
-          startTime:
-            typeof first.screening.startTime === 'string'
-              ? first.screening.startTime
-              : first.screening.startTime.toISOString(),
+          startTime: first.screening.startTime,
           movie: { title: first.screening.movie.title },
           hall: { name: first.screening.hall.name },
         },

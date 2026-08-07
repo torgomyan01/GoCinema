@@ -57,6 +57,7 @@ import {
   birthDateInputMax,
   birthDateInputMin,
 } from '@/lib/birth-date';
+import { formatDateHy, formatDateKey, formatTimeHy } from '@/lib/format';
 
 interface ScreeningListItem {
   id: number;
@@ -140,23 +141,15 @@ function formatHoldCountdown(ms: number | null | undefined): string {
 }
 
 function formatDay(value: Date | string) {
-  return new Date(value).toLocaleDateString('hy-AM', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-  });
+  return formatDateHy(value, { weekday: true, month: 'short' });
 }
 
 function formatTime(value: Date | string) {
-  return new Date(value).toLocaleTimeString('hy-AM', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatTimeHy(value);
 }
 
 function dayKey(value: Date | string) {
-  const d = new Date(value);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  return formatDateKey(value);
 }
 
 export default function BoxOfficeClient({

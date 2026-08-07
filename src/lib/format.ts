@@ -4,6 +4,9 @@ export function formatPrice(value: number): string {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
+/** Կինոյի պաշտոնական ժամային գոտի — չի կախված սերվերի/OS TZ-ից */
+export const CINEMA_TIMEZONE = 'Asia/Yerevan';
+
 const ARMENIAN_MONTHS = [
   'հունվար',
   'փետրվար',
@@ -44,8 +47,55 @@ const ARMENIAN_WEEKDAYS = [
   'շաբաթ',
 ] as const;
 
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
 function parseDate(value: Date | string): Date {
   return typeof value === 'string' ? new Date(value) : value;
+}
+
+/** Երևանի օր/ժամ — միասնական բոլոր սերվերների/OS-ների համար */
+function yerevanParts(value: Date | string): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  weekday: number;
+} | null {
+  const d = parseDate(value);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CINEMA_TIMEZONE,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+    weekday: 'short',
+  }).formatToParts(d);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+
+  const hourRaw = Number(get('hour'));
+  return {
+    year: Number(get('year')),
+    month: Number(get('month')),
+    day: Number(get('day')),
+    hour: hourRaw === 24 ? 0 : hourRaw,
+    minute: Number(get('minute')),
+    weekday: WEEKDAY_INDEX[get('weekday')] ?? 0,
+  };
 }
 
 export type FormatDateHyOptions = {
@@ -54,36 +104,36 @@ export type FormatDateHyOptions = {
   month?: 'long' | 'short';
 };
 
-/** Հայերեն ամսաթիվ — չի կախված սարքի locale-ից (Windows/Russian fallback չկա) */
+/** Հայերեն ամսաթիվ — Երևանի ժամային գոտիով */
 export function formatDateHy(
   value: Date | string,
   options: FormatDateHyOptions = {}
 ): string {
-  const d = parseDate(value);
-  if (Number.isNaN(d.getTime())) return '';
+  const parts = yerevanParts(value);
+  if (!parts) return '';
 
   const { weekday = false, year = false, month = 'long' } = options;
   const monthName =
     month === 'short'
-      ? ARMENIAN_MONTHS_SHORT[d.getMonth()]
-      : ARMENIAN_MONTHS[d.getMonth()];
+      ? ARMENIAN_MONTHS_SHORT[parts.month - 1]
+      : ARMENIAN_MONTHS[parts.month - 1];
   const datePart = year
-    ? `${d.getDate()} ${monthName} ${d.getFullYear()}`
-    : `${d.getDate()} ${monthName}`;
+    ? `${parts.day} ${monthName} ${parts.year}`
+    : `${parts.day} ${monthName}`;
 
   if (weekday) {
-    return `${ARMENIAN_WEEKDAYS[d.getDay()]}, ${datePart}`;
+    return `${ARMENIAN_WEEKDAYS[parts.weekday]}, ${datePart}`;
   }
 
   return datePart;
 }
 
-/** Հայերեն ժամ — 24ժ ֆորմատ (օր. 19:30) */
+/** Հայերեն ժամ — 24ժ, Երևանի ժամային գոտիով (օր. 19:30) */
 export function formatTimeHy(value: Date | string): string {
-  const d = parseDate(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const parts = yerevanParts(value);
+  if (!parts) return '';
+  const hours = String(parts.hour).padStart(2, '0');
+  const minutes = String(parts.minute).padStart(2, '0');
   return `${hours}:${minutes}`;
 }
 
@@ -95,19 +145,18 @@ export function formatDateTimeHy(
   return `${formatDateHy(value, options)} ${formatTimeHy(value)}`;
 }
 
-/** Օրվա բանալի խմբավորման համար (YYYY-MM-DD) */
+/** Օրվա բանալի խմբավորման համար (YYYY-MM-DD), Երևանի օրով */
 export function formatDateKey(value: Date | string): string {
-  const d = parseDate(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const parts = yerevanParts(value);
+  if (!parts) return '';
+  const m = String(parts.month).padStart(2, '0');
+  const day = String(parts.day).padStart(2, '0');
+  return `${parts.year}-${m}-${day}`;
 }
 
 /** Շաբաթվա օրվա հայերեն անուն */
 export function formatWeekdayHy(value: Date | string): string {
-  const d = parseDate(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return ARMENIAN_WEEKDAYS[d.getDay()];
+  const parts = yerevanParts(value);
+  if (!parts) return '';
+  return ARMENIAN_WEEKDAYS[parts.weekday];
 }

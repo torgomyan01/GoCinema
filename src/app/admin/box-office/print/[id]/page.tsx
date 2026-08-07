@@ -45,18 +45,13 @@ export default async function BoxOfficePrintPage({
     0
   );
 
-  const startTime =
-    typeof t.screening.startTime === 'string'
-      ? t.screening.startTime
-      : t.screening.startTime.toISOString();
-
   return (
     <TicketPrintClient
       ticket={{
         id: t.id,
         price: t.price,
         qrCode: t.qrCode || `TICKET-${t.id}`,
-        formattedStartTime: formatDateTimeHy(startTime),
+        formattedStartTime: formatDateTimeHy(t.screening.startTime),
         seat: {
           row: t.seat.row,
           number: t.seat.number,

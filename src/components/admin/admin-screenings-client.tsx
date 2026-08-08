@@ -30,13 +30,20 @@ import {
   deleteScreening,
 } from '@/app/actions/screenings';
 import { isOccupiedTicketStatus } from '@/lib/reservation';
+import {
+  addMinutesToTimeHy,
+  formatDateHy,
+  formatDateKey,
+  formatTimeHy,
+  formatWeekdayHy,
+  yerevanDateTimeToUtc,
+} from '@/lib/format';
 
 /**
- * Վերադարձնում է ամսաթվի տեղական (local) բանալին` YYYY-MM-DD ձևաչափով։
- * ՉԵՆՔ օգտագործում toISOString()-ը, քանի որ այն փոխարկում է UTC-ի, և UTC+4-ում
- * տեղական կեսգիշերը դառնում է նախորդ օրը` առաջացնելով +1 օրվա շեղում կալենդարում։
+ * Կալենդարի Date օբյեկտի օրային բանալի (YYYY-MM-DD)՝ ըստ Date-ի տեղական օրերի դաշտերի։
+ * Ցուցադրությունների startTime-ի համար օգտագործել formatDateKey (Երևան)։
  */
-function getLocalDateKey(date: Date | string): string {
+function getCalendarDateKey(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -119,7 +126,7 @@ export default function AdminScreeningsClient({
   const [formData, setFormData] = useState({
     movieId: '',
     hallId: '',
-    date: getLocalDateKey(new Date()),
+    date: formatDateKey(new Date()),
     startTime: '',
     endTime: '',
     basePrice: '2000',
@@ -168,28 +175,20 @@ export default function AdminScreeningsClient({
   // Filter screenings by selected date
   const filteredScreenings = useMemo(() => {
     if (!selectedDate) return [];
-    const dateStr = getLocalDateKey(selectedDate);
+    const dateStr = getCalendarDateKey(selectedDate);
     return screenings.filter((screening) => {
-      const screeningDate = getLocalDateKey(screening.startTime);
+      const screeningDate = formatDateKey(screening.startTime);
       return screeningDate === dateStr;
     });
   }, [screenings, selectedDate]);
 
-  // Calculate end time based on movie duration
+  // Calculate end time based on movie duration (Երևանի ժամ, առանց OS TZ)
   const calculateEndTime = useCallback(
     (startTime: string, movieId: string): string => {
       if (!startTime || !movieId) return '';
       const movie = movies.find((m) => m.id === parseInt(movieId));
       if (!movie) return '';
-
-      const [hours, minutes] = startTime.split(':').map(Number);
-      const start = new Date();
-      start.setHours(hours, minutes, 0, 0);
-      start.setMinutes(start.getMinutes() + movie.duration);
-
-      return `${String(start.getHours()).padStart(2, '0')}:${String(
-        start.getMinutes()
-      ).padStart(2, '0')}`;
+      return addMinutesToTimeHy(startTime, movie.duration);
     },
     [movies]
   );
@@ -198,7 +197,7 @@ export default function AdminScreeningsClient({
   const formDateScreenings = useMemo(() => {
     if (!formData.date) return [];
     return screenings.filter((screening) => {
-      const screeningDate = getLocalDateKey(screening.startTime);
+      const screeningDate = formatDateKey(screening.startTime);
       // Exclude the current editing screening to allow editing
       return (
         screeningDate === formData.date && screening.id !== editingScreening?.id
@@ -211,8 +210,8 @@ export default function AdminScreeningsClient({
     (startTime: string, endTime: string): boolean => {
       if (!startTime || !endTime || !formData.date) return true;
 
-      const start = new Date(`${formData.date}T${startTime}:00`);
-      const end = new Date(`${formData.date}T${endTime}:00`);
+      const start = yerevanDateTimeToUtc(formData.date, startTime);
+      const end = yerevanDateTimeToUtc(formData.date, endTime);
 
       return !formDateScreenings.some((screening) => {
         const screeningStart = new Date(screening.startTime);
@@ -250,8 +249,8 @@ export default function AdminScreeningsClient({
 
         if (!endTime) continue;
 
-        const timeDate = new Date(`${formData.date}T${time}:00`);
-        const endTimeDate = new Date(`${formData.date}T${endTime}:00`);
+        const timeDate = yerevanDateTimeToUtc(formData.date, time);
+        const endTimeDate = yerevanDateTimeToUtc(formData.date, endTime);
 
         const available = isTimeSlotAvailable(time, endTime);
         const conflictingScreening = formDateScreenings.find((s) => {
@@ -286,12 +285,12 @@ export default function AdminScreeningsClient({
     setSelectedDate(date);
     setFormData({
       ...formData,
-      date: getLocalDateKey(date),
+      date: getCalendarDateKey(date),
     });
   };
 
   const handleDayClick = (date: Date) => {
-    const dateStr = getLocalDateKey(date);
+    const dateStr = getCalendarDateKey(date);
     setSelectedDate(date);
     setFormData({
       movieId: '',
@@ -339,7 +338,7 @@ export default function AdminScreeningsClient({
   const screeningsByDate = useMemo(() => {
     const grouped = new Map<string, Screening[]>();
     screenings.forEach((screening) => {
-      const dateKey = getLocalDateKey(screening.startTime);
+      const dateKey = formatDateKey(screening.startTime);
       if (!grouped.has(dateKey)) {
         grouped.set(dateKey, []);
       }
@@ -391,55 +390,22 @@ export default function AdminScreeningsClient({
     return `${months[date.getMonth()]} ${date.getFullYear()}`;
   };
 
-  const formatDateWithWeekday = (date: Date): string => {
-    const weekdays = [
-      'կիրակի',
-      'երկուշաբթի',
-      'երեքշաբթի',
-      'չորեքշաբթի',
-      'հինգշաբթի',
-      'ուրբաթ',
-      'շաբաթ',
-    ];
-    const months = [
-      'հունվար',
-      'փետրվար',
-      'մարտ',
-      'ապրիլ',
-      'մայիս',
-      'հունիս',
-      'հուլիս',
-      'օգոստոս',
-      'սեպտեմբեր',
-      'հոկտեմբեր',
-      'նոյեմբեր',
-      'դեկտեմբեր',
-    ];
-    return `${weekdays[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  const formatDateWithWeekday = (date: Date | string): string => {
+    const value =
+      typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? `${date}T12:00:00`
+        : date;
+    return `${formatWeekdayHy(value)}, ${formatDateHy(value, { year: true })}`;
   };
 
-  const formatDateDisplay = (date: Date): string => {
-    const months = [
-      'հունվար',
-      'փետրվար',
-      'մարտ',
-      'ապրիլ',
-      'մայիս',
-      'հունիս',
-      'հուլիս',
-      'օգոստոս',
-      'սեպտեմբեր',
-      'հոկտեմբեր',
-      'նոյեմբեր',
-      'դեկտեմբեր',
-    ];
-    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  const formatDateDisplay = (date: Date | string): string => {
+    return formatDateHy(date, { year: true });
   };
 
   const handleAddScreening = () => {
     setEditingScreening(null);
     setError(null);
-    const dateStr = getLocalDateKey(selectedDate);
+    const dateStr = getCalendarDateKey(selectedDate);
     setFormData({
       movieId: '',
       hallId: '', // Will be auto-set on server
@@ -458,7 +424,7 @@ export default function AdminScreeningsClient({
     setFormData({
       movieId: '',
       hallId: '',
-      date: getLocalDateKey(selectedDate),
+      date: getCalendarDateKey(selectedDate),
       startTime: '',
       endTime: '',
       basePrice: '2000',
@@ -469,15 +435,15 @@ export default function AdminScreeningsClient({
     setEditingScreening(screening);
     setError(null);
     setMovieSearchQuery('');
-    const startDate = new Date(screening.startTime);
-    const dateStr = getLocalDateKey(startDate);
-    setSelectedDate(startDate);
+    const dateStr = formatDateKey(screening.startTime);
+    const [y, m, d] = dateStr.split('-').map(Number);
+    setSelectedDate(new Date(y, m - 1, d));
     setFormData({
       movieId: screening.movieId.toString(),
       hallId: '', // Will be auto-set on server
       date: dateStr,
-      startTime: startDate.toTimeString().slice(0, 5),
-      endTime: new Date(screening.endTime).toTimeString().slice(0, 5),
+      startTime: formatTimeHy(screening.startTime),
+      endTime: formatTimeHy(screening.endTime),
       basePrice: screening.basePrice.toString(),
     });
     setIsModalOpen(true);
@@ -546,10 +512,10 @@ export default function AdminScreeningsClient({
         return;
       }
 
-      // Create date objects with the selected date (ensure correct timezone handling)
-      const dateStr = formData.date; // YYYY-MM-DD format
-      const startDateTime = new Date(`${dateStr}T${formData.startTime}:00`);
-      const endDateTime = new Date(`${dateStr}T${formData.endTime}:00`);
+      // Երևանի ժամով պահել (չի կախված OS timezone-ից)
+      const dateStr = formData.date; // YYYY-MM-DD
+      const startDateTime = yerevanDateTimeToUtc(dateStr, formData.startTime);
+      const endDateTime = yerevanDateTimeToUtc(dateStr, formData.endTime);
 
       // Validate dates are valid
       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
@@ -597,13 +563,7 @@ export default function AdminScreeningsClient({
     }
   };
 
-  const formatTime = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleTimeString('hy-AM', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (date: Date | string) => formatTimeHy(date);
 
   const getAvailableSeats = (screening: Screening) => {
     const totalSeats = screening.hall?.capacity || 0;
@@ -730,7 +690,7 @@ export default function AdminScreeningsClient({
                   {/* Calendar Days */}
                   <div className="grid grid-cols-7 gap-2">
                     {calendarDays.map((date, index) => {
-                      const dateKey = getLocalDateKey(date);
+                      const dateKey = getCalendarDateKey(date);
                       const dayScreenings = screeningsByDate.get(dateKey) || [];
                       const isCurrentMonthDay = isCurrentMonth(date);
                       const isSelectedDay = isSelected(date);
@@ -1235,7 +1195,7 @@ export default function AdminScreeningsClient({
                     </h2>
                     <p className="text-sm text-gray-600 mt-1">
                       {formData.date &&
-                        formatDateWithWeekday(new Date(formData.date))}
+                        formatDateWithWeekday(formData.date)}
                     </p>
                   </div>
                   <button
@@ -1573,9 +1533,9 @@ export default function AdminScreeningsClient({
 
                 <div className="flex-1 overflow-y-auto p-6">
                   {(() => {
-                    const dateKey = getLocalDateKey(selectedDayForDetails);
+                    const dateKey = getCalendarDateKey(selectedDayForDetails);
                     const dayScreenings = screenings.filter((screening) => {
-                      const screeningDate = getLocalDateKey(
+                      const screeningDate = formatDateKey(
                         screening.startTime
                       );
                       return screeningDate === dateKey;

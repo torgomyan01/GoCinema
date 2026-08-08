@@ -160,3 +160,34 @@ export function formatWeekdayHy(value: Date | string): string {
   if (!parts) return '';
   return ARMENIAN_WEEKDAYS[parts.weekday];
 }
+
+/**
+ * Երևանի օր+ժամ (YYYY-MM-DD + HH:mm) → UTC Date։
+ * Asia/Yerevan = UTC+4 (DST չկա 2012-ից)։
+ */
+export function yerevanDateTimeToUtc(dateKey: string, timeHy: string): Date {
+  const dateParts = dateKey.split('-').map(Number);
+  const timeParts = timeHy.split(':').map(Number);
+  const y = dateParts[0];
+  const m = dateParts[1];
+  const d = dateParts[2];
+  const hh = timeParts[0];
+  const mm = timeParts[1] ?? 0;
+  if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) {
+    return new Date(NaN);
+  }
+  const YEREVAN_OFFSET_MS = 4 * 60 * 60 * 1000;
+  return new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0) - YEREVAN_OFFSET_MS);
+}
+
+/** HH:mm + րոպեներ → HH:mm (24ժ, առանց timezone) */
+export function addMinutesToTimeHy(timeHy: string, minutesToAdd: number): string {
+  const [hh, mm] = timeHy.split(':').map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return '';
+  const dayMinutes = 24 * 60;
+  let total = hh * 60 + mm + minutesToAdd;
+  total = ((total % dayMinutes) + dayMinutes) % dayMinutes;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}

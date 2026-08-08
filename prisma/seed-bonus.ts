@@ -11,8 +11,8 @@ const prisma = new PrismaClient();
 async function main() {
   await prisma.bonusSettings.upsert({
     where: { id: 1 },
-    update: {},
-    create: { id: 1 },
+    update: { ticketMultiplier: 0.5 },
+    create: { id: 1, ticketMultiplier: 0.5 },
   });
 
   const products = await prisma.product.findMany({
@@ -36,7 +36,7 @@ async function main() {
     {
       name: 'Զեղչ 500 ֏',
       description: 'Կիրառվում է տոմսի կամ ապրանքի վրա դրամարկղում',
-      pointsCost: 100,
+      pointsCost: 200,
       kind: 'discount',
       productId: null,
       discountAmount: 500,
@@ -45,7 +45,7 @@ async function main() {
     {
       name: 'Զեղչ 1000 ֏',
       description: 'Կիրառվում է տոմսի կամ ապրանքի վրա դրամարկղում',
-      pointsCost: 180,
+      pointsCost: 360,
       kind: 'discount',
       productId: null,
       discountAmount: 1000,
@@ -54,7 +54,7 @@ async function main() {
     {
       name: 'Անվճար տոմս',
       description: 'Ցանկացած ցուցադրության մեկ տոմս',
-      pointsCost: 400,
+      pointsCost: 800,
       kind: 'ticket',
       productId: null,
       discountAmount: 0,
@@ -66,7 +66,7 @@ async function main() {
     rewards.push({
       name: `Անվճար ${drink.name}`,
       description: 'Բուֆետից մեկ միավոր',
-      pointsCost: 120,
+      pointsCost: 240,
       kind: 'product',
       productId: drink.id,
       discountAmount: 0,
@@ -77,7 +77,7 @@ async function main() {
     rewards.push({
       name: `Անվճար ${popcorn.name}`,
       description: 'Բուֆետից մեկ միավոր',
-      pointsCost: 200,
+      pointsCost: 400,
       kind: 'product',
       productId: popcorn.id,
       discountAmount: 0,

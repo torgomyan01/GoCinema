@@ -164,7 +164,10 @@ export async function resetPassword(
 
     await prisma.user.update({
       where: { id: tokenRecord.userId },
-      data: { password: hashed },
+      data: {
+        password: hashed,
+        webRegisteredAt: new Date(),
+      },
     });
 
     // Invalidate the reset token

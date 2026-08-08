@@ -91,10 +91,10 @@ export default function AdminBonusClient() {
   const [form, setForm] = useState({
     isActive: true,
     amountPerPoint: '100',
-    ticketMultiplier: '1',
+    ticketMultiplier: '0.5',
     productMultiplier: '1.5',
     welcomePoints: '50',
-    birthdayPoints: '25',
+    birthdayPoints: '50',
     referralInviterPoints: '25',
     referralInvitedPoints: '20',
     bonusWeekdays: [2, 3] as number[],
@@ -395,7 +395,7 @@ export default function AdminBonusClient() {
                 }
               />
               <NumberField
-                label="Տոմսի գործակից"
+                label="Տոմսի գործակից (100֏ × գործակից = միավոր)"
                 value={form.ticketMultiplier}
                 step="0.1"
                 onChange={(v) =>

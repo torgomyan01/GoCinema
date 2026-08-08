@@ -54,7 +54,7 @@ export async function getBonusSettings(
   const row = await db.bonusSettings.upsert({
     where: { id: 1 },
     update: {},
-    create: { id: 1 },
+    create: { id: 1, ticketMultiplier: 0.5 },
   });
   return {
     isActive: row.isActive,

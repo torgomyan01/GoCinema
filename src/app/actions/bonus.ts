@@ -83,6 +83,12 @@ export interface MyBonusData {
   referralInviterPoints: number;
   referralInvitedPoints: number;
   amountPerPoint: number;
+  ticketMultiplier: number;
+  productMultiplier: number;
+  welcomePoints: number;
+  birthdayPoints: number;
+  goldMultiplier: number;
+  platinumMultiplier: number;
   bonusWeekdays: number[];
   bonusDayMultiplier: number;
   rewards: BonusRewardItem[];
@@ -182,6 +188,12 @@ export async function getMyBonus(): Promise<{
         referralInviterPoints: settings.referralInviterPoints,
         referralInvitedPoints: settings.referralInvitedPoints,
         amountPerPoint: settings.amountPerPoint,
+        ticketMultiplier: settings.ticketMultiplier,
+        productMultiplier: settings.productMultiplier,
+        welcomePoints: settings.welcomePoints,
+        birthdayPoints: settings.birthdayPoints,
+        goldMultiplier: settings.goldMultiplier,
+        platinumMultiplier: settings.platinumMultiplier,
         bonusWeekdays: settings.bonusWeekdays
           .split(',')
           .map((d) => Number(d.trim()))

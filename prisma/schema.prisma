@@ -25,6 +25,8 @@ model User {
   telegramChatId String?   @db.VarChar(100) // Telegram chat ID for OTP delivery
   isBlocked      Boolean   @default(false) // արգելափակված է անվճար ամրագրումից (no-show-ի պատճառով)
   blockedAt      DateTime? // երբ է արգելափակվել
+  /// Կայքում գրանցում/ակտիվացում (null = միայն դրամարկղային բոնուսային հաշիվ)
+  webRegisteredAt DateTime?
 
   // ── Բոնուսային համակարգ ──────────────────────────────────────────────────
   bonusPoints       Int       @default(0) // ընթացիկ մնացորդ (միշտ = ledger-ի գումար)
@@ -602,13 +604,13 @@ model BonusSettings {
   isActive Boolean @default(true)
 
   // Վաստակ. միավոր = floor(գումար / amountPerPoint × multiplier-ներ)
-  amountPerPoint    Float @default(100) // քանի՞ դրամի դիմաց 1 միավոր
-  ticketMultiplier  Float @default(1)
+  amountPerPoint    Float @default(100) // քանի՞ դրամի դիմաց 1 միավոր (բազա)
+  ticketMultiplier  Float @default(0.5) // տոմս՝ 100֏ = 0.5 միավոր
   productMultiplier Float @default(1.5) // բուֆետը խրախուսելու համար
 
   // Միանվագ բոնուսներ
   welcomePoints         Int @default(50)
-  birthdayPoints        Int @default(25)
+  birthdayPoints        Int @default(50)
   referralInviterPoints Int @default(25) // հրավիրողին
   referralInvitedPoints Int @default(20) // հրավիրվածին
 

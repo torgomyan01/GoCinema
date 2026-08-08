@@ -19,8 +19,6 @@ import {
   X,
   Ban,
   FileBarChart,
-  Gift,
-  Search,
 } from 'lucide-react';
 import {
   cancelBoxOfficeTicket,
@@ -48,11 +46,9 @@ import {
 } from '@/lib/hdm-agent';
 import { submitReturnFiscal, submitSaleFiscal } from '@/lib/fiscal-flow';
 import {
-  findBonusCustomerByPhone,
   findOrCreateBonusCustomer,
   type BonusCustomer,
 } from '@/app/actions/bonus';
-import { TIER_LABELS_HY } from '@/lib/bonus-labels';
 import {
   birthDateInputMax,
   birthDateInputMin,
@@ -237,7 +233,8 @@ export default function BoxOfficeClient({
     );
   };
 
-  const clearBonusCustomer = () => {
+  /** Վաճառքից հետո՝ մաքրել բոնուսի հեռախոսը, որ հաջորդ պատվերին նորից մուտքագրվի։ */
+  const clearBonusAfterSale = () => {
     setBonusCustomer(null);
     setBonusRewardId('');
     setBonusPhone('');
@@ -245,18 +242,6 @@ export default function BoxOfficeClient({
     setBonusName('');
     setBonusError(null);
     setBonusNotice(null);
-  };
-
-  /** Վաճառքից հետո՝ թարմացնել մնացորդը և զրոյացնել ընտրված պարգևը։ */
-  const refreshBonusAfterSale = async () => {
-    setBonusRewardId('');
-    if (!bonusCustomer) return;
-    const result = await findBonusCustomerByPhone(bonusCustomer.phone);
-    if (result.success && result.customer) {
-      setBonusCustomer(result.customer);
-      setBonusBirthDate(result.customer.birthDate ?? '');
-      setBonusName(result.customer.name ?? '');
-    }
   };
 
   // Օնլայն hold-ի հաշվիչի թարմացում (ամեն վայրկյան)
@@ -425,7 +410,7 @@ export default function BoxOfficeClient({
       }
 
       setProductSaleOpen(false);
-      void refreshBonusAfterSale();
+      clearBonusAfterSale();
       void loadProducts();
     } catch (err) {
       console.error('Product order error:', err);
@@ -825,6 +810,7 @@ export default function BoxOfficeClient({
     setCheckoutOpen(false);
     setPayCash('');
     setPayMethod('cash');
+    clearBonusAfterSale();
   };
 
   const handleCreate = async () => {
@@ -942,7 +928,7 @@ export default function BoxOfficeClient({
       setCheckoutOpen(false);
       setPayCash('');
       setPayMethod('cash');
-      void refreshBonusAfterSale();
+      clearBonusAfterSale();
       void loadScreenings();
     } catch (err) {
       console.error('Box office create error:', err);
@@ -1017,117 +1003,6 @@ export default function BoxOfficeClient({
             Ապրանքների վաճառք
           </button>
         </div>
-      </div>
-
-      {/* Բոնուսային հաճախորդ՝ հեռախոսով գտնել կամ գրանցել */}
-      <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-4">
-        <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-violet-800">
-          <Gift className="h-4 w-4" />
-          Բոնուսային հաճախորդ — հեռախոսահամարով
-        </p>
-        <p className="mb-3 text-xs text-violet-700">
-          Լրացրեք հեռախոսը՝ վաճառքի բոնուսները հավաքելու համար։ Եթե հաշիվ չկա՝
-          կգրանցվի որպես նոր օգտատեր։ Առանց հեռախոսի վաճառքը մնում է անանուն։
-        </p>
-
-        {bonusCustomer ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div>
-                <p className="text-sm font-semibold text-violet-900">
-                  {bonusCustomer.name || 'Անանուն'} · {bonusCustomer.phone}
-                  {bonusCustomer.isNew ? (
-                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                      ՆՈՐ
-                    </span>
-                  ) : null}
-                </p>
-                <p className="text-xs text-violet-700">
-                  {bonusCustomer.points} միավոր ·{' '}
-                  {TIER_LABELS_HY[bonusCustomer.tier] ?? bonusCustomer.tier} ·{' '}
-                  {bonusCustomer.visits} այց
-                  {bonusCustomer.birthDate
-                    ? ` · ծննդ․ ${bonusCustomer.birthDate}`
-                    : ''}
-                </p>
-              </div>
-              <select
-                value={bonusRewardId}
-                onChange={(e) =>
-                  setBonusRewardId(e.target.value ? Number(e.target.value) : '')
-                }
-                className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
-              >
-                <option value="">Առանց պարգևի</option>
-                {bonusCustomer.rewards.map((reward) => (
-                  <option
-                    key={reward.id}
-                    value={reward.id}
-                    disabled={!reward.affordable}
-                  >
-                    {reward.name} — {reward.pointsCost} միավոր
-                    {reward.affordable ? '' : ' (չի բավարարում)'}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={clearBonusCustomer}
-                className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-medium text-violet-700 transition hover:bg-violet-100"
-              >
-                Մաքրել
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-[1.2fr_1fr_1fr_auto]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-400" />
-              <input
-                value={bonusPhone}
-                onChange={(e) => setBonusPhone(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void attachBonusCustomer();
-                }}
-                placeholder="Հեռախոս 0XX XXX XXX"
-                inputMode="numeric"
-                className="w-full rounded-lg border border-violet-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-violet-500 focus:outline-none"
-              />
-            </div>
-            <input
-              type="date"
-              value={bonusBirthDate}
-              onChange={(e) => setBonusBirthDate(e.target.value)}
-              min={birthDateInputMin()}
-              max={birthDateInputMax()}
-              title="Ծննդյան ամսաթիվ"
-              className="w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
-            />
-            <input
-              value={bonusName}
-              onChange={(e) => setBonusName(e.target.value)}
-              placeholder="Անուն (ոչ պարտադիր)"
-              className="w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => void attachBonusCustomer()}
-              disabled={bonusSearching || !bonusPhone.trim()}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
-            >
-              {bonusSearching ? '…' : 'Կիրառել'}
-            </button>
-          </div>
-        )}
-
-        {bonusError && (
-          <p className="mt-2 text-xs font-medium text-rose-600">{bonusError}</p>
-        )}
-        {bonusNotice && (
-          <p className="mt-2 text-xs font-medium text-emerald-700">
-            {bonusNotice}
-          </p>
-        )}
       </div>
 
       {error && (

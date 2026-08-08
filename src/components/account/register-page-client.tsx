@@ -48,6 +48,7 @@ export default function RegisterPageClient() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [referralCode, setReferralCode] = useState('');
+  const [claimedAccount, setClaimedAccount] = useState(false);
   const [referralFromLink, setReferralFromLink] = useState(false);
 
   // ── UI state ───────────────────────────────────────────────────────────────
@@ -191,6 +192,8 @@ export default function RegisterPageClient() {
         setError(result.error || 'Գրանցումը ձախողվեց');
         return;
       }
+
+      setClaimedAccount(Boolean(result.claimed));
 
       // Քանի դեռ Sender ID-ն հաստատված չէ՝ գրանցումն ավարտում ենք առանց SMS վերիֆիկացիայի։
       if (!SMS_VERIFICATION_ENABLED) {
@@ -639,12 +642,16 @@ export default function RegisterPageClient() {
                   <CheckCircle className="w-10 h-10 text-green-600" />
                 </div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  Գրանցումն ավարտված է
+                  {claimedAccount
+                    ? 'Հաշիվը ակտիվացված է'
+                    : 'Գրանցումն ավարտված է'}
                 </h1>
                 <p className="text-gray-600 mb-8">
-                  {SMS_VERIFICATION_ENABLED
-                    ? 'Ձեր հաշիվը հաջողությամբ ստեղծվեց և վերիֆիկացված է:'
-                    : 'Ձեր հաշիվը հաջողությամբ ստեղծվեց:'}
+                  {claimedAccount
+                    ? 'Ձեր բոնուսները պահպանվել են։ Այժմ կարող եք մուտք գործել նոր գաղտնաբառով։'
+                    : SMS_VERIFICATION_ENABLED
+                      ? 'Ձեր հաշիվը հաջողությամբ ստեղծվեց և վերիֆիկացված է:'
+                      : 'Ձեր հաշիվը հաջողությամբ ստեղծվեց:'}
                 </p>
                 <Link
                   href={SITE_URL.LOGIN}

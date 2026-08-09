@@ -47,9 +47,10 @@ function formatDateTime(value: string) {
 }
 
 function buildHtml(data: BoxOfficeDailyReport) {
-  const productRows = data.products.byProduct
-    .map(
-      (row, index) => `
+  const renderProductRows = (rows: typeof data.products.byProduct) =>
+    rows
+      .map(
+        (row, index) => `
       <tr${row.missingCost ? ' class="warn"' : ''}>
         <td>${index + 1}</td>
         <td>${escapeHtml(row.name)}${row.missingCost ? ' <span class="badge">Ինքնաարժեք չկա</span>' : ''}</td>
@@ -59,8 +60,70 @@ function buildHtml(data: BoxOfficeDailyReport) {
         <td class="num">${formatAmd(row.cost)}</td>
         <td class="num strong">${formatAmd(row.profit)}</td>
       </tr>`
-    )
-    .join('');
+      )
+      .join('');
+
+  const popcorn = data.products.byProduct.filter((r) => r.category === 'popcorn');
+  const icedTea = data.products.byProduct.filter(
+    (r) => r.category === 'iced_tea'
+  );
+  const otherProducts = data.products.byProduct.filter(
+    (r) => r.category !== 'popcorn' && r.category !== 'iced_tea'
+  );
+
+  const productSectionHtml = (
+    title: string,
+    rows: typeof data.products.byProduct,
+    emptyText: string
+  ) => {
+    const totals = rows.reduce(
+      (acc, row) => {
+        acc.quantity += row.quantity;
+        acc.revenue += row.revenue;
+        acc.cost += row.cost;
+        acc.profit += row.profit;
+        return acc;
+      },
+      { quantity: 0, revenue: 0, cost: 0, profit: 0 }
+    );
+
+    return `
+    <h2>${title}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Ապրանք</th>
+          <th>Կատեգորիա</th>
+          <th class="num">Քանակ</th>
+          <th class="num">Եկամուտ</th>
+          <th class="num">Ինքնաարժեք</th>
+          <th class="num">Շահույթ</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${
+          renderProductRows(rows) ||
+          `<tr><td colspan="7">${emptyText}</td></tr>`
+        }
+      </tbody>
+      ${
+        rows.length > 0
+          ? `<tfoot>
+        <tr>
+          <td></td>
+          <td class="strong">Ընդամենը</td>
+          <td></td>
+          <td class="num strong">${totals.quantity}</td>
+          <td class="num strong">${formatAmd(totals.revenue)}</td>
+          <td class="num strong">${formatAmd(totals.cost)}</td>
+          <td class="num strong">${formatAmd(totals.profit)}</td>
+        </tr>
+      </tfoot>`
+          : ''
+      }
+    </table>`;
+  };
 
   const movieRows = data.tickets.byMovie
     .map(
@@ -73,6 +136,15 @@ function buildHtml(data: BoxOfficeDailyReport) {
       </tr>`
     )
     .join('');
+
+  const movieTotals = data.tickets.byMovie.reduce(
+    (acc, row) => {
+      acc.count += row.count;
+      acc.revenue += row.revenue;
+      return acc;
+    },
+    { count: 0, revenue: 0 }
+  );
 
   return `<!DOCTYPE html>
 <html lang="hy">
@@ -123,6 +195,7 @@ function buildHtml(data: BoxOfficeDailyReport) {
     }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .strong { font-weight: 700; color: #7c3aed; }
+    tfoot td { border-top: 2px solid #d1d5db; background: #f9fafb; font-weight: 700; }
     tr.warn { background: #fffbeb; }
     .badge {
       display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 999px;
@@ -201,25 +274,23 @@ function buildHtml(data: BoxOfficeDailyReport) {
       <tbody>
         ${movieRows || '<tr><td colspan="4">Այսօր տոմսեր չեն վաճառվել</td></tr>'}
       </tbody>
+      ${
+        data.tickets.byMovie.length > 0
+          ? `<tfoot>
+        <tr>
+          <td></td>
+          <td>Ընդամենը</td>
+          <td class="num">${movieTotals.count}</td>
+          <td class="num strong">${formatAmd(movieTotals.revenue)}</td>
+        </tr>
+      </tfoot>`
+          : ''
+      }
     </table>
 
-    <h2>Ապրանքներ</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Ապրանք</th>
-          <th>Կատեգորիա</th>
-          <th class="num">Քանակ</th>
-          <th class="num">Եկամուտ</th>
-          <th class="num">Ինքնաարժեք</th>
-          <th class="num">Շահույթ</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${productRows || '<tr><td colspan="7">Այսօր ապրանքներ չեն վաճառվել</td></tr>'}
-      </tbody>
-    </table>
+    ${productSectionHtml('Պոպկորն', popcorn, 'Այսօր պոպկորն չի վաճառվել')}
+    ${productSectionHtml('Սառը թեյ', icedTea, 'Այսօր սառը թեյ չի վաճառվել')}
+    ${productSectionHtml('Ապրանքներ', otherProducts, 'Այսօր այլ ապրանքներ չեն վաճառվել')}
 
     <div class="note">
       Մաքուր շահույթ = (տոմսեր + ապրանքներ − չեղարկումներ/վերադարձներ) − ապրանքների ինքնաարժեք։

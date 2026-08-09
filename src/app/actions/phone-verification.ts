@@ -65,7 +65,7 @@ export async function sendRegistrationOtp(phone: string): Promise<{
     const code = generateOtp();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    await prisma.phoneVerification.create({
+    const otpRecord = await prisma.phoneVerification.create({
       data: {
         phone: cleanPhone,
         code,
@@ -76,6 +76,10 @@ export async function sendRegistrationOtp(phone: string): Promise<{
 
     const sent = await sendVerificationSms(cleanPhone, code, 'verification');
     if (!sent.success) {
+      await prisma.phoneVerification.update({
+        where: { id: otpRecord.id },
+        data: { used: true },
+      });
       return {
         success: false,
         error: sent.error || 'SMS ուղարկելը ձախողվեց: Փորձեք կրկին:',

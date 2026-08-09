@@ -32,10 +32,6 @@ import {
 
 type Step = 'form' | 'otp' | 'success';
 
-// SMS վերիֆիկացիան միացված է միայն երբ Sender ID-ն հաստատված է։
-const SMS_VERIFICATION_ENABLED =
-  process.env.NEXT_PUBLIC_SMS_VERIFICATION_ENABLED === 'true';
-
 export default function RegisterPageClient() {
   const searchParams = useSearchParams();
   // ── Form state ─────────────────────────────────────────────────────────────
@@ -194,12 +190,6 @@ export default function RegisterPageClient() {
       }
 
       setClaimedAccount(Boolean(result.claimed));
-
-      // Քանի դեռ Sender ID-ն հաստատված չէ՝ գրանցումն ավարտում ենք առանց SMS վերիֆիկացիայի։
-      if (!SMS_VERIFICATION_ENABLED) {
-        setStep('success');
-        return;
-      }
 
       // Հաշիվը ստեղծվեց — ուղարկում ենք SMS վերիֆիկացիայի կոդը
       setStep('otp');
@@ -649,9 +639,7 @@ export default function RegisterPageClient() {
                 <p className="text-gray-600 mb-8">
                   {claimedAccount
                     ? 'Ձեր բոնուսները պահպանվել են։ Այժմ կարող եք մուտք գործել նոր գաղտնաբառով։'
-                    : SMS_VERIFICATION_ENABLED
-                      ? 'Ձեր հաշիվը հաջողությամբ ստեղծվեց և վերիֆիկացված է:'
-                      : 'Ձեր հաշիվը հաջողությամբ ստեղծվեց:'}
+                    : 'Ձեր հաշիվը հաջողությամբ ստեղծվեց և վերիֆիկացված է:'}
                 </p>
                 <Link
                   href={SITE_URL.LOGIN}

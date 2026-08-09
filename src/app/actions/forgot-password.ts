@@ -60,12 +60,16 @@ export async function requestPasswordReset(phone: string): Promise<{
     const otp = generateOtp();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    await prisma.passwordResetToken.create({
+    const tokenRecord = await prisma.passwordResetToken.create({
       data: { userId: user.id, token: otp, expiresAt },
     });
 
     const sent = await sendVerificationSms(cleanPhone, otp, 'reset');
     if (!sent.success) {
+      await prisma.passwordResetToken.update({
+        where: { id: tokenRecord.id },
+        data: { used: true },
+      });
       return {
         success: false,
         error: sent.error || 'SMS-ով կոդ ուղարկելը ձախողվեց: Փորձեք կրկին:',

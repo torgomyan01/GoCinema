@@ -15,6 +15,7 @@ import {
 import {
   getBoxOfficeDailyReport,
   type BoxOfficeDailyReport,
+  type DailyReportProductRow,
 } from '@/app/actions/box-office-daily-report';
 import { openBoxOfficeDailyReportPdf } from '@/lib/box-office-daily-report-pdf';
 
@@ -61,6 +62,128 @@ function formatDay(value: string) {
   });
 }
 
+function splitProducts(rows: DailyReportProductRow[]) {
+  const popcorn: DailyReportProductRow[] = [];
+  const icedTea: DailyReportProductRow[] = [];
+  const other: DailyReportProductRow[] = [];
+
+  for (const row of rows) {
+    if (row.category === 'popcorn') popcorn.push(row);
+    else if (row.category === 'iced_tea') icedTea.push(row);
+    else other.push(row);
+  }
+
+  return { popcorn, icedTea, other };
+}
+
+function productSectionTotals(rows: DailyReportProductRow[]) {
+  return rows.reduce(
+    (acc, row) => {
+      acc.quantity += row.quantity;
+      acc.revenue += row.revenue;
+      acc.cost += row.cost;
+      acc.profit += row.profit;
+      return acc;
+    },
+    { quantity: 0, revenue: 0, cost: 0, profit: 0 }
+  );
+}
+
+function ProductTable({
+  rows,
+  emptyText,
+}: {
+  rows: DailyReportProductRow[];
+  emptyText: string;
+}) {
+  const totals = productSectionTotals(rows);
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200">
+      <table className="min-w-full text-sm">
+        <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+          <tr>
+            <th className="px-4 py-3">Ապրանք</th>
+            <th className="px-3 py-3 text-right">Քանակ</th>
+            <th className="px-3 py-3 text-right">Եկամուտ</th>
+            <th className="px-3 py-3 text-right">Ինքնաարժեք</th>
+            <th className="px-4 py-3 text-right">Շահույթ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td
+                colSpan={5}
+                className="px-4 py-6 text-center text-gray-500"
+              >
+                {emptyText}
+              </td>
+            </tr>
+          ) : (
+            rows.map((row) => (
+              <tr
+                key={row.productId}
+                className={`border-t border-gray-100 ${
+                  row.missingCost ? 'bg-amber-50/70' : ''
+                }`}
+              >
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-gray-900">{row.name}</span>
+                    {row.missingCost && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800">
+                        Ինքնաարժեք չկա
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {CATEGORY_LABELS[row.category] ?? row.category}
+                    {row.withTicketQty > 0 && ` · տոմսով ${row.withTicketQty}`}
+                    {row.productOnlyQty > 0 &&
+                      ` · միայն ապրանք ${row.productOnlyQty}`}
+                  </p>
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums">
+                  {row.quantity}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums">
+                  {formatAmd(row.revenue)}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums text-gray-600">
+                  {formatAmd(row.cost)}
+                </td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-700">
+                  {formatAmd(row.profit)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+        {rows.length > 0 && (
+          <tfoot>
+            <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold text-gray-900">
+              <td className="px-4 py-3">Ընդամենը</td>
+              <td className="px-3 py-3 text-right tabular-nums">
+                {totals.quantity}
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums">
+                {formatAmd(totals.revenue)}
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums">
+                {formatAmd(totals.cost)}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums text-emerald-700">
+                {formatAmd(totals.profit)}
+              </td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -97,6 +220,19 @@ export default function BoxOfficeDailyReportModal({ open, onClose }: Props) {
   }, [open]);
 
   if (!open) return null;
+
+  const productGroups = data
+    ? splitProducts(data.products.byProduct)
+    : null;
+  const popcornTotals = productGroups
+    ? productSectionTotals(productGroups.popcorn)
+    : null;
+  const icedTeaTotals = productGroups
+    ? productSectionTotals(productGroups.icedTea)
+    : null;
+  const otherProductTotals = productGroups
+    ? productSectionTotals(productGroups.other)
+    : null;
 
   const handlePdf = () => {
     if (!data) return;
@@ -161,7 +297,7 @@ export default function BoxOfficeDailyReportModal({ open, onClose }: Props) {
             </div>
           )}
 
-          {!isLoading && data && (
+          {!isLoading && data && productGroups && popcornTotals && icedTeaTotals && otherProductTotals && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -283,92 +419,87 @@ export default function BoxOfficeDailyReportModal({ open, onClose }: Props) {
                         ))
                       )}
                     </tbody>
+                    {data.tickets.byMovie.length > 0 && (
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold text-gray-900">
+                          <td className="px-4 py-3">Ընդամենը</td>
+                          <td className="px-4 py-3 text-right tabular-nums">
+                            {data.tickets.byMovie.reduce(
+                              (sum, row) => sum + row.count,
+                              0
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-purple-700">
+                            {formatAmd(
+                              data.tickets.byMovie.reduce(
+                                (sum, row) => sum + row.revenue,
+                                0
+                              )
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </section>
 
-              <section>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Package className="h-5 w-5 text-amber-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Ապրանքներ
-                  </h3>
-                  <span className="text-sm text-gray-500">
-                    {data.products.soldUnits} միավոր · շահույթ{' '}
-                    {formatAmd(data.products.netProfit)}
-                  </span>
+              <section className="space-y-5">
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Package className="h-5 w-5 text-amber-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Պոպկորն
+                    </h3>
+                    <span className="text-sm text-gray-500">
+                      {popcornTotals.quantity} միավոր · շահույթ{' '}
+                      {formatAmd(popcornTotals.profit)}
+                    </span>
+                  </div>
+                  <ProductTable
+                    rows={productGroups.popcorn}
+                    emptyText="Այսօր պոպկորն չի վաճառվել"
+                  />
                 </div>
-                {data.products.returnedAmount > 0 && (
-                  <p className="mb-2 text-xs text-red-600">
-                    Վերադարձներ այսօր՝ −
-                    {formatAmd(data.products.returnedAmount)}
-                  </p>
-                )}
-                <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                      <tr>
-                        <th className="px-4 py-3">Ապրանք</th>
-                        <th className="px-3 py-3 text-right">Քանակ</th>
-                        <th className="px-3 py-3 text-right">Եկամուտ</th>
-                        <th className="px-3 py-3 text-right">Ինքնաարժեք</th>
-                        <th className="px-4 py-3 text-right">Շահույթ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.products.byProduct.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={5}
-                            className="px-4 py-6 text-center text-gray-500"
-                          >
-                            Այսօր ապրանքներ չեն վաճառվել
-                          </td>
-                        </tr>
-                      ) : (
-                        data.products.byProduct.map((row) => (
-                          <tr
-                            key={row.productId}
-                            className={`border-t border-gray-100 ${
-                              row.missingCost ? 'bg-amber-50/70' : ''
-                            }`}
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium text-gray-900">
-                                  {row.name}
-                                </span>
-                                {row.missingCost && (
-                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800">
-                                    Ինքնաարժեք չկա
-                                  </span>
-                                )}
-                              </div>
-                              <p className="mt-0.5 text-xs text-gray-500">
-                                {CATEGORY_LABELS[row.category] ?? row.category}
-                                {row.withTicketQty > 0 &&
-                                  ` · տոմսով ${row.withTicketQty}`}
-                                {row.productOnlyQty > 0 &&
-                                  ` · միայն ապրանք ${row.productOnlyQty}`}
-                              </p>
-                            </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                              {row.quantity}
-                            </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                              {formatAmd(row.revenue)}
-                            </td>
-                            <td className="px-3 py-3 text-right tabular-nums text-gray-600">
-                              {formatAmd(row.cost)}
-                            </td>
-                            <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-700">
-                              {formatAmd(row.profit)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Package className="h-5 w-5 text-sky-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Սառը թեյ
+                    </h3>
+                    <span className="text-sm text-gray-500">
+                      {icedTeaTotals.quantity} միավոր · շահույթ{' '}
+                      {formatAmd(icedTeaTotals.profit)}
+                    </span>
+                  </div>
+                  <ProductTable
+                    rows={productGroups.icedTea}
+                    emptyText="Այսօր սառը թեյ չի վաճառվել"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Package className="h-5 w-5 text-orange-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Ապրանքներ
+                    </h3>
+                    <span className="text-sm text-gray-500">
+                      {otherProductTotals.quantity} միավոր · շահույթ{' '}
+                      {formatAmd(otherProductTotals.profit)}
+                    </span>
+                  </div>
+                  {data.products.returnedAmount > 0 && (
+                    <p className="mb-2 text-xs text-red-600">
+                      Վերադարձներ այսօր՝ −
+                      {formatAmd(data.products.returnedAmount)}
+                    </p>
+                  )}
+                  <ProductTable
+                    rows={productGroups.other}
+                    emptyText="Այսօր այլ ապրանքներ չեն վաճառվել"
+                  />
                 </div>
               </section>
             </div>

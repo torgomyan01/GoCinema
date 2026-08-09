@@ -11,9 +11,6 @@ import {
   grantWelcomeBonus,
 } from '@/lib/bonus';
 
-const SMS_VERIFICATION_ENABLED =
-  process.env.NEXT_PUBLIC_SMS_VERIFICATION_ENABLED === 'true';
-
 const userSelect = {
   id: true,
   name: true,
@@ -69,8 +66,8 @@ export async function registerUser(formData: {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const now = new Date();
-    // SMS անջատված լինելու դեպքում հաշիվը միանգամից համարվում է ակտիվացված
-    const phoneVerified = !SMS_VERIFICATION_ENABLED;
+    // Հեռախոսը հաստատվում է միայն SMS OTP-ից հետո
+    const phoneVerified = false;
 
     const existingUser = await prisma.user.findUnique({
       where: { phone: cleanPhone },

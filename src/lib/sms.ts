@@ -4,17 +4,16 @@
  * OTP-ը գեներացվում և ստուգվում է մեր DB-ում։ Dexatel-ը միայն առաքում է SMS։
  * Docs: https://developers.dexatel.com/docs/verify-api-sms
  *
- * `DEXATEL_SENDER_ID` կարող է լինել sender UUID
- * (օր. 3a622ecd-51ce-44af-88e0-213638f952c3) կամ name (`GoCinema`)։
- * API `sender` դաշտին ուղարկում ենք alphanumeric name-ը՝ հեռախոսում
- * ճիշտ «GoCinema» երևալու համար։ UUID-ն ուղիղ տալիս է սխալ from։
+ * `DEXATEL_SENDER_ID` կարող է լինել sender UUID կամ name/code։
+ * API `sender` դաշտին ուղարկում ենք alphanumeric name/code-ը։
+ * Phone՝ `374XXXXXXXX` (առանց +)։
  */
 
 const DEXATEL_API_BASE = 'https://api.dexatel.com/v1';
 const DEXATEL_VERIFY_URL = `${DEXATEL_API_BASE}/verifications`;
 
-/** Cache resolved alphanumeric sender name for this process. */
-let resolvedSenderName: string | null = null;
+/** Cache: configured value → resolved sender name/code */
+const resolvedSenderCache = new Map<string, string>();
 
 /**
  * Հայկական `0XXXXXXXX` → Dexatel `374XXXXXXXX`
@@ -59,36 +58,92 @@ function isUuid(value: string): boolean {
   );
 }
 
+function senderLabel(data: {
+  code?: string;
+  name?: string;
+}): string | null {
+  const label = data.code?.trim() || data.name?.trim();
+  return label || null;
+}
+
+async function listAvailableSenderName(apiKey: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${DEXATEL_API_BASE}/senders?page_size=100`, {
+      headers: { 'X-Dexatel-Key': apiKey },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const senders = (body?.data as Array<Record<string, unknown>>) || [];
+    const am =
+      senders.find(
+        (s) =>
+          String(s.status).toLowerCase() === 'available' &&
+          Array.isArray(s.countries) &&
+          (s.countries as string[]).includes('AM')
+      ) ||
+      senders.find((s) => String(s.status).toLowerCase() === 'available') ||
+      senders[0];
+    if (!am) return null;
+    return senderLabel({
+      code: am.code as string | undefined,
+      name: am.name as string | undefined,
+    });
+  } catch (err) {
+    console.error('[SMS] List senders error:', err);
+    return null;
+  }
+}
+
+/**
+ * Resolve DEXATEL_SENDER_ID to the alphanumeric sender name/code Dexatel expects.
+ */
 async function resolveSenderName(
   apiKey: string,
   configured: string
 ): Promise<string | null> {
   const value = configured.trim();
   if (!value) return null;
-  if (!isUuid(value)) return value;
-  if (resolvedSenderName) return resolvedSenderName;
+
+  const cached = resolvedSenderCache.get(value);
+  if (cached) return cached;
+
+  // Already a name/code (not UUID)
+  if (!isUuid(value)) {
+    resolvedSenderCache.set(value, value);
+    return value;
+  }
 
   try {
     const res = await fetch(`${DEXATEL_API_BASE}/senders/${value}`, {
       headers: { 'X-Dexatel-Key': apiKey },
       cache: 'no-store',
     });
-    if (!res.ok) {
-      console.error('[SMS] Failed to resolve sender UUID:', res.status);
-      return null;
-    }
-    const body = await res.json();
-    const name =
-      (body?.data?.code as string | undefined) ||
-      (body?.data?.name as string | undefined);
-    if (name) {
-      resolvedSenderName = name;
-      console.info(`[SMS] Resolved sender UUID → "${name}"`);
-      return name;
+    if (res.ok) {
+      const body = await res.json();
+      const name = senderLabel(body?.data ?? {});
+      if (name) {
+        resolvedSenderCache.set(value, name);
+        console.info(`[SMS] Resolved sender UUID → "${name}"`);
+        return name;
+      }
+    } else {
+      console.error(
+        '[SMS] Sender UUID not found, falling back to senders list:',
+        res.status
+      );
     }
   } catch (err) {
     console.error('[SMS] Sender resolve error:', err);
   }
+
+  const fallback = await listAvailableSenderName(apiKey);
+  if (fallback) {
+    resolvedSenderCache.set(value, fallback);
+    console.info(`[SMS] Using available sender "${fallback}"`);
+    return fallback;
+  }
+
   return null;
 }
 

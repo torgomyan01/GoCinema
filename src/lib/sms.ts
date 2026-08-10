@@ -2,6 +2,7 @@
  * Dexatel SMS Verify API client.
  *
  * OTP-ը գեներացվում և ստուգվում է մեր DB-ում։ Dexatel-ը միայն առաքում է SMS։
+ * Օգտագործվում է միայն գրանցման վերիֆիկացիայի և «մոռացել եմ գաղտնաբառը» համար։
  * Docs: https://developers.dexatel.com/docs/verify-api-sms
  *
  * `DEXATEL_SENDER_ID` կարող է լինել sender UUID կամ name/code։
@@ -32,7 +33,7 @@ interface SendSmsResult {
   code?: string;
 }
 
-export type SmsTemplate = 'verification' | 'reset' | 'ticket';
+export type SmsTemplate = 'verification' | 'reset';
 
 function env(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -45,8 +46,6 @@ function getTemplateId(template: SmsTemplate): string | undefined {
       return env('DEXATEL_TEMPLATE_VERIFICATION');
     case 'reset':
       return env('DEXATEL_TEMPLATE_RESET');
-    case 'ticket':
-      return env('DEXATEL_TEMPLATE_TICKET');
     default:
       return undefined;
   }

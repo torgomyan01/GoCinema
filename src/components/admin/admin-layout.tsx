@@ -72,7 +72,7 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
     : adminMenuItems.filter((item) => STAFF_ALLOWED_HREFS.includes(item.href));
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="flex h-screen min-h-0 bg-gray-50 overflow-hidden">
       {/* Sidebar */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -81,9 +81,9 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="bg-white shadow-lg overflow-hidden"
+            className="h-screen shrink-0 bg-white shadow-lg overflow-hidden"
           >
-            <div className="h-full flex flex-col">
+            <div className="flex h-full min-h-0 flex-col">
               {/* Sidebar Header */}
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between mb-4">
@@ -180,17 +180,18 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top Bar */}
-        <div className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+        <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {!isSidebarOpen && (
                 <button
+                  type="button"
                   onClick={() => setIsSidebarOpen(true)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="rounded-lg p-2 transition-colors hover:bg-gray-100"
                 >
-                  <Menu className="w-6 h-6 text-gray-600" />
+                  <Menu className="h-6 w-6 text-gray-600" />
                 </button>
               )}
             </div>
@@ -198,17 +199,19 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
               {isAdminRole(user.role) && <NotificationBell />}
               <Link
                 href={SITE_URL.HOME}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 transition-colors hover:bg-gray-50"
               >
-                <Home className="w-4 h-4" />
+                <Home className="h-4 w-4" />
                 <span className="hidden sm:inline">Գլխավոր էջ</span>
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Content Area */}
-        {children}
+        {/* Content Area — padding + scroll այստեղ են աշխատում */}
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

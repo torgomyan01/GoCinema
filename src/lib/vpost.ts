@@ -363,28 +363,28 @@ async function vpostRequest<T>(
 
   if (isVpostServerLogEnabled()) {
     vpostServerLog('request', {
-      endpoint,
+        endpoint,
       url,
       payload: sanitizePayloadForLog({ ...payload }),
     });
   }
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-    cache: 'no-store',
-  });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
 
-  const responseText = await response.text();
-  let json: VPostEnvelope<T>;
-  try {
-    json = JSON.parse(responseText) as VPostEnvelope<T>;
-  } catch {
-    json = {
-      status: false,
-      message: `Non-JSON response: ${responseText.slice(0, 300)}`,
-    };
-  }
+    const responseText = await response.text();
+    let json: VPostEnvelope<T>;
+    try {
+      json = JSON.parse(responseText) as VPostEnvelope<T>;
+    } catch {
+      json = {
+        status: false,
+        message: `Non-JSON response: ${responseText.slice(0, 300)}`,
+      };
+    }
 
   if (isVpostServerLogEnabled() && json.message?.startsWith('Non-JSON')) {
     vpostServerLog('raw_body', {
@@ -394,15 +394,15 @@ async function vpostRequest<T>(
     });
   }
 
-  if (isVPostDebugEnabled()) {
-    console.info('[vPost] Response', {
-      endpoint,
-      httpStatus: response.status,
-      ok: response.ok,
-      status: json.status,
-      message: json.message,
-    });
-  }
+    if (isVPostDebugEnabled()) {
+      console.info('[vPost] Response', {
+        endpoint,
+        httpStatus: response.status,
+        ok: response.ok,
+        status: json.status,
+        message: json.message,
+      });
+    }
 
   if (isVpostServerLogEnabled()) {
     const data = json.data as Record<string, unknown> | undefined;

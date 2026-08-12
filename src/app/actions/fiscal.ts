@@ -447,3 +447,38 @@ export async function findOriginalSaleReceipt(params: {
     return { success: false as const, error: 'Սխալ' };
   }
 }
+
+/**
+ * Ջնջում է ֆիսկալ կտրոնների գրառումները միայն տվյալների բազայից։
+ * ՀԴՄ-ում արդեն տպված կտրոնը չի չեղարկվում։
+ */
+export async function deleteFiscalReceipts(ids: number[]) {
+  const cashierId = await requireStaffUserId();
+  if (!cashierId) {
+    return { success: false as const, error: 'Մուտքն արգելված է', deleted: 0 };
+  }
+
+  const uniqueIds = Array.from(
+    new Set(
+      ids
+        .map((id) => Math.trunc(Number(id)))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )
+  );
+
+  if (uniqueIds.length === 0) {
+    return { success: false as const, error: 'Ընտրված կտրոն չկա', deleted: 0 };
+  }
+
+  try {
+    const result = await prisma.fiscalReceipt.deleteMany({
+      where: { id: { in: uniqueIds } },
+    });
+    revalidatePath('/admin/fiscal');
+    revalidatePath('/admin/accounting');
+    return { success: true as const, deleted: result.count };
+  } catch (error) {
+    console.error('deleteFiscalReceipts error:', error);
+    return { success: false as const, error: 'Ջնջումը ձախողվեց', deleted: 0 };
+  }
+}

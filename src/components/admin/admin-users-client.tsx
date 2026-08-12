@@ -561,12 +561,12 @@ export default function AdminUsersClient({
         <>
           <div className="mb-6 space-y-3">
             <div className="flex flex-col lg:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Որոնել անուն, հեռախոս, email, ID, հրավերի կոդ..."
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
@@ -580,13 +580,13 @@ export default function AdminUsersClient({
                   Մաքրել ֆիլտրերը
                 </button>
               )}
-            </div>
+        </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <Filter className="w-4 h-4 text-gray-400 shrink-0" />
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
                 className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
               >
                 <option value="all">Բոլոր դերերը</option>
@@ -643,124 +643,124 @@ export default function AdminUsersClient({
                 <option value="tickets">Ըստ տոմսերի</option>
                 <option value="bonus">Ըստ բոնուսի</option>
                 <option value="name">Ըստ անվան</option>
-              </select>
-            </div>
-          </div>
+          </select>
+        </div>
+      </div>
 
           {error && !isDetailModalOpen && !isEditModalOpen && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-              {error}
-            </div>
-          )}
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          {error}
+        </div>
+      )}
 
-          {isLoading ? (
-            <div className="text-center py-20">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-              <p className="mt-4 text-gray-600">Բեռնվում է...</p>
-            </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
-              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 text-lg">
+      {isLoading ? (
+        <div className="text-center py-20">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+          <p className="mt-4 text-gray-600">Բեռնվում է...</p>
+        </div>
+      ) : filteredUsers.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
+          <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600 text-lg">
                 {hasActiveFilters
-                  ? 'Օգտատերեր չեն գտնվել'
-                  : 'Օգտատերեր դեռ չկան'}
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Օգտատեր
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Կոնտակտ
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Դեր
-                      </th>
+              ? 'Օգտատերեր չեն գտնվել'
+              : 'Օգտատերեր դեռ չկան'}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Օգտատեր
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Կոնտակտ
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Դեր
+                  </th>
                       <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Բոնուս
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Վիճակագրություն
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Վիճակագրություն
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Գրանցում
-                      </th>
-                      <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Գործողություններ
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredUsers.map((u) => (
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Գործողություններ
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredUsers.map((u) => (
                       <tr
                         key={u.id}
                         className="hover:bg-gray-50 transition-colors"
                       >
-                        <td className="px-6 py-4">
+                    <td className="px-6 py-4">
                           <button
                             type="button"
                             onClick={() => handleOpenDetails(u.id)}
                             className="text-left group"
                           >
                             <div className="text-sm font-medium text-gray-900 flex items-center gap-2 group-hover:text-purple-700">
-                              {u.name || 'Անանուն'}
+                        {u.name || 'Անանուն'}
                               {u.isBlocked && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700">
                                   <Ban className="w-3 h-3" />
                                   Արգելափակված
                                 </span>
                               )}
-                            </div>
+                      </div>
                             <div className="text-xs text-gray-500">
                               ID: {u.id}
                             </div>
                           </button>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900 space-y-1">
-                            {u.phone && (
-                              <div className="flex items-center gap-1">
-                                <Phone className="w-4 h-4 text-gray-400" />
-                                {formatPhone(u.phone)}
-                                {u.phoneVerified && (
-                                  <CheckCircle className="w-4 h-4 text-green-500" />
-                                )}
-                              </div>
-                            )}
-                            {u.email && (
-                              <div className="flex items-center gap-1">
-                                <Mail className="w-4 h-4 text-gray-400" />
-                                {u.email}
-                                {u.emailVerified && (
-                                  <CheckCircle className="w-4 h-4 text-green-500" />
-                                )}
-                              </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-900 space-y-1">
+                        {u.phone && (
+                          <div className="flex items-center gap-1">
+                            <Phone className="w-4 h-4 text-gray-400" />
+                            {formatPhone(u.phone)}
+                            {u.phoneVerified && (
+                              <CheckCircle className="w-4 h-4 text-green-500" />
                             )}
                           </div>
-                        </td>
-                        <td className="px-6 py-4">
+                        )}
+                        {u.email && (
+                          <div className="flex items-center gap-1">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            {u.email}
+                            {u.emailVerified && (
+                              <CheckCircle className="w-4 h-4 text-green-500" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
                           <div className="flex flex-wrap gap-1">
                             {parseRoles(u.role).map((role) => (
-                              <span
+                      <span
                                 key={role}
                                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
                                   roleBadgeStyles[role] ||
                                   'bg-gray-100 text-gray-800'
-                                }`}
-                              >
-                                <Shield className="w-3 h-3" />
+                        }`}
+                      >
+                        <Shield className="w-3 h-3" />
                                 {ROLE_LABELS[role] || role}
-                              </span>
+                      </span>
                             ))}
                           </div>
-                        </td>
-                        <td className="px-6 py-4">
+                    </td>
+                    <td className="px-6 py-4">
                           <div className="text-sm space-y-1">
                             <div className="font-medium text-gray-900">
                               {formatPoints(u.bonusPoints || 0)}
@@ -786,15 +786,15 @@ export default function AdminUsersClient({
                               <ShoppingBag className="w-3.5 h-3.5 text-gray-400" />
                               Պատվերներ: {u._count.orders}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-600 flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {formatDate(u.createdAt)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-600 flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {formatDate(u.createdAt)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => handleOpenDetails(u.id)}
@@ -803,13 +803,13 @@ export default function AdminUsersClient({
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => handleOpenEditModal(u.id)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Խմբագրել"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
+                        <button
+                          onClick={() => handleOpenEditModal(u.id)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Խմբագրել"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
                             {u.isBlocked ? (
                               <button
                                 onClick={() => handleToggleBlock(u.id, false)}
@@ -829,23 +829,23 @@ export default function AdminUsersClient({
                                 <Ban className="w-4 h-4" />
                               </button>
                             )}
-                            {parseInt(currentUser.id) !== u.id && (
-                              <button
-                                onClick={() => handleDelete(u.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Ջնջել"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                        {parseInt(currentUser.id) !== u.id && (
+                          <button
+                            onClick={() => handleDelete(u.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Ջնջել"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
           )}
         </>
       )}

@@ -50,6 +50,7 @@ model User {
   producedMovies      Movie[]              @relation("MovieProducers")
   fiscalReceipts      FiscalReceipt[]      @relation("CashierFiscalReceipts")
   expenses            Expense[]            @relation("ExpenseCreatedBy")
+  taxDocuments        TaxDocument[]        @relation("TaxDocumentCreatedBy")
   packageBookings     PackageBooking[]     @relation("PackageBookingCreatedBy")
 
   referredBy               User?              @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
@@ -703,4 +704,60 @@ model Expense {
   @@index([category])
   @@index([createdById])
   @@map("expenses")
+}
+
+// ============================================
+// Հաշվապահություն / շրջհարկի գնահատական
+// Համահունչ ՀԴՄ դասակարգմանը՝ տոմս 59.14, ապրանք 47.x
+// ============================================
+
+model AccountingSettings {
+  id                       Int      @id @default(autoincrement())
+  /// Տոմսի մասը, որ վճարվում է արտադրողին (գործնական P&L)՝ 0–100
+  ticketProducerSharePercent Float  @default(50)
+  /// Տարեկան շրջհարկի շեմ (AMD)՝ զգուշացման համար
+  annualTurnoverThresholdAmd Float  @default(115000000)
+  note                     String?  @db.Text
+  updatedAt                DateTime @updatedAt
+  createdAt                DateTime @default(now())
+
+  @@map("accounting_settings")
+}
+
+/// Փաստաթղթավորված հաշիվներ՝ շրջհարկի նվազեցման համար
+model TaxDocument {
+  id            Int      @id @default(autoincrement())
+  /// producer = ֆիլմ արտադրող, purchase = ապրանքի գնում, other = այլ փաստաթղթավորված ծախս
+  kind          String   @db.VarChar(30)
+  /// tickets = ԱԴԳ 59.14 (այլ գործունեություն), products = ԱԴԳ 47.x (առևտուր)
+  stream        String   @db.VarChar(20)
+  /// Ծախսի տեսակ՝ հոդ. 258 մաս 6-ի նվազեցվողության որոշման համար
+  /// goods, service, fixed_asset, capital, depreciation, travel, representation, free_of_charge, other
+  costType      String   @default("goods") @db.VarChar(30)
+  /// false = օրենքով չի նվազեցնում շրջհարկը (հիմնական միջոց, գործուղում և այլն)
+  deductible    Boolean  @default(true)
+  title         String   @db.VarChar(255)
+  supplierName  String?  @db.VarChar(255)
+  supplierTin   String?  @db.VarChar(30)
+  invoiceNumber String?  @db.VarChar(100)
+  /// Ընդհանուր գումար (շրջհարկ վճարողի համար ծախս = ԱԱՀ-ով)
+  amount        Float
+  /// Տեղեկատվական՝ ՊԵԿ հաշվից
+  amountExVat   Float?
+  vatAmount     Float?
+  documentDate  DateTime
+  note          String?  @db.Text
+  createdById   Int?
+  createdBy     User?    @relation("TaxDocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([documentDate])
+  @@index([kind])
+  @@index([stream])
+  @@index([costType])
+  @@index([deductible])
+  @@index([invoiceNumber])
+  @@index([createdById])
+  @@map("tax_documents")
 }

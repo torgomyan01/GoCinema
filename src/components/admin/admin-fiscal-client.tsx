@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -9,9 +9,11 @@ import {
   ReceiptText,
   RefreshCw,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import {
   applyFiscalReprintResult,
+  deleteFiscalReceipts,
   getFiscalReceipts,
   getFiscalReceiptForReprint,
   type FiscalReceiptListItem,
@@ -64,6 +66,8 @@ export default function AdminFiscalClient() {
     message: string;
   } | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
@@ -74,6 +78,7 @@ export default function AdminFiscalClient() {
       if (res.success) {
         setItems(res.items);
         setFailedCount(res.failedCount);
+        setSelectedIds(new Set());
       } else {
         setError(res.error);
       }
@@ -102,8 +107,70 @@ export default function AdminFiscalClient() {
     };
   }, []);
 
+  const allSelected = useMemo(
+    () => items.length > 0 && selectedIds.size === items.length,
+    [items.length, selectedIds.size]
+  );
+
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(items.map((item) => item.id)));
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const confirmDelete = (count: number) => {
+    return window.confirm(
+      count === 1
+        ? 'Ջնջե՞լ այս ֆիսկալ կտրոնի գրառումը։ Կտրոնը կհեռացվի միայն ծրագրից — ՀԴՄ-ում արդեն տպվածը չի չեղարկվում։'
+        : `Ջնջե՞լ ընտրված ${count} ֆիսկալ կտրոնի գրառումները։ Կտրոնները կհեռացվեն միայն ծրագրից — ՀԴՄ-ում արդեն տպվածները չեն չեղարկվում։`
+    );
+  };
+
+  const handleDeleteIds = async (ids: number[]) => {
+    if (ids.length === 0 || isDeleting || busyId) return;
+    if (!confirmDelete(ids.length)) return;
+
+    setIsDeleting(true);
+    setNotice(null);
+    try {
+      const res = await deleteFiscalReceipts(ids);
+      if (!res.success) {
+        setNotice({
+          type: 'warning',
+          message: res.error || 'Ջնջումը ձախողվեց',
+        });
+        return;
+      }
+      setNotice({
+        type: 'success',
+        message:
+          res.deleted === 1
+            ? '1 կտրոնի գրառում ջնջվեց'
+            : `${res.deleted} կտրոնի գրառում ջնջվեց`,
+      });
+      await load();
+    } catch {
+      setNotice({ type: 'warning', message: 'Ջնջման սխալ' });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleReprint = async (id: number) => {
-    if (busyId) return;
+    if (busyId || isDeleting) return;
     setBusyId(id);
     setNotice(null);
     try {
@@ -156,7 +223,7 @@ export default function AdminFiscalClient() {
   };
 
   const handleReturn = async (item: FiscalReceiptListItem) => {
-    if (busyId) return;
+    if (busyId || isDeleting) return;
     if (!item.crn || item.rseq == null) {
       setNotice({
         type: 'warning',
@@ -270,20 +337,46 @@ export default function AdminFiscalClient() {
         </div>
       )}
 
-      <div className="mb-4 flex gap-2">
-        {filters.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              filter === f.id
-                ? 'bg-teal-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-2">
+          {filters.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => {
+                setFilter(f.id);
+                setSelectedIds(new Set());
+              }}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                filter === f.id
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">
+              Ընտրված է {selectedIds.size}
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleDeleteIds([...selectedIds])}
+              disabled={isDeleting || busyId != null}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Ջնջել ընտրվածները
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -307,6 +400,18 @@ export default function AdminFiscalClient() {
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
               <tr>
+                <th className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected;
+                    }}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                    aria-label="Ընտրել բոլորը"
+                  />
+                </th>
                 <th className="px-4 py-3">Կարգավիճակ</th>
                 <th className="px-4 py-3">Գործ.</th>
                 <th className="px-4 py-3">Ֆիսկալ №</th>
@@ -319,93 +424,118 @@ export default function AdminFiscalClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    {item.status === 'printed' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Տպված
-                      </span>
-                    ) : (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800"
-                        title={item.errorMessage ?? undefined}
-                      >
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        Ձախողված
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
-                        item.operation === 'return'
-                          ? 'bg-rose-50 text-rose-700'
-                          : 'bg-sky-50 text-sky-700'
-                      }`}
-                    >
-                      {OPERATION_LABELS[item.operation] ?? item.operation}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-gray-900">
-                    {item.fiscalNumber ?? '—'}
-                    {item.rseq != null && (
-                      <span className="ml-1 text-xs text-gray-400">
-                        #{item.rseq}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">
-                    {formatAmd(item.total)}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {item.paymentMethod === 'card' ? 'Քարտ' : 'Կանխիկ'}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {SOURCE_LABELS[item.source] ?? item.source}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {item.cashierName ?? '—'}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {formatDateTime(item.createdAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      {item.status === 'failed' && (
-                        <button
-                          onClick={() => void handleReprint(item.id)}
-                          disabled={busyId === item.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:opacity-50"
+              {items.map((item) => {
+                const selected = selectedIds.has(item.id);
+                return (
+                  <tr
+                    key={item.id}
+                    className={`hover:bg-gray-50 ${selected ? 'bg-teal-50/40' : ''}`}
+                  >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleSelect(item.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                        aria-label={`Ընտրել կտրոն ${item.id}`}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.status === 'printed' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Տպված
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800"
+                          title={item.errorMessage ?? undefined}
                         >
-                          {busyId === item.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Printer className="h-3.5 w-3.5" />
-                          )}
-                          Վերատպել
-                        </button>
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          Ձախողված
+                        </span>
                       )}
-                      {item.status === 'printed' &&
-                        item.operation === 'sale' && (
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                          item.operation === 'return'
+                            ? 'bg-rose-50 text-rose-700'
+                            : 'bg-sky-50 text-sky-700'
+                        }`}
+                      >
+                        {OPERATION_LABELS[item.operation] ?? item.operation}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-gray-900">
+                      {item.fiscalNumber ?? '—'}
+                      {item.rseq != null && (
+                        <span className="ml-1 text-xs text-gray-400">
+                          #{item.rseq}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">
+                      {formatAmd(item.total)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {item.paymentMethod === 'card' ? 'Քարտ' : 'Կանխիկ'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {SOURCE_LABELS[item.source] ?? item.source}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {item.cashierName ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {formatDateTime(item.createdAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        {item.status === 'failed' && (
                           <button
-                            onClick={() => void handleReturn(item)}
-                            disabled={busyId === item.id}
-                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                            onClick={() => void handleReprint(item.id)}
+                            disabled={busyId === item.id || isDeleting}
+                            className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:opacity-50"
                           >
                             {busyId === item.id ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
-                              <RotateCcw className="h-3.5 w-3.5" />
+                              <Printer className="h-3.5 w-3.5" />
                             )}
-                            Վերադարձ
+                            Վերատպել
                           </button>
                         )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {item.status === 'printed' &&
+                          item.operation === 'sale' && (
+                            <button
+                              onClick={() => void handleReturn(item)}
+                              disabled={busyId === item.id || isDeleting}
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                            >
+                              {busyId === item.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              )}
+                              Վերադարձ
+                            </button>
+                          )}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteIds([item.id])}
+                          disabled={isDeleting || busyId != null}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                          title="Ջնջել գրառումը"
+                          aria-label="Ջնջել"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -21,6 +21,7 @@ import {
   Receipt,
   ReceiptText,
   Wallet,
+  Calculator,
   PartyPopper,
   Gift,
   LucideIcon,
@@ -69,6 +70,13 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/expenses',
     color: 'text-rose-600',
     bgColor: 'bg-rose-50',
+  },
+  {
+    title: 'Հաշվապահություն',
+    icon: Calculator,
+    href: '/admin/accounting',
+    color: 'text-cyan-600',
+    bgColor: 'bg-cyan-50',
   },
   {
     title: 'Ֆիսկալ կտրոններ',

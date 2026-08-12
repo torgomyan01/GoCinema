@@ -6,6 +6,8 @@ import type { Prisma } from '@prisma/client';
 import { isOccupiedTicketStatus, occupiedTicketWhere } from '@/lib/reservation';
 import { releaseExpiredReservations } from '@/app/actions/tickets';
 import { findPackageBookingConflictForScreening } from '@/app/actions/package-bookings';
+import { returnOrderItemStock } from '@/lib/product-units';
+import { recalculateBalance } from '@/lib/bonus';
 
 const screeningListInclude = {
   movie: {
@@ -414,34 +416,135 @@ export async function updateScreening(data: UpdateScreeningData) {
 
 export async function deleteScreening(id: number) {
   try {
-    // Check if there are any tickets for this screening
-    const ticketsCount = await prisma.ticket.count({
-      where: {
-        screeningId: id,
-        status: {
-          not: 'cancelled',
-        },
-      },
+    const screening = await prisma.screening.findUnique({
+      where: { id },
+      select: { id: true },
     });
-
-    if (ticketsCount > 0) {
-      return {
-        success: false,
-        error:
-          'Այս ցուցադրության համար արդեն գոյություն ունեն տոմսեր: Չի կարելի ջնջել',
-      };
+    if (!screening) {
+      return { success: false, error: 'Ցուցադրությունը չի գտնվել' };
     }
 
-    await prisma.screening.delete({
-      where: { id },
-    });
+    await prisma.$transaction(
+      async (tx) => {
+        const tickets = await tx.ticket.findMany({
+          where: { screeningId: id },
+          select: {
+            id: true,
+            userId: true,
+            orderId: true,
+            orderItems: {
+              select: {
+                id: true,
+                productId: true,
+                quantity: true,
+                product: { select: { category: true } },
+              },
+            },
+          },
+        });
+
+        const ticketIds = tickets.map((t) => t.id);
+        const orderIds = [
+          ...new Set(
+            tickets
+              .map((t) => t.orderId)
+              .filter((oid): oid is number => oid != null)
+          ),
+        ];
+        const affectedUserIds = [
+          ...new Set(tickets.map((t) => t.userId)),
+        ];
+
+        // Պահեստը վերադարձնել՝ ջնջելուց առաջ
+        for (const ticket of tickets) {
+          for (const item of ticket.orderItems) {
+            await returnOrderItemStock(
+              tx,
+              item.id,
+              item.productId,
+              item.product.category,
+              item.quantity
+            );
+          }
+        }
+
+        if (ticketIds.length > 0 || orderIds.length > 0) {
+          await tx.bonusTransaction.deleteMany({
+            where: {
+              OR: [
+                ...(ticketIds.length > 0
+                  ? [{ ticketId: { in: ticketIds } }]
+                  : []),
+                ...(orderIds.length > 0
+                  ? [{ orderId: { in: orderIds } }]
+                  : []),
+              ],
+            },
+          });
+
+          await tx.fiscalReceipt.deleteMany({
+            where: {
+              OR: [
+                ...(ticketIds.length > 0
+                  ? [{ ticketId: { in: ticketIds } }]
+                  : []),
+                ...(orderIds.length > 0
+                  ? [{ orderId: { in: orderIds } }]
+                  : []),
+              ],
+            },
+          });
+        }
+
+        // Payment + OrderItem cascade՝ տոմսի հետ
+        await tx.ticket.deleteMany({ where: { screeningId: id } });
+
+        for (const orderId of orderIds) {
+          const remainingTickets = await tx.ticket.count({
+            where: { orderId },
+          });
+          if (remainingTickets === 0) {
+            await tx.orderItem.deleteMany({ where: { orderId } });
+            await tx.fiscalReceipt.deleteMany({ where: { orderId } });
+            await tx.bonusTransaction.deleteMany({ where: { orderId } });
+            await tx.order.delete({ where: { id: orderId } });
+          } else {
+            const remaining = await tx.ticket.findMany({
+              where: { orderId, status: { not: 'cancelled' } },
+              select: { price: true },
+            });
+            const items = await tx.orderItem.findMany({
+              where: { orderId },
+              select: { price: true, quantity: true },
+            });
+            const total =
+              remaining.reduce((sum, t) => sum + t.price, 0) +
+              items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+            await tx.order.update({
+              where: { id: orderId },
+              data: { totalAmount: total },
+            });
+          }
+        }
+
+        for (const userId of affectedUserIds) {
+          await recalculateBalance(userId, tx);
+        }
+
+        await tx.screening.delete({ where: { id } });
+      },
+      { timeout: 30000 }
+    );
 
     revalidatePath('/admin/screenings');
+    revalidatePath('/admin/movies');
+    revalidatePath('/admin/tickets');
     revalidatePath('/schedule');
+    revalidatePath('/movies');
 
     return {
       success: true,
-      message: 'Ցուցադրությունը հաջողությամբ ջնջվեց',
+      message: 'Ցուցադրությունը և կապված տոմսերը հաջողությամբ ջնջվեցին',
     };
   } catch (error: any) {
     console.error('[Delete Screening] Error:', error);

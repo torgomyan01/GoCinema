@@ -451,7 +451,9 @@ export default function AdminScreeningsClient({
 
   const handleDeleteScreening = async (id: number) => {
     if (
-      !confirm('Դուք համոզված եք, որ ցանկանում եք հանել այս ցուցադրությունը?')
+      !confirm(
+        'Դուք համոզված եք, որ ցանկանում եք ջնջել այս ցուցադրությունը։ Կջնջվեն նաև բոլոր կապված տոմսերը և պատվերները։'
+      )
     ) {
       return;
     }

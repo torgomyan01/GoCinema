@@ -99,6 +99,20 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
 
   const [producerUsers, setProducerUsers] = useState<ProducerUser[]>([]);
   const [ticketsMovie, setTicketsMovie] = useState<Movie | null>(null);
+  const [showTicketsButton, setShowTicketsButton] = useState(false);
+
+  // Ctrl+Shift+6՝ «Ցուցադրություններ և տոմսեր» կոճակի ցուցադրում/թաքցում
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === '6' || e.code === 'Digit6')) {
+        e.preventDefault();
+        setShowTicketsButton((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -488,14 +502,16 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
 
                     {/* Actions */}
                     <div className="flex flex-col gap-2 pt-4 border-t border-gray-200">
-                      <button
-                        type="button"
-                        onClick={() => setTicketsMovie(movie)}
-                        className="w-full px-3 py-2 bg-purple-50 text-purple-600 rounded-lg font-medium hover:bg-purple-100 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <TicketIcon className="w-4 h-4" />
-                        Ցուցադրություններ և տոմսեր
-                      </button>
+                      {showTicketsButton && (
+                        <button
+                          type="button"
+                          onClick={() => setTicketsMovie(movie)}
+                          className="w-full px-3 py-2 bg-purple-50 text-purple-600 rounded-lg font-medium hover:bg-purple-100 transition-colors flex items-center justify-center gap-2"
+                        >
+                          <TicketIcon className="w-4 h-4" />
+                          Ցուցադրություններ և տոմսեր
+                        </button>
+                      )}
                       {movie.trailerUrl && (
                         <a
                           href={movie.trailerUrl}

@@ -13,12 +13,14 @@ import {
   Wallet,
   Ticket as TicketIcon,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import {
   getScreeningsForMovieAdmin,
   getTicketsForScreeningAdmin,
   updateTicketStatus,
 } from '@/app/actions/tickets';
+import { deleteScreening } from '@/app/actions/screenings';
 
 type TicketStatus =
   | 'reserved'
@@ -140,6 +142,7 @@ export default function MovieTicketsModal({ movie, onClose }: Props) {
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const loadScreenings = useCallback(async () => {
     setIsLoading(true);
@@ -194,6 +197,37 @@ export default function MovieTicketsModal({ movie, onClose }: Props) {
       alert(result.error || 'Կարգավիճակը թարմացնելիս սխալ է տեղի ունեցել');
     }
     setUpdatingId(null);
+  };
+
+  const handleDeleteScreening = async (
+    e: React.MouseEvent,
+    screening: ScreeningSummary
+  ) => {
+    e.stopPropagation();
+    const soldLabel =
+      screening.sold > 0
+        ? `\nՎաճառված/ամրագրված տոմսեր՝ ${screening.sold}։`
+        : '';
+    if (
+      !confirm(
+        `Ջնջե՞լ այս ցուցադրությունը (${formatDate(screening.startTime)} · ${formatTime(screening.startTime)})։${soldLabel}\n\nԿջնջվեն նաև բոլոր կապված տոմսերը, վճարումները և պատվերները։ Այս գործողությունը հետ չի բերվում։`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingId(screening.id);
+    const result = await deleteScreening(screening.id);
+    if (result.success) {
+      setScreenings((prev) => prev.filter((s) => s.id !== screening.id));
+      if (openScreeningId === screening.id) {
+        setOpenScreeningId(null);
+        setTickets([]);
+      }
+    } else {
+      alert(result.error || 'Ցուցադրությունը ջնջելիս սխալ է տեղի ունեցել');
+    }
+    setDeletingId(null);
   };
 
   return (
@@ -257,42 +291,59 @@ export default function MovieTicketsModal({ movie, onClose }: Props) {
                     key={s.id}
                     className="overflow-hidden rounded-xl border border-gray-200"
                   >
-                    <button
-                      onClick={() => toggleScreening(s.id)}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-gray-50"
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
-                        <Calendar className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-900">
-                          {formatDate(s.startTime)} · {formatTime(s.startTime)}
-                        </p>
-                        <p className="flex items-center gap-2 text-xs text-gray-500">
-                          <Clock className="h-3 w-3" />
-                          {s.hallName} · {s.sold}/{s.capacity} վաճառված ·{' '}
-                          {formatAmd(s.revenue)}
-                        </p>
-                      </div>
-                      <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
-                        {STATUS_ORDER.map((st) =>
-                          s.counts[st] > 0 ? (
-                            <span
-                              key={st}
-                              title={STATUS_META[st].label}
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_META[st].badge}`}
-                            >
-                              {s.counts[st]}
-                            </span>
-                          ) : null
+                    <div className="flex w-full items-center gap-2 px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleScreening(s.id)}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-90"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
+                          <Calendar className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-gray-900">
+                            {formatDate(s.startTime)} ·{' '}
+                            {formatTime(s.startTime)}
+                          </p>
+                          <p className="flex items-center gap-2 text-xs text-gray-500">
+                            <Clock className="h-3 w-3" />
+                            {s.hallName} · {s.sold}/{s.capacity} վաճառված ·{' '}
+                            {formatAmd(s.revenue)}
+                          </p>
+                        </div>
+                        <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+                          {STATUS_ORDER.map((st) =>
+                            s.counts[st] > 0 ? (
+                              <span
+                                key={st}
+                                title={STATUS_META[st].label}
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_META[st].badge}`}
+                              >
+                                {s.counts[st]}
+                              </span>
+                            ) : null
+                          )}
+                        </div>
+                        <ChevronDown
+                          className={`h-5 w-5 shrink-0 text-gray-400 transition-transform ${
+                            openScreeningId === s.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        title="Ջնջել ցուցադրությունը"
+                        disabled={deletingId === s.id}
+                        onClick={(e) => void handleDeleteScreening(e, s)}
+                        className="shrink-0 rounded-lg p-2 text-red-500 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                      >
+                        {deletingId === s.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
                         )}
-                      </div>
-                      <ChevronDown
-                        className={`h-5 w-5 shrink-0 text-gray-400 transition-transform ${
-                          openScreeningId === s.id ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
+                      </button>
+                    </div>
 
                     <AnimatePresence initial={false}>
                       {openScreeningId === s.id && (

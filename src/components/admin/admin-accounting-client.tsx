@@ -13,6 +13,7 @@ import {
   Calculator,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   FileText,
   Info,
   Loader2,
@@ -30,22 +31,29 @@ import {
   deleteTaxDocument,
   getAccountingDashboard,
   importTaxDocumentsFromXlsx,
+  removeAccountingMismatchItems,
   updateAccountingSettings,
   updateTaxDocument,
 } from '@/app/actions/accounting';
 import {
+  TAX_COST_TYPE_GROUPS,
   TAX_COST_TYPE_LABELS,
   TAX_DOCUMENT_KIND_LABELS,
   TAX_STREAM_LABELS,
   defaultCostTypeForKind,
   isDeductibleCostType,
+  taxCostTypeHint,
   type AccountingDashboard,
+  type AccountingWarning,
+  type AccountingWarningSample,
   type StreamTaxView,
   type TaxCostType,
   type TaxDocumentKind,
   type TaxDocumentRow,
 } from '@/lib/accounting';
 import type { TaxStream } from '@/lib/turnover-tax';
+import { EXPENSE_CATEGORY_GROUPS } from '@/lib/expenses';
+import { getStatutoryPaymentInfo } from '@/lib/statutory-payments';
 
 function toInputDate(date: Date): string {
   const y = date.getFullYear();
@@ -71,6 +79,16 @@ function formatDate(value: string): string {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+  });
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString('hy-AM', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -613,25 +631,7 @@ export default function AdminAccountingClient() {
           {data.warnings.length > 0 && (
             <div className="space-y-2">
               {data.warnings.map((w, i) => (
-                <div
-                  key={i}
-                  className={`flex gap-3 rounded-xl border px-4 py-3 text-sm ${
-                    w.level === 'error'
-                      ? 'border-red-200 bg-red-50 text-red-900'
-                      : w.level === 'warning'
-                        ? 'border-amber-200 bg-amber-50 text-amber-900'
-                        : 'border-gray-200 bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  {w.level === 'error' ? (
-                    <XCircle className="h-5 w-5 shrink-0 text-red-600" />
-                  ) : w.level === 'warning' ? (
-                    <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
-                  ) : (
-                    <Info className="h-5 w-5 shrink-0 text-gray-400" />
-                  )}
-                  <p>{w.message}</p>
-                </div>
+                <WarningBanner key={i} warning={w} onReload={load} />
               ))}
             </div>
           )}
@@ -660,7 +660,11 @@ export default function AdminAccountingClient() {
             <StatCard
               label="Գործնական շահույթ (մոտ.)"
               value={formatAmd(data.operational.estimatedOperatingProfit)}
-              hint={`Արտադրողի ${data.operational.producerSharePercent}%-ից հետո + ապրանք`}
+              hint={`Արտադրողի ${data.operational.producerSharePercent}% + ապրանք − ծախսեր${
+                data.operational.statutoryPaymentsTotal > 0
+                  ? ` · դրոշմանիշ/տուրք ${formatAmd(data.operational.statutoryPaymentsTotal)}`
+                  : ''
+              }`}
             />
           </div>
 
@@ -705,7 +709,9 @@ export default function AdminAccountingClient() {
                     Գործնական բաշխում (ոչ հարկային)
                   </p>
                   <div className="flex justify-between">
-                    <span>Արտադրողին {data.operational.producerSharePercent}%</span>
+                    <span>
+                      Արտադրողին {data.operational.producerSharePercent}%
+                    </span>
                     <span className="tabular-nums">
                       {formatAmd(data.operational.producerShareAmount)}
                     </span>
@@ -733,22 +739,24 @@ export default function AdminAccountingClient() {
                       Վաճառք ըստ կատեգորիայի (համախառն)
                     </p>
                     <ul className="space-y-1.5 text-xs text-gray-600">
-                      {sortCategories(data.revenue.byProductCategory).map((c) => (
-                        <li
-                          key={c.category}
-                          className="flex items-center justify-between gap-2"
-                        >
-                          <span>
-                            {categoryLabel(c.category)}
-                            <span className="ml-1 text-gray-400">
-                              · {c.quantity} հատ
+                      {sortCategories(data.revenue.byProductCategory).map(
+                        (c) => (
+                          <li
+                            key={c.category}
+                            className="flex items-center justify-between gap-2"
+                          >
+                            <span>
+                              {categoryLabel(c.category)}
+                              <span className="ml-1 text-gray-400">
+                                · {c.quantity} հատ
+                              </span>
                             </span>
-                          </span>
-                          <span className="font-medium tabular-nums text-gray-800">
-                            {formatAmd(c.revenue)}
-                          </span>
-                        </li>
-                      ))}
+                            <span className="font-medium tabular-nums text-gray-800">
+                              {formatAmd(c.revenue)}
+                            </span>
+                          </li>
+                        )
+                      )}
                       <li className="flex justify-between gap-2 border-t border-dashed border-gray-200 pt-1.5 font-semibold text-gray-900">
                         <span>Զուտ (հարկման բազա)</span>
                         <span className="tabular-nums">
@@ -808,8 +816,8 @@ export default function AdminAccountingClient() {
               </dl>
               <p className="mt-3 text-xs text-gray-500">
                 Վերադարձված տոմսերն ու ապրանքները հարկման բազայում չեն. նրանք
-                դուրս են գրվում սկզբնական վաճառքից, ոչ թե հանվում վերադարձի
-                օրվա շրջանառությունից։
+                դուրս են գրվում սկզբնական վաճառքից, ոչ թե հանվում վերադարձի օրվա
+                շրջանառությունից։
               </p>
             </div>
 
@@ -827,15 +835,29 @@ export default function AdminAccountingClient() {
                   label={`Վերադարձի կտրոններ (${data.fiscal.returnsCount})`}
                   value={`− ${formatAmd(data.fiscal.returnsTotal)}`}
                 />
-                <Row label="ՀԴՄ զուտ" value={formatAmd(data.fiscal.netTotal)} strong />
+                <Row
+                  label="ՀԴՄ զուտ"
+                  value={formatAmd(data.fiscal.netTotal)}
+                  strong
+                />
                 <Row
                   label="Հաշվառման բազա"
                   value={formatAmd(data.tax.totalTurnover)}
                   strong
                 />
+                {data.fiscal.onlineTicketsCount > 0 && (
+                  <Row
+                    label={`Օնլայն տոմսեր (${data.fiscal.onlineTicketsCount} հատ) · ՀԴՄ չի տպվում`}
+                    value={formatAmd(data.fiscal.onlineTicketsAmount)}
+                  />
+                )}
                 <Row
-                  label="Տարբերություն"
-                  value={formatAmd(data.fiscal.difference)}
+                  label={
+                    data.fiscal.onlineTicketsCount > 0
+                      ? 'Տարբերություն (առանց օնլայնի)'
+                      : 'Տարբերություն'
+                  }
+                  value={formatAmd(data.fiscal.differenceAfterOnline)}
                 />
               </dl>
               <div className="mt-3 flex items-center gap-2 text-xs">
@@ -843,7 +865,9 @@ export default function AdminAccountingClient() {
                   <>
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                     <span className="text-emerald-700">
-                      Բոլոր կտրոնները տպված են
+                      {data.fiscal.onlineTicketsCount > 0
+                        ? 'Դրամարկղի կտրոնները տպված են · օնլայնը ՀԴՄ չի պահանջում'
+                        : 'Բոլոր կտրոնները տպված են'}
                     </span>
                   </>
                 ) : (
@@ -927,7 +951,8 @@ export default function AdminAccountingClient() {
 
             {data.documents.rows.length === 0 ? (
               <p className="py-8 text-center text-sm text-gray-500">
-                Այս եռամսյակում հաշիվ չկա։ Բեռնեք ՊԵԿ Excel-ը կամ ավելացրեք ձեռքով։
+                Այս եռամսյակում հաշիվ չկա։ Բեռնեք ՊԵԿ Excel-ը կամ ավելացրեք
+                ձեռքով։
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -956,7 +981,10 @@ export default function AdminAccountingClient() {
                             ]
                           }
                         </td>
-                        <td className="px-2 py-2 text-gray-600">
+                        <td
+                          className="px-2 py-2 text-gray-600"
+                          title={taxCostTypeHint(row.costType)}
+                        >
                           {TAX_COST_TYPE_LABELS[row.costType as TaxCostType] ||
                             row.costType}
                           <span className="ml-1 text-gray-400">
@@ -1017,6 +1045,17 @@ export default function AdminAccountingClient() {
             )}
           </div>
 
+          <ExpenseBreakdownSection
+            periodLabel={data.period.label}
+            year={data.period.year}
+            quarter={data.period.quarter}
+            ytdTurnover={data.yearToDate.turnover}
+            yearIncomplete={data.period.quarter < 4}
+            rows={data.operational.expensesByCategory}
+            total={data.operational.operatingExpensesTotal}
+            statutoryTotal={data.operational.statutoryPaymentsTotal}
+          />
+
           <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
             <p>{data.disclaimer}</p>
@@ -1072,13 +1111,15 @@ export default function AdminAccountingClient() {
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                 >
                   <option value="tickets">Տոմսեր · 59.14 (նվազեցում 6%)</option>
-                  <option value="products">Ապրանքներ · 47.x (նվազեցում 9.5%)</option>
+                  <option value="products">
+                    Ապրանքներ · 47.x (նվազեցում 9.5%)
+                  </option>
                 </select>
               </label>
             )}
 
             <label className="block text-sm">
-              Ծախսի տեսակ (հոդ. 258 մաս 6)
+              Ծախսի տեսակ (հոդ. 258)
               <select
                 value={docForm.costType}
                 onChange={(e) => {
@@ -1091,13 +1132,20 @@ export default function AdminAccountingClient() {
                 }}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
               >
-                {(Object.keys(TAX_COST_TYPE_LABELS) as TaxCostType[]).map((t) => (
-                  <option key={t} value={t}>
-                    {TAX_COST_TYPE_LABELS[t]}
-                    {isDeductibleCostType(t) ? '' : ' — չի նվազեցնում'}
-                  </option>
+                {TAX_COST_TYPE_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.items.map((t) => (
+                      <option key={t} value={t}>
+                        {TAX_COST_TYPE_LABELS[t]}
+                        {isDeductibleCostType(t) ? '' : ' — չի նվազեցնում'}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
+              <span className="mt-1 block text-xs text-gray-500">
+                {taxCostTypeHint(docForm.costType)}
+              </span>
             </label>
 
             <label className="flex items-center gap-2 text-sm">
@@ -1243,9 +1291,9 @@ export default function AdminAccountingClient() {
               />
             </label>
             <p className="text-xs text-gray-500">
-              Հարկային բազան մնում է ամբողջ տոմսային շրջանառությունը (ՀԴՄ 59.14)։
-              Այս տոկոսը միայն գործնական շահույթի ցուցադրման համար է — հարկը
-              հաշվվում է արտադրողի իրական հաշիվների հիման վրա։
+              Հարկային բազան մնում է ամբողջ տոմսային շրջանառությունը (ՀԴՄ
+              59.14)։ Այս տոկոսը միայն գործնական շահույթի ցուցադրման համար է —
+              հարկը հաշվվում է արտադրողի իրական հաշիվների հիման վրա։
             </p>
             {settingsError && (
               <p className="text-sm text-red-600">{settingsError}</p>
@@ -1273,6 +1321,372 @@ export default function AdminAccountingClient() {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function isDeletableSample(sample: AccountingWarningSample): boolean {
+  return (
+    sample.receiptId != null ||
+    sample.ticketId != null ||
+    sample.orderId != null
+  );
+}
+
+function mismatchSampleKey(
+  sample: AccountingWarningSample,
+  findingTitle: string,
+  idx: number
+): string {
+  const parts = [
+    sample.receiptId != null ? `r${sample.receiptId}` : null,
+    sample.ticketId != null ? `t${sample.ticketId}` : null,
+    sample.orderId != null ? `o${sample.orderId}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join('-') : `${findingTitle}-${idx}`;
+}
+
+function WarningBanner({
+  warning,
+  onReload,
+}: {
+  warning: AccountingWarning;
+  onReload: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const details = warning.details;
+
+  const selectableSamples =
+    details?.findings.flatMap((finding) =>
+      finding.selectable === false
+        ? []
+        : finding.samples
+            .map((sample, idx) => ({
+              key: mismatchSampleKey(sample, finding.title, idx),
+              sample,
+              findingTitle: finding.title,
+            }))
+            .filter((row) => isDeletableSample(row.sample))
+    ) ?? [];
+
+  const allSelectableKeys = selectableSamples.map((row) => row.key);
+  const allSelected =
+    allSelectableKeys.length > 0 &&
+    allSelectableKeys.every((key) => selectedKeys.has(key));
+  const someSelected = selectedKeys.size > 0 && !allSelected;
+
+  const toggleSelect = (key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedKeys((prev) => {
+      if (allSelectableKeys.length > 0 && allSelectableKeys.every((key) => prev.has(key))) {
+        return new Set();
+      }
+      return new Set(allSelectableKeys);
+    });
+  };
+
+  const toggleFinding = (findingTitle: string) => {
+    const keys = selectableSamples
+      .filter((row) => row.findingTitle === findingTitle)
+      .map((row) => row.key);
+    if (keys.length === 0) return;
+    setSelectedKeys((prev) => {
+      const allOn = keys.every((key) => prev.has(key));
+      const next = new Set(prev);
+      for (const key of keys) {
+        if (allOn) next.delete(key);
+        else next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (isDeleting || selectedKeys.size === 0) return;
+    const selected = selectableSamples.filter((row) =>
+      selectedKeys.has(row.key)
+    );
+    if (selected.length === 0) return;
+
+    const ok = window.confirm(
+      `Ջնջե՞լ ընտրված ${selected.length} գրառումը։ Կտրոնները կհեռացվեն միայն ծրագրից, տոմսերն ու պատվերները կչեղարկվեն հաշվառումից։ ՀԴՄ-ում տպվածը չի չեղարկվում։`
+    );
+    if (!ok) return;
+
+    const receiptIds = selected
+      .map((row) => row.sample.receiptId)
+      .filter((id): id is number => id != null);
+    const ticketIds = selected
+      .map((row) => row.sample.ticketId)
+      .filter((id): id is number => id != null);
+    const orderIds = selected
+      .map((row) => row.sample.orderId)
+      .filter((id): id is number => id != null);
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await removeAccountingMismatchItems({
+        receiptIds,
+        ticketIds,
+        orderIds,
+      });
+      if (!res.success) {
+        setDeleteError(res.error || 'Ջնջումը ձախողվեց');
+        return;
+      }
+      setSelectedKeys(new Set());
+      await onReload();
+    } catch {
+      setDeleteError('Ջնջման սխալ');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <div
+      className={`rounded-xl border px-4 py-3 text-sm ${
+        warning.level === 'error'
+          ? 'border-red-200 bg-red-50 text-red-900'
+          : warning.level === 'warning'
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-gray-200 bg-gray-50 text-gray-700'
+      }`}
+    >
+      <div className="flex gap-3">
+        {warning.level === 'error' ? (
+          <XCircle className="h-5 w-5 shrink-0 text-red-600" />
+        ) : warning.level === 'warning' ? (
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+        ) : (
+          <Info className="h-5 w-5 shrink-0 text-gray-400" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="whitespace-pre-line">{warning.message}</p>
+            {details && (
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                  warning.level === 'warning'
+                    ? 'border-amber-300 bg-white text-amber-900 hover:bg-amber-100'
+                    : warning.level === 'error'
+                      ? 'border-red-300 bg-white text-red-900 hover:bg-red-100'
+                      : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-100'
+                }`}
+              >
+                {open ? 'Թաքցնել' : 'Մանրամասներ'}
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${
+                    open ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+            )}
+          </div>
+
+          {open && details && (
+            <div className="mt-3 space-y-4 rounded-lg border border-black/5 bg-white/80 p-3 text-gray-800">
+              <div>
+                <h3 className="font-semibold text-gray-900">{details.title}</h3>
+                <dl className="mt-2 grid gap-1 sm:grid-cols-2">
+                  {details.comparison.map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex justify-between gap-3 text-xs sm:text-sm"
+                    >
+                      <dt className="text-gray-500">{row.label}</dt>
+                      <dd className="shrink-0 tabular-nums font-medium">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+
+              {details.findings.length > 0 ? (
+                <div className="space-y-3">
+                  {selectableSamples.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someSelected;
+                          }}
+                          onChange={toggleSelectAll}
+                        />
+                        Նշել բոլորը
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteSelected()}
+                        disabled={selectedKeys.size === 0 || isDeleting}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Ջնջել ընտրվածները
+                        {selectedKeys.size > 0 ? ` (${selectedKeys.size})` : ''}
+                      </button>
+                    </div>
+                  )}
+                  {details.findings.map((finding) => {
+                    const findingKeys =
+                      finding.selectable === false
+                        ? []
+                        : finding.samples
+                            .map((sample, idx) =>
+                              mismatchSampleKey(sample, finding.title, idx)
+                            )
+                            .filter((_, idx) =>
+                              isDeletableSample(finding.samples[idx])
+                            );
+                    const findingAll =
+                      findingKeys.length > 0 &&
+                      findingKeys.every((key) => selectedKeys.has(key));
+                    const findingSome =
+                      findingKeys.some((key) => selectedKeys.has(key)) &&
+                      !findingAll;
+
+                    return (
+                    <section
+                      key={finding.title}
+                      className={`rounded-lg border p-3 ${
+                        finding.tone === 'info'
+                          ? 'border-emerald-100 bg-emerald-50/60'
+                          : 'border-gray-100 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          {findingKeys.length > 0 && (
+                            <input
+                              type="checkbox"
+                              checked={findingAll}
+                              ref={(el) => {
+                                if (el) el.indeterminate = findingSome;
+                              }}
+                              onChange={() => toggleFinding(finding.title)}
+                              aria-label={`${finding.title} · բոլորը`}
+                            />
+                          )}
+                          <h4 className="font-medium text-gray-900">
+                            {finding.title}
+                          </h4>
+                        </div>
+                        <p className="text-xs tabular-nums text-gray-600">
+                          {finding.count} հատ · {formatAmd(finding.amount)}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {finding.description}
+                      </p>
+                      {finding.samples.length > 0 && (
+                        <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto text-xs">
+                          {finding.samples.map((sample, idx) => {
+                            const key = mismatchSampleKey(
+                              sample,
+                              finding.title,
+                              idx
+                            );
+                            const deletable =
+                              finding.selectable !== false &&
+                              isDeletableSample(sample);
+                            return (
+                            <li
+                              key={key}
+                              className="flex flex-wrap items-start justify-between gap-2 border-t border-gray-100 py-1.5 first:border-t-0"
+                            >
+                              <div className="flex min-w-0 items-start gap-2">
+                                {deletable && (
+                                  <input
+                                    type="checkbox"
+                                    className="mt-0.5"
+                                    checked={selectedKeys.has(key)}
+                                    onChange={() => toggleSelect(key)}
+                                  />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="flex flex-wrap items-center gap-2 font-medium text-gray-800">
+                                    {sample.ref}
+                                    {sample.badge && (
+                                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                                        {sample.badge}
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-gray-500">
+                                    {formatDateTime(sample.date)} · {sample.note}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="shrink-0 tabular-nums font-medium text-gray-900">
+                                {formatAmd(sample.amount)}
+                              </span>
+                            </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                      {finding.count > finding.samples.length && (
+                        <p className="mt-1 text-[11px] text-gray-400">
+                          Ցուցադրվում է առաջին {finding.samples.length}-ը ·
+                          ընդամենը {finding.count}
+                        </p>
+                      )}
+                    </section>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Առանձին կտրոն/վաճառք չհամընկավ ավտոմատ ստուգմամբ։ Տարբերությունը
+                  կարող է գալ գումարների տարբերությունից (տոմսի գին ≠ կտրոնի
+                  total) կամ մեկ կտրոն՝ մի քանի տոմս։
+                </p>
+              )}
+
+              <ul className="list-disc space-y-1 pl-4 text-xs text-gray-600">
+                {details.hints.map((hint) => (
+                  <li key={hint}>{hint}</li>
+                ))}
+              </ul>
+
+              {deleteError && (
+                <p className="text-xs text-rose-700">{deleteError}</p>
+              )}
+
+              {details.href && (
+                <a
+                  href={details.href.href}
+                  className="inline-flex text-xs font-medium text-cyan-700 hover:underline"
+                >
+                  {details.href.label} →
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1376,11 +1790,7 @@ function TaxStreamCard({
           value={formatAmd(tax.minTax)}
         />
         <div className="border-t border-gray-100 pt-2">
-          <Row
-            label="Վճարման ենթակա"
-            value={formatAmd(tax.taxDue)}
-            strong
-          />
+          <Row label="Վճարման ենթակա" value={formatAmd(tax.taxDue)} strong />
         </div>
         <Row label="Արդյունավետ դրույք" value={formatPct(tax.effectiveRate)} />
       </dl>
@@ -1398,6 +1808,219 @@ function TaxStreamCard({
       )}
 
       {extra}
+    </div>
+  );
+}
+
+function ExpenseBreakdownSection({
+  periodLabel,
+  year,
+  quarter,
+  ytdTurnover,
+  yearIncomplete,
+  rows,
+  total,
+  statutoryTotal,
+}: {
+  periodLabel: string;
+  year: number;
+  quarter: number;
+  ytdTurnover: number;
+  yearIncomplete: boolean;
+  rows: AccountingDashboard['operational']['expensesByCategory'];
+  total: number;
+  statutoryTotal: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const byCategory = new Map(rows.map((row) => [row.category, row]));
+  const leftover = rows.filter(
+    (row) =>
+      !EXPENSE_CATEGORY_GROUPS.some((group) =>
+        (group.items as string[]).includes(row.category)
+      )
+  );
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-3 p-4 text-left sm:p-5"
+      >
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 font-semibold text-gray-900">
+            <Wallet className="h-4 w-4 shrink-0 text-rose-600" />
+            Ծախսեր ըստ տեսակի · {periodLabel}
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${
+                open ? 'rotate-180' : ''
+              }`}
+            />
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            {open
+              ? 'Բոլոր տեսակները երևում են այստեղ՝ նույնիսկ եթե գումարը 0 է։ Գրանցումը՝ «Ծախսեր» բաժնում։'
+              : 'Սեղմեք՝ մանրամասները բացելու'}
+          </p>
+        </div>
+        <div className="shrink-0 text-right text-sm">
+          <p className="font-semibold tabular-nums text-gray-900">
+            {formatAmd(total)}
+          </p>
+          <p className="text-xs text-gray-500">ընդամենը գործնական ծախս</p>
+        </div>
+      </button>
+
+      {open ? (
+      <div className="border-t border-gray-100 px-4 pb-4 sm:px-5 sm:pb-5">
+      <div className="space-y-5">
+        {EXPENSE_CATEGORY_GROUPS.map((group) => {
+          const items = group.items
+            .map((category) => byCategory.get(category))
+            .filter(
+              (
+                row
+              ): row is AccountingDashboard['operational']['expensesByCategory'][number] =>
+                Boolean(row)
+            );
+          const groupTotal = items.reduce((sum, row) => sum + row.amount, 0);
+
+          return (
+            <section key={group.id}>
+              <div className="mb-2 flex items-baseline justify-between gap-3 border-b border-gray-100 pb-1.5">
+                <h3 className="text-sm font-semibold text-gray-800">
+                  {group.label}
+                </h3>
+                <span className="text-sm font-medium tabular-nums text-gray-700">
+                  {formatAmd(groupTotal)}
+                </span>
+              </div>
+              {group.id === 'statutory' && (
+                <p className="mb-2 text-xs text-gray-500">
+                  ԱՁ · շրջանառության հարկի համակարգ։ Ստորև՝ երբ վճարել և որքան
+                  է օրենքով նախատեսված գումարը։ Գրանցված ծախսը աջ կողմում է։
+                </p>
+              )}
+              <ul className="divide-y divide-gray-50">
+                {items.map((row) => {
+                  const statutory =
+                    group.id === 'statutory'
+                      ? getStatutoryPaymentInfo({
+                          category: row.category,
+                          year,
+                          quarter,
+                          ytdTurnover,
+                          yearIncomplete,
+                        })
+                      : null;
+                  return (
+                    <li
+                      key={row.category}
+                      className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-gray-900">
+                            {row.label}
+                          </span>
+                          {row.reducesTurnoverTax ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                              նվազեցնում է շրջհարկը
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                              չի նվազեցնում շրջհարկը
+                            </span>
+                          )}
+                          {row.count > 0 && (
+                            <span className="text-xs text-gray-400">
+                              {row.count} գրառում
+                            </span>
+                          )}
+                        </div>
+                        {statutory ? (
+                          <div className="mt-2 space-y-1 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                            <p>
+                              <span className="font-semibold text-gray-800">
+                                Երբ վճարել՝
+                              </span>{' '}
+                              {statutory.dueLabel}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-gray-800">
+                                Որքան՝
+                              </span>{' '}
+                              {statutory.amountLabel}
+                            </p>
+                            <p className="leading-relaxed text-gray-500">
+                              {statutory.ruleHy}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                            {row.hint}
+                          </p>
+                        )}
+                      </div>
+                      <p
+                        className={`shrink-0 text-right text-sm font-semibold tabular-nums ${
+                          row.amount > 0 ? 'text-gray-900' : 'text-gray-400'
+                        }`}
+                      >
+                        {formatAmd(row.amount)}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })}
+
+        {leftover.length > 0 && (
+          <section>
+            <h3 className="mb-2 border-b border-gray-100 pb-1.5 text-sm font-semibold text-gray-800">
+              Այլ գրանցված
+            </h3>
+            <ul className="divide-y divide-gray-50">
+              {leftover.map((row) => (
+                <li
+                  key={row.category}
+                  className="flex items-start justify-between gap-4 py-2.5"
+                >
+                  <div>
+                    <p className="font-medium text-gray-900">{row.label}</p>
+                    <p className="mt-1 text-xs text-gray-500">{row.hint}</p>
+                  </div>
+                  <p className="text-sm font-semibold tabular-nums text-gray-900">
+                    {formatAmd(row.amount)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+
+      <div className="mt-4 space-y-1 border-t border-gray-100 pt-3 text-sm">
+        {statutoryTotal > 0 && (
+          <div className="flex justify-between gap-3 text-gray-600">
+            <span>Դրոշմանիշային / տուրք / եկամտային</span>
+            <span className="tabular-nums">{formatAmd(statutoryTotal)}</span>
+          </div>
+        )}
+        <div className="flex justify-between gap-3 font-semibold text-gray-900">
+          <span>Ընդամենը գործնական ծախս</span>
+          <span className="tabular-nums">{formatAmd(total)}</span>
+        </div>
+        <p className="pt-1 text-xs font-normal text-gray-500">
+          Այս գումարները հանվում են գործնական շահույթից։ Շրջհարկի նվազեցման
+          համար օգտագործվում են միայն հաշիվ-ապրանքագրերը։
+        </p>
+      </div>
+      </div>
+      ) : null}
     </div>
   );
 }

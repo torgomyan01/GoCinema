@@ -691,7 +691,7 @@ model Expense {
   id          Int      @id @default(autoincrement())
   title       String   @db.VarChar(255) // ինչի համար է ծախսը
   amount      Float // գումարը (֏)
-  category    String   @default("other") @db.VarChar(50) // rent, utilities, salary, supplies, maintenance, marketing, other
+  category    String   @default("other") @db.VarChar(50) // rent, utilities, salary, social_payment, stamp_duty, state_duty, ...
   spentBy     String   @db.VarChar(255) // ծախս վերցնողի անունը
   note        String?  @db.Text
   expenseDate DateTime // ո՞ր օրվա ծախսն է

@@ -23,8 +23,10 @@ import {
   updateExpense,
 } from '@/app/actions/expenses';
 import {
-  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_GROUPS,
+  expenseCategoryHint,
   expenseCategoryLabel,
+  expenseReducesTurnoverTax,
   type ExpensesResult,
   type ExpenseRow,
 } from '@/lib/expenses';
@@ -399,10 +401,14 @@ export default function AdminExpensesClient() {
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
                 >
                   <option value="all">Բոլորը</option>
-                  {EXPENSE_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {categoryLabel(c)}
-                    </option>
+                  {EXPENSE_CATEGORY_GROUPS.map((group) => (
+                    <optgroup key={group.id} label={group.label}>
+                      {group.items.map((c) => (
+                        <option key={c} value={c}>
+                          {categoryLabel(c)}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>
@@ -792,12 +798,22 @@ export default function AdminExpensesClient() {
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                 >
-                  {EXPENSE_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {categoryLabel(c)}
-                    </option>
+                  {EXPENSE_CATEGORY_GROUPS.map((group) => (
+                    <optgroup key={group.id} label={group.label}>
+                      {group.items.map((c) => (
+                        <option key={c} value={c}>
+                          {categoryLabel(c)}
+                          {expenseReducesTurnoverTax(c)
+                            ? ''
+                            : ' — չի նվազեցնում շրջհարկը'}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  {expenseCategoryHint(form.category)}
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

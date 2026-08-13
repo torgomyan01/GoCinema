@@ -229,9 +229,56 @@ export interface FiscalReceiptListItem {
   eMarks: string[];
 }
 
+function fiscalSearchWhere(raw: string): Prisma.FiscalReceiptWhereInput | undefined {
+  const q = raw.trim();
+  if (!q) return undefined;
+
+  const lower = q.toLowerCase();
+  const or: Prisma.FiscalReceiptWhereInput[] = [
+    { fiscalNumber: { contains: q } },
+    { crn: { contains: q } },
+    { verificationNumber: { contains: q } },
+    { sn: { contains: q } },
+    { errorMessage: { contains: q } },
+    { cashier: { name: { contains: q } } },
+  ];
+
+  const digits = q.replace(/[^\d.,]/g, '').replace(',', '.');
+  if (digits) {
+    const num = Number(digits);
+    if (Number.isFinite(num) && num >= 0) {
+      const intId = Math.trunc(num);
+      or.push({ id: intId }, { rseq: intId }, { ticketId: intId }, { orderId: intId });
+      or.push({ total: Math.round(num * 100) / 100 });
+    }
+  }
+
+  if (['վաճառք', 'sale'].some((word) => lower.includes(word))) {
+    or.push({ operation: 'sale' });
+  }
+  if (['վերադարձ', 'return'].some((word) => lower.includes(word))) {
+    or.push({ operation: 'return' });
+  }
+  if (['դրամարկղ', 'box'].some((word) => lower.includes(word))) {
+    or.push({ source: 'box_office' });
+  }
+  if (['մուտք', 'scanner', 'սկան'].some((word) => lower.includes(word))) {
+    or.push({ source: 'scanner' });
+  }
+  if (['քարտ', 'card'].some((word) => lower.includes(word))) {
+    or.push({ paymentMethod: 'card' });
+  }
+  if (['կանխիկ', 'cash'].some((word) => lower.includes(word))) {
+    or.push({ paymentMethod: 'cash' });
+  }
+
+  return { OR: or };
+}
+
 /** Ֆիսկալ կտրոնների ցանկը՝ ադմին էջի համար */
 export async function getFiscalReceipts(options?: {
   status?: 'printed' | 'failed' | 'all';
+  search?: string;
   limit?: number;
 }) {
   const cashierId = await requireStaffUserId();
@@ -241,10 +288,18 @@ export async function getFiscalReceipts(options?: {
 
   const status = options?.status ?? 'all';
   const take = Math.min(Math.max(options?.limit ?? 100, 1), 500);
+  const searchWhere = fiscalSearchWhere(options?.search ?? '');
+  const where: Prisma.FiscalReceiptWhereInput | undefined =
+    status === 'all' && !searchWhere
+      ? undefined
+      : {
+          ...(status === 'all' ? {} : { status }),
+          ...(searchWhere ?? {}),
+        };
 
   try {
     const rows = await prisma.fiscalReceipt.findMany({
-      where: status === 'all' ? undefined : { status },
+      where,
       orderBy: { createdAt: 'desc' },
       take,
       include: { cashier: { select: { name: true } } },

@@ -15,16 +15,32 @@ export const TAX_STREAM_LABELS: Record<TaxStream, string> = {
 };
 
 /**
- * Ծախսի տեսակներ՝ հոդ. 258 մաս 6։
- * Չնվազեցվող՝ հիմնական միջոցներ/ոչ նյութական ակտիվներ, կապիտալ ծախսեր,
- * ամորտիզացիա, գործուղում, ներկայացուցչական, անվճար ստացված։
+ * Ծախսի տեսակներ՝ ՀՀ հարկային օրենսգիրք հոդ. 258 մաս 6։
+ * Նվազեցվող՝ գործունեության, ապրանքի ինքնաարժեք, վարչական և իրացման ծախսեր։
+ * Չնվազեցվող՝ հիմնական միջոց, կապիտալ, ամորտիզացիա, գործուղում,
+ * ներկայացուցչական, անվճար ստացված, դրոշմանիշային վճար, պետական տուրք, եկամտային հարկ։
  */
 export const TAX_COST_TYPES = [
   'goods',
   'service',
+  'admin',
+  'selling',
+  'rent',
+  'utilities',
+  'salary',
+  'social_payment',
+  'insurance',
+  'marketing',
+  'communication',
+  'bank_fees',
+  'maintenance',
+  'stamp_duty',
+  'state_duty',
+  'income_tax',
   'fixed_asset',
   'capital',
   'depreciation',
+  'liquidation',
   'travel',
   'representation',
   'free_of_charge',
@@ -32,27 +48,183 @@ export const TAX_COST_TYPES = [
 ] as const;
 export type TaxCostType = (typeof TAX_COST_TYPES)[number];
 
-export const TAX_COST_TYPE_LABELS: Record<TaxCostType, string> = {
-  goods: 'Ապրանք վերավաճառքի համար',
-  service: 'Ծառայություն / աշխատանք',
-  fixed_asset: 'Հիմնական միջոց / ոչ նյութական ակտիվ',
-  capital: 'Կապիտալ ծախս',
-  depreciation: 'Ամորտիզացիա',
-  travel: 'Գործուղում',
-  representation: 'Ներկայացուցչական',
-  free_of_charge: 'Անվճար ստացված',
-  other: 'Այլ',
+export interface TaxCostTypeMeta {
+  label: string;
+  hint: string;
+  deductible: boolean;
+}
+
+export const TAX_COST_TYPE_META: Record<TaxCostType, TaxCostTypeMeta> = {
+  goods: {
+    label: 'Ապրանք վերավաճառքի համար',
+    hint: 'Առևտրի ինքնաարժեք (47.x)։ Նվազեցում՝ ծախսի 9.5%-ով։',
+    deductible: true,
+  },
+  service: {
+    label: 'Ծառայություն / աշխատանք',
+    hint: 'Գործունեության հետ ուղղակի կապված ծառայություն (օր.՝ արտադրողի հաշիվ)։',
+    deductible: true,
+  },
+  admin: {
+    label: 'Վարչական ծախս',
+    hint: 'Հոդ. 258՝ վարչական ծախսերը նվազեցնում են շրջհարկը։',
+    deductible: true,
+  },
+  selling: {
+    label: 'Իրացման ծախս',
+    hint: 'Հոդ. 258՝ իրացման ծախսերը նվազեցնում են շրջհարկը։',
+    deductible: true,
+  },
+  rent: {
+    label: 'Վարձակալություն',
+    hint: 'Տարածքի վարձ — վարչական ծախս։',
+    deductible: true,
+  },
+  utilities: {
+    label: 'Կոմունալ',
+    hint: 'Էլեկտրականություն, ջուր, գազ — վարչական ծախս։',
+    deductible: true,
+  },
+  salary: {
+    label: 'Աշխատավարձ',
+    hint: 'Աշխատակիցների աշխատավարձ — վարչական/գործունեության ծախս։',
+    deductible: true,
+  },
+  social_payment: {
+    label: 'Սոցիալական վճար',
+    hint: 'Պարտադիր սոցիալական վճար։ Աշխատանքային ծախս է, նվազեցնում է շրջհարկը փաստաթղթով։',
+    deductible: true,
+  },
+  insurance: {
+    label: 'Ապահովագրություն',
+    hint: 'Գույքի/պատասխանատվության ապահովագրություն — վարչական ծախս։',
+    deductible: true,
+  },
+  marketing: {
+    label: 'Մարքեթինգ / գովազդ',
+    hint: 'Facebook, Instagram, Google գովազդ։ Իրացման ծախս է։ Եթե գովազդը և՛ տոմսի, և՛ ապրանքի համար է — բաժանեք ըստ շրջանառության տեսակարար կշռի։ Ներկայացուցչականը առանձին է։',
+    deductible: true,
+  },
+  communication: {
+    label: 'Կապ և ինտերնետ',
+    hint: 'Հեռախոս, ինտերնետ — վարչական ծախս։',
+    deductible: true,
+  },
+  bank_fees: {
+    label: 'Բանկային միջնորդավճար',
+    hint: 'Հաշվի սպասարկում, POS — վարչական ծախս։',
+    deductible: true,
+  },
+  maintenance: {
+    label: 'Սպասարկում և վերանորոգում',
+    hint: 'Ընթացիկ սպասարկում։ Կապիտալ վերանորոգումը չի նվազեցնում։',
+    deductible: true,
+  },
+  stamp_duty: {
+    label: 'Դրոշմանիշային վճար',
+    hint: 'Օրենքով պարտադիր վճար է (սովորաբար տարեկան, մինչև ապրիլի 20)։ Գործնական ծախս է, շրջհարկը չի նվազեցնում։',
+    deductible: false,
+  },
+  state_duty: {
+    label: 'Պետական տուրք',
+    hint: 'Պետական տուրքեր և թույլտվություններ։ Շրջհարկը չի նվազեցնում։',
+    deductible: false,
+  },
+  income_tax: {
+    label: 'Եկամտային հարկ',
+    hint: 'Եկամտային հարկը շրջհարկի նվազեցման բանաձևում չի մասնակցում։',
+    deductible: false,
+  },
+  fixed_asset: {
+    label: 'Հիմնական միջոց / ոչ նյութական ակտիվ',
+    hint: 'Հոդ. 258 մաս 6՝ ձեռքբերումը/ստեղծումը չի նվազեցնում շրջհարկը։',
+    deductible: false,
+  },
+  capital: {
+    label: 'Կապիտալ ծախս',
+    hint: 'Հոդ. 258 մաս 6՝ կապիտալ ծախսը չի նվազեցնում շրջհարկը։',
+    deductible: false,
+  },
+  depreciation: {
+    label: 'Ամորտիզացիա',
+    hint: 'Հոդ. 258 մաս 6՝ ամորտիզացիան չի նվազեցնում շրջհարկը։',
+    deductible: false,
+  },
+  liquidation: {
+    label: 'Հիմնական միջոցի լուծարում',
+    hint: 'Հոդ. 258 մաս 6՝ լուծարման ծախսը չի նվազեցնում շրջհարկը։',
+    deductible: false,
+  },
+  travel: {
+    label: 'Գործուղում',
+    hint: 'Հոդ. 258 մաս 6՝ գործուղումը չի նվազեցնում շրջհարկը։',
+    deductible: false,
+  },
+  representation: {
+    label: 'Ներկայացուցչական',
+    hint: 'Հոդ. 258 մաս 6՝ ներկայացուցչական ծախսը չի նվազեցնում շրջհարկը։',
+    deductible: false,
+  },
+  free_of_charge: {
+    label: 'Անվճար ստացված',
+    hint: 'Հոդ. 258 մաս 6՝ անվճար ստացված ակտիվը/ծառայությունը չի նվազեցնում։',
+    deductible: false,
+  },
+  other: {
+    label: 'Այլ փաստաթղթավորված ծախս',
+    hint: 'Եթե կապված է գործունեության հետ և ունի հաշիվ — նվազեցնում է շրջհարկը։',
+    deductible: true,
+  },
 };
 
-/** Օրենքով շրջհարկը չնվազեցնող ծախսատեսակներ */
-export const NON_DEDUCTIBLE_COST_TYPES: readonly TaxCostType[] = [
-  'fixed_asset',
-  'capital',
-  'depreciation',
-  'travel',
-  'representation',
-  'free_of_charge',
+export const TAX_COST_TYPE_LABELS: Record<TaxCostType, string> = Object.fromEntries(
+  TAX_COST_TYPES.map((t) => [t, TAX_COST_TYPE_META[t].label])
+) as Record<TaxCostType, string>;
+
+export const TAX_COST_TYPE_GROUPS: Array<{
+  label: string;
+  items: TaxCostType[];
+}> = [
+  {
+    label: 'Նվազեցնում է շրջհարկը (հոդ. 258)',
+    items: [
+      'goods',
+      'service',
+      'admin',
+      'selling',
+      'rent',
+      'utilities',
+      'salary',
+      'social_payment',
+      'insurance',
+      'marketing',
+      'communication',
+      'bank_fees',
+      'maintenance',
+      'other',
+    ],
+  },
+  {
+    label: 'Չի նվազեցնում շրջհարկը',
+    items: [
+      'stamp_duty',
+      'state_duty',
+      'income_tax',
+      'fixed_asset',
+      'capital',
+      'depreciation',
+      'liquidation',
+      'travel',
+      'representation',
+      'free_of_charge',
+    ],
+  },
 ];
+
+/** Օրենքով շրջհարկը չնվազեցնող ծախսատեսակներ */
+export const NON_DEDUCTIBLE_COST_TYPES: readonly TaxCostType[] = TAX_COST_TYPES.filter(
+  (t) => !TAX_COST_TYPE_META[t].deductible
+);
 
 export function normalizeTaxCostType(value: unknown): TaxCostType {
   const str = String(value ?? '').trim();
@@ -62,7 +234,17 @@ export function normalizeTaxCostType(value: unknown): TaxCostType {
 }
 
 export function isDeductibleCostType(costType: string): boolean {
+  if ((TAX_COST_TYPES as readonly string[]).includes(costType)) {
+    return TAX_COST_TYPE_META[costType as TaxCostType].deductible;
+  }
   return !(NON_DEDUCTIBLE_COST_TYPES as readonly string[]).includes(costType);
+}
+
+export function taxCostTypeHint(costType: string): string {
+  if ((TAX_COST_TYPES as readonly string[]).includes(costType)) {
+    return TAX_COST_TYPE_META[costType as TaxCostType].hint;
+  }
+  return TAX_COST_TYPE_META.other.hint;
 }
 
 export function normalizeTaxDocumentKind(value: unknown): TaxDocumentKind {
@@ -174,9 +356,43 @@ export interface QuarterHistoryPoint {
   taxDue: number;
 }
 
+export interface AccountingWarningSample {
+  ref: string;
+  amount: number;
+  date: string;
+  note: string;
+  /** Եթե կա՝ կարելի է ջնջել fiscal_receipt գրառումը */
+  receiptId?: number;
+  ticketId?: number;
+  orderId?: number;
+  badge?: string;
+}
+
+export interface AccountingWarningFinding {
+  title: string;
+  description: string;
+  count: number;
+  amount: number;
+  samples: AccountingWarningSample[];
+  tone?: 'info' | 'issue';
+  selectable?: boolean;
+}
+
+export interface AccountingWarningDetails {
+  title: string;
+  comparison: Array<{ label: string; value: string }>;
+  findings: AccountingWarningFinding[];
+  hints: string[];
+  href?: { label: string; href: string };
+  onlineTurnover?: number;
+  onlineCount?: number;
+  residualDifference?: number;
+}
+
 export interface AccountingWarning {
   level: 'error' | 'warning' | 'info';
   message: string;
+  details?: AccountingWarningDetails;
 }
 
 export interface AccountingDashboard {
@@ -215,6 +431,11 @@ export interface AccountingDashboard {
     /** Վերադարձներ, որոնց սկզբնական վաճառքը նախորդ եռամսյակում է եղել */
     retroactiveRefunds: number;
     difference: number;
+    /** Օնլայն տոմսեր՝ հարկման բազայում են, ՀԴՄ չի տպվում */
+    onlineTicketsAmount: number;
+    onlineTicketsCount: number;
+    /** ՀԴՄ − (հաշվառում − օնլայն) */
+    differenceAfterOnline: number;
   };
   yearToDate: {
     turnover: number;
@@ -233,6 +454,16 @@ export interface AccountingDashboard {
     producerSharePercent: number;
     producerShareAmount: number;
     cinemaTicketKeep: number;
+    operatingExpensesTotal: number;
+    statutoryPaymentsTotal: number;
+    expensesByCategory: Array<{
+      category: string;
+      label: string;
+      hint: string;
+      amount: number;
+      count: number;
+      reducesTurnoverTax: boolean;
+    }>;
     estimatedOperatingProfit: number;
   };
   tax: {

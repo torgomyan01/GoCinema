@@ -17,6 +17,8 @@ import {
   type AccountingDashboard,
   type AccountingSettingsRow,
   type AccountingWarning,
+  type AccountingWarningDetails,
+  type AccountingWarningFinding,
   type ProductCategoryRevenue,
   type QuarterHistoryPoint,
   type StreamTaxView,
@@ -24,7 +26,15 @@ import {
   type TaxDocumentRow,
 } from '@/lib/accounting';
 import { prisma } from '@/lib/prisma';
+import { revokeBonusForOrder, revokeBonusForTicket } from '@/lib/bonus';
+import { returnOrderItemStock } from '@/lib/product-units';
 import { isAdminRole } from '@/lib/roles';
+import {
+  EXPENSE_CATEGORIES,
+  expenseCategoryHint,
+  expenseCategoryLabel,
+  expenseReducesTurnoverTax,
+} from '@/lib/expenses';
 import {
   calcCombinedTurnoverTax,
   calcStreamTurnoverTax,
@@ -65,6 +75,507 @@ function roundDram(value: number): number {
 
 function formatAmdText(value: number): string {
   return `${Math.round(value).toLocaleString('hy-AM')} ֏`;
+}
+
+const FISCAL_MISMATCH_SAMPLE_LIMIT = 20;
+
+function orderLineTotal(order: {
+  orderItems: Array<{ quantity: number; price: number }>;
+}): number {
+  return order.orderItems.reduce((sum, item) => {
+    const qty = Math.floor(Number(item.quantity)) || 0;
+    return sum + qty * (Number(item.price) || 0);
+  }, 0);
+}
+
+function toWarningFinding<T>(
+  title: string,
+  description: string,
+  items: T[],
+  amount: number,
+  toSample: (item: T) => AccountingWarningFinding['samples'][number],
+  extra?: Pick<AccountingWarningFinding, 'tone' | 'selectable'>
+): AccountingWarningFinding | null {
+  if (items.length === 0 && amount <= 0) return null;
+  return {
+    title,
+    description,
+    count: items.length,
+    amount: round2(amount),
+    samples: items.slice(0, FISCAL_MISMATCH_SAMPLE_LIMIT).map(toSample),
+    tone: extra?.tone,
+    selectable: extra?.selectable,
+  };
+}
+
+function isOnlineUnfiscalizedPayment(row: {
+  method?: string | null;
+  transactionId?: string | null;
+}): boolean {
+  const method = (row.method || '').toLowerCase();
+  if (method === 'cash') return false;
+  const tx = (row.transactionId || '').trim().toUpperCase();
+  if (tx.startsWith('BOXOFFICE-')) return false;
+  return method === 'card' || method === 'bank_transfer';
+}
+
+async function buildFiscalMismatchDetails(params: {
+  periodStart: Date;
+  periodEnd: Date;
+  year: number;
+  quarter: number;
+  fiscalSalesTotal: number;
+  fiscalReturnsTotal: number;
+  fiscalSalesCount: number;
+  fiscalReturnsCount: number;
+  fiscalNet: number;
+  failedFiscalCount: number;
+  ticketsNet: number;
+  ticketsCount: number;
+  productsNet: number;
+  ticketRefundsProcessed: number;
+  productReturnsProcessed: number;
+  accountingTurnover: number;
+  fiscalDifference: number;
+  soldPayments: Array<{
+    updatedAt: Date;
+    ticketId: number;
+    method?: string | null;
+    transactionId?: string | null;
+    ticket: { price: number } | null;
+  }>;
+  refundedPayments: Array<{
+    createdAt: Date;
+    updatedAt: Date;
+    ticketId: number;
+    ticket: { price: number } | null;
+  }>;
+  completedOrders: Array<{
+    id: number;
+    createdAt: Date;
+    orderItems: Array<{ quantity: number; price: number }>;
+  }>;
+}): Promise<AccountingWarningDetails> {
+  const {
+    periodStart,
+    periodEnd,
+    year,
+    quarter,
+    fiscalSalesTotal,
+    fiscalReturnsTotal,
+    fiscalSalesCount,
+    fiscalReturnsCount,
+    fiscalNet,
+    failedFiscalCount,
+    ticketsNet,
+    ticketsCount,
+    productsNet,
+    ticketRefundsProcessed,
+    productReturnsProcessed,
+    accountingTurnover,
+    fiscalDifference,
+    soldPayments,
+    refundedPayments,
+    completedOrders,
+  } = params;
+
+  const inPeriod = (date: Date) => date >= periodStart && date <= periodEnd;
+  const periodSold = soldPayments.filter((row) => inPeriod(row.updatedAt));
+  const periodOrders = completedOrders.filter((row) => inPeriod(row.createdAt));
+  const ticketIds = Array.from(new Set(periodSold.map((row) => row.ticketId)));
+  const orderIds = periodOrders.map((row) => row.id);
+  const refundedTicketIds = new Set(
+    refundedPayments.map((row) => row.ticketId)
+  );
+
+  const orFilters: Array<
+    | { createdAt: { gte: Date; lte: Date } }
+    | { ticketId: { in: number[] } }
+    | { orderId: { in: number[] } }
+  > = [{ createdAt: { gte: periodStart, lte: periodEnd } }];
+  if (ticketIds.length > 0) {
+    orFilters.push({ ticketId: { in: ticketIds.slice(0, 4000) } });
+  }
+  if (orderIds.length > 0) {
+    orFilters.push({ orderId: { in: orderIds.slice(0, 4000) } });
+  }
+
+  const receipts = await prisma.fiscalReceipt.findMany({
+    where: { OR: orFilters },
+    select: {
+      id: true,
+      operation: true,
+      status: true,
+      total: true,
+      ticketId: true,
+      orderId: true,
+      createdAt: true,
+      fiscalTime: true,
+      fiscalNumber: true,
+      errorMessage: true,
+      source: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const printedSales = receipts.filter(
+    (row) => row.operation === 'sale' && row.status === 'printed'
+  );
+  const saleByTicket = new Map<number, (typeof receipts)[number]>();
+  const saleByOrder = new Map<number, (typeof receipts)[number]>();
+  for (const row of printedSales) {
+    if (row.ticketId != null && !saleByTicket.has(row.ticketId)) {
+      saleByTicket.set(row.ticketId, row);
+    }
+    if (row.orderId != null && !saleByOrder.has(row.orderId)) {
+      saleByOrder.set(row.orderId, row);
+    }
+  }
+
+  const ticketsWithAnyFiscal = new Set(
+    receipts
+      .filter((row) => row.ticketId != null)
+      .map((row) => row.ticketId as number)
+  );
+  const ticketsWithoutPrintedSale = periodSold.filter(
+    (row) => !saleByTicket.has(row.ticketId)
+  );
+  const onlineTicketsWithoutHdm = ticketsWithoutPrintedSale.filter(
+    (row) =>
+      !ticketsWithAnyFiscal.has(row.ticketId) &&
+      isOnlineUnfiscalizedPayment(row)
+  );
+  const boxOfficeTicketsWithoutReceipt = ticketsWithoutPrintedSale.filter(
+    (row) =>
+      ticketsWithAnyFiscal.has(row.ticketId) ||
+      !isOnlineUnfiscalizedPayment(row)
+  );
+  const onlineTurnover = round2(
+    onlineTicketsWithoutHdm.reduce(
+      (sum, row) => sum + (Number(row.ticket?.price) || 0),
+      0
+    )
+  );
+  const residualDifference = round2(fiscalDifference + onlineTurnover);
+  const ordersWithoutReceipt = periodOrders.filter(
+    (row) => !saleByOrder.has(row.id)
+  );
+
+  const ticketSaleOutsideQuarter = periodSold.flatMap((row) => {
+    const receipt = saleByTicket.get(row.ticketId);
+    if (!receipt || inPeriod(receipt.createdAt)) return [];
+    return [{ row, receipt }];
+  });
+  const orderSaleOutsideQuarter = periodOrders.flatMap((row) => {
+    const receipt = saleByOrder.get(row.id);
+    if (!receipt || inPeriod(receipt.createdAt)) return [];
+    return [{ row, receipt }];
+  });
+
+  const periodPrintedSales = printedSales.filter((row) =>
+    inPeriod(row.createdAt)
+  );
+  const soldTicketIds = new Set(periodSold.map((row) => row.ticketId));
+  const soldOrderIds = new Set(periodOrders.map((row) => row.id));
+
+  const unlinkedReceipts = periodPrintedSales.filter(
+    (row) => row.ticketId == null && row.orderId == null
+  );
+  const receiptTicketOtherQuarter = periodPrintedSales.filter(
+    (row) =>
+      row.ticketId != null &&
+      !soldTicketIds.has(row.ticketId) &&
+      !refundedTicketIds.has(row.ticketId)
+  );
+  const periodReturnsByTicket = new Set(
+    receipts
+      .filter(
+        (row) =>
+          row.operation === 'return' &&
+          row.status === 'printed' &&
+          inPeriod(row.createdAt) &&
+          row.ticketId != null
+      )
+      .map((row) => row.ticketId as number)
+  );
+  const receiptRefundedTicket = periodPrintedSales.filter(
+    (row) =>
+      row.ticketId != null &&
+      refundedTicketIds.has(row.ticketId) &&
+      !periodReturnsByTicket.has(row.ticketId)
+  );
+  const receiptOrderOtherQuarter = periodPrintedSales.filter(
+    (row) => row.orderId != null && !soldOrderIds.has(row.orderId)
+  );
+
+  const failedReceipts = receipts.filter(
+    (row) => row.status === 'failed' && inPeriod(row.createdAt)
+  );
+  const timeMismatchReceipts = receipts.filter((row) => {
+    if (!row.fiscalTime || !inPeriod(row.createdAt)) return false;
+    return (
+      bucketId(row.createdAt.getFullYear(), quarterOfMonth(row.createdAt.getMonth())) !==
+      bucketId(
+        row.fiscalTime.getFullYear(),
+        quarterOfMonth(row.fiscalTime.getMonth())
+      )
+    );
+  });
+
+  const findings = [
+    toWarningFinding(
+      'Օնլայն տոմսեր · ՀԴՄ չի տպվում',
+      'Օնլայն վճարված տոմսեր։ Մտնում են հարկման բազա, ՀԴՄ կտրոն չի տպվում և սխալ չեն համարվում։',
+      onlineTicketsWithoutHdm,
+      onlineTurnover,
+      (row) => ({
+        ref: `Տոմս #${row.ticketId}`,
+        amount: Number(row.ticket?.price) || 0,
+        date: row.updatedAt.toISOString(),
+        note:
+          row.method === 'bank_transfer'
+            ? 'օնլայն · բանկային փոխանցում · հարկման բազայում է'
+            : 'օնլայն · քարտ · հարկման բազայում է',
+        badge: 'օնլայն',
+      }),
+      { tone: 'info', selectable: false }
+    ),
+    toWarningFinding(
+      'Դրամարկղի տոմս առանց տպված կտրոնի',
+      'Դրամարկղի վաճառք է, բայց տպված ՀԴՄ կտրոն չկա։ Սովորաբար failed տպում է — ստուգեք /admin/fiscal։',
+      boxOfficeTicketsWithoutReceipt,
+      boxOfficeTicketsWithoutReceipt.reduce(
+        (sum, row) => sum + (Number(row.ticket?.price) || 0),
+        0
+      ),
+      (row) => ({
+        ref: `Տոմս #${row.ticketId}`,
+        amount: Number(row.ticket?.price) || 0,
+        date: row.updatedAt.toISOString(),
+        note: row.method
+          ? `դրամարկղ · ${row.method} · կտրոն չկա`
+          : 'դրամարկղ · կտրոն չկա',
+        ticketId: row.ticketId,
+      })
+    ),
+    toWarningFinding(
+      'Ապրանքի պատվեր առանց տպված կտրոնի',
+      'Completed order կա, բայց այս պատվերին կապված printed sale կտրոն չի գտնվել։',
+      ordersWithoutReceipt,
+      ordersWithoutReceipt.reduce((sum, row) => sum + orderLineTotal(row), 0),
+      (row) => ({
+        ref: `Պատվեր #${row.id}`,
+        amount: orderLineTotal(row),
+        date: row.createdAt.toISOString(),
+        note: 'order completed · կտրոն չկա',
+        orderId: row.id,
+      })
+    ),
+    toWarningFinding(
+      'Տոմսի կտրոնը այլ եռամսյակում է',
+      'Տոմսը վաճառվել է այս եռամսյակում, իսկ ՀԴՄ կտրոնը գրանցվել է այլ ժամանակաշրջանում։',
+      ticketSaleOutsideQuarter,
+      ticketSaleOutsideQuarter.reduce(
+        (sum, { receipt, row }) =>
+          sum + (Number(receipt.total) || Number(row.ticket?.price) || 0),
+        0
+      ),
+      ({ row, receipt }) => ({
+        ref: `Տոմս #${row.ticketId} · կտրոն #${receipt.id}`,
+        amount: Number(receipt.total) || Number(row.ticket?.price) || 0,
+        date: receipt.createdAt.toISOString(),
+        note: `վաճառք՝ ${row.updatedAt.toISOString().slice(0, 10)} · կտրոն՝ ${receipt.createdAt.toISOString().slice(0, 10)}`,
+        receiptId: receipt.id,
+        ticketId: row.ticketId,
+      })
+    ),
+    toWarningFinding(
+      'Պատվերի կտրոնը այլ եռամսյակում է',
+      'Պատվերը այս եռամսյակում է, կտրոնը՝ այլ։',
+      orderSaleOutsideQuarter,
+      orderSaleOutsideQuarter.reduce(
+        (sum, { receipt, row }) =>
+          sum + (Number(receipt.total) || orderLineTotal(row)),
+        0
+      ),
+      ({ row, receipt }) => ({
+        ref: `Պատվեր #${row.id} · կտրոն #${receipt.id}`,
+        amount: Number(receipt.total) || orderLineTotal(row),
+        date: receipt.createdAt.toISOString(),
+        note: `պատվեր՝ ${row.createdAt.toISOString().slice(0, 10)} · կտրոն՝ ${receipt.createdAt.toISOString().slice(0, 10)}`,
+        receiptId: receipt.id,
+        orderId: row.id,
+      })
+    ),
+    toWarningFinding(
+      'ՀԴՄ կտրոն առանց տոմսի/պատվերի',
+      'Printed sale կտրոնը այս եռամսյակում է, բայց ticketId և orderId չունի։ Հաշվառման բազային չի կապվում։',
+      unlinkedReceipts,
+      unlinkedReceipts.reduce((sum, row) => sum + (Number(row.total) || 0), 0),
+      (row) => ({
+        ref: row.fiscalNumber
+          ? `Կտրոն #${row.id} · № ${row.fiscalNumber}`
+          : `Կտրոն #${row.id}`,
+        amount: Number(row.total) || 0,
+        date: row.createdAt.toISOString(),
+        note: row.source === 'scanner' ? 'scanner' : 'box_office',
+        receiptId: row.id,
+      })
+    ),
+    toWarningFinding(
+      'Կտրոն՝ տոմսը այլ եռամսյակի վաճառք է',
+      'ՀԴՄ կտրոնը այս եռամսյակում է, իսկ կապված տոմսի վճարումը՝ ոչ։',
+      receiptTicketOtherQuarter,
+      receiptTicketOtherQuarter.reduce(
+        (sum, row) => sum + (Number(row.total) || 0),
+        0
+      ),
+      (row) => ({
+        ref: `Կտրոն #${row.id} · տոմս #${row.ticketId}`,
+        amount: Number(row.total) || 0,
+        date: row.createdAt.toISOString(),
+        note: row.fiscalNumber ? `ՀԴՄ № ${row.fiscalNumber}` : 'տոմսը այս Q-ում չէ',
+        receiptId: row.id,
+        ticketId: row.ticketId ?? undefined,
+      })
+    ),
+    toWarningFinding(
+      'Կտրոն՝ վերադարձված տոմսի վաճառք',
+      'Վաճառքի կտրոնը մնացել է, տոմսը հետո չեղարկվել է։ Եթե վերադարձի կտրոնը այլ եռամսյակում է, զուտերը չեն համընկնի։',
+      receiptRefundedTicket,
+      receiptRefundedTicket.reduce(
+        (sum, row) => sum + (Number(row.total) || 0),
+        0
+      ),
+      (row) => ({
+        ref: `Կտրոն #${row.id} · տոմս #${row.ticketId}`,
+        amount: Number(row.total) || 0,
+        date: row.createdAt.toISOString(),
+        note: 'տոմսը refunded/cancelled է',
+        receiptId: row.id,
+        ticketId: row.ticketId ?? undefined,
+      })
+    ),
+    toWarningFinding(
+      'Կտրոն՝ պատվերը այլ եռամսյակում է',
+      'ՀԴՄ կտրոնը այս եռամսյակում է, կապված order-ը՝ ոչ (կամ ջնջված է)։',
+      receiptOrderOtherQuarter,
+      receiptOrderOtherQuarter.reduce(
+        (sum, row) => sum + (Number(row.total) || 0),
+        0
+      ),
+      (row) => ({
+        ref: `Կտրոն #${row.id} · պատվեր #${row.orderId}`,
+        amount: Number(row.total) || 0,
+        date: row.createdAt.toISOString(),
+        note: row.fiscalNumber ? `ՀԴՄ № ${row.fiscalNumber}` : 'պատվերը այս Q-ում չէ',
+        receiptId: row.id,
+        orderId: row.orderId ?? undefined,
+      })
+    ),
+    toWarningFinding(
+      'Չտպված (failed) կտրոններ',
+      'ՀԴՄ տպումը ձախողվել է։ Հաշվառման վաճառքը կարող է մնալ, ֆիսկալ զուտը՝ ոչ։',
+      failedReceipts,
+      failedReceipts.reduce((sum, row) => sum + (Number(row.total) || 0), 0),
+      (row) => ({
+        ref: row.ticketId
+          ? `Կտրոն #${row.id} · տոմս #${row.ticketId}`
+          : row.orderId
+            ? `Կտրոն #${row.id} · պատվեր #${row.orderId}`
+            : `Կտրոն #${row.id}`,
+        amount: Number(row.total) || 0,
+        date: row.createdAt.toISOString(),
+        note: row.errorMessage?.slice(0, 120) || 'status=failed',
+        receiptId: row.id,
+        ticketId: row.ticketId ?? undefined,
+        orderId: row.orderId ?? undefined,
+      })
+    ),
+    toWarningFinding(
+      'ՀԴՄ ժամը և գրանցման ժամը տարբեր եռամսյակում',
+      'ՊԵԿ պորտալը սովորաբար նայում է ՀԴՄ fiscal time, իսկ այս էջը՝ կտրոնի գրանցման ժամը։',
+      timeMismatchReceipts,
+      timeMismatchReceipts.reduce((sum, row) => sum + (Number(row.total) || 0), 0),
+      (row) => ({
+        ref: row.fiscalNumber
+          ? `Կտրոն #${row.id} · № ${row.fiscalNumber}`
+          : `Կտրոն #${row.id}`,
+        amount: Number(row.total) || 0,
+        date: row.createdAt.toISOString(),
+        note: `գրանցում՝ ${row.createdAt.toISOString().slice(0, 10)} · ՀԴՄ ժամ՝ ${row.fiscalTime?.toISOString().slice(0, 10) ?? '—'}`,
+        receiptId: row.id,
+        ticketId: row.ticketId ?? undefined,
+        orderId: row.orderId ?? undefined,
+      })
+    ),
+  ].filter((row): row is AccountingWarningFinding => Boolean(row));
+
+  const residualHigher = residualDifference > 0;
+
+  return {
+    title: `${year} Q${quarter} · ինչ ենք համեմատում`,
+    comparison: [
+      {
+        label: `ՀԴՄ տպված վաճառքի կտրոններ (${fiscalSalesCount})`,
+        value: formatAmdText(fiscalSalesTotal),
+      },
+      {
+        label: `ՀԴՄ տպված վերադարձի կտրոններ (${fiscalReturnsCount})`,
+        value: `− ${formatAmdText(fiscalReturnsTotal)}`,
+      },
+      {
+        label: 'ՀԴՄ զուտ = վաճառք − վերադարձ',
+        value: formatAmdText(fiscalNet),
+      },
+      {
+        label: `Ծրագրի տոմսեր, վճարված և չվերադարձված (${ticketsCount} հատ)`,
+        value: formatAmdText(ticketsNet),
+      },
+      {
+        label: 'Ծրագրի ապրանքներ (completed պատվեր)',
+        value: formatAmdText(productsNet),
+      },
+      {
+        label: `Օնլայն տոմսեր · հարկման բազայում, ՀԴՄ չի տպվում (${onlineTicketsWithoutHdm.length} հատ)`,
+        value: formatAmdText(onlineTurnover),
+      },
+      {
+        label: 'Այս եռամսյակում ձևակերպված տոմսի վերադարձ',
+        value: formatAmdText(ticketRefundsProcessed),
+      },
+      {
+        label: 'Ապրանքի վերադարձի կտրոններ (տեղեկատվական)',
+        value: formatAmdText(productReturnsProcessed),
+      },
+      {
+        label: 'Հաշվառման շրջանառություն = տոմս + ապրանք (ներառյալ օնլայն)',
+        value: formatAmdText(accountingTurnover),
+      },
+      {
+        label: residualHigher
+          ? 'ՀԴՄ vs դրամարկղ · ՀԴՄ-ն ավելի մեծ է'
+          : 'ՀԴՄ vs դրամարկղ · հաշվառումն ավելի մեծ է',
+        value: `${residualDifference > 0 ? '+' : residualDifference < 0 ? '−' : ''}${formatAmdText(Math.abs(residualDifference))}`,
+      },
+      {
+        label: 'Չտպված (failed) կտրոններ այս եռամսյակում',
+        value: String(failedFiscalCount),
+      },
+    ],
+    findings,
+    hints: [
+      'Օնլայն տոմսերը մտնում են հարկման բազա, բայց ՀԴՄ չեն տպվում և սխալ չեն։',
+      residualHigher
+        ? 'Մնացած տարբերությունը դրամարկղի/սկաների կողմն է՝ կտրոն առանց վաճառքի կամ այլ եռամսյակ։'
+        : 'Մնացած տարբերությունը դրամարկղի կողմն է՝ տոմս/պատվեր առանց տպված կտրոնի կամ failed տպում։',
+      'Հարկման բազան ամբողջ հաշվառումն է (տոմս + ապրանք + օնլայն)։ ՀԴՄ համեմատությունը միայն դրամարկղի ֆիսկալացումն է ստուգում։',
+    ],
+    href: { label: 'Բացել ՀԴՄ կտրոնները', href: '/admin/fiscal' },
+    onlineTurnover,
+    onlineCount: onlineTicketsWithoutHdm.length,
+    residualDifference,
+  };
 }
 
 function mapDocument(row: {
@@ -237,6 +748,7 @@ export async function getAccountingDashboard(params: {
       fiscalSales,
       fiscalReturns,
       failedFiscalCount,
+      periodExpenses,
     ] = await Promise.all([
       prisma.payment.findMany({
         where: {
@@ -244,7 +756,13 @@ export async function getAccountingDashboard(params: {
           updatedAt: { gte: windowStart, lte: periodEnd },
           ticket: { status: { in: ['paid', 'used'] } },
         },
-        select: { updatedAt: true, ticket: { select: { price: true } } },
+        select: {
+          updatedAt: true,
+          ticketId: true,
+          method: true,
+          transactionId: true,
+          ticket: { select: { price: true } },
+        },
       }),
       prisma.payment.findMany({
         where: {
@@ -255,6 +773,7 @@ export async function getAccountingDashboard(params: {
         select: {
           createdAt: true,
           updatedAt: true,
+          ticketId: true,
           ticket: { select: { price: true } },
         },
       }),
@@ -264,6 +783,7 @@ export async function getAccountingDashboard(params: {
           createdAt: { gte: windowStart, lte: periodEnd },
         },
         select: {
+          id: true,
           createdAt: true,
           orderItems: {
             select: {
@@ -311,6 +831,10 @@ export async function getAccountingDashboard(params: {
           status: 'failed',
           createdAt: { gte: periodStart, lte: periodEnd },
         },
+      }),
+      prisma.expense.findMany({
+        where: { expenseDate: { gte: periodStart, lte: periodEnd } },
+        select: { category: true, amount: true },
       }),
     ]);
 
@@ -500,7 +1024,59 @@ export async function getAccountingDashboard(params: {
       ticketsNet,
       settings.ticketProducerSharePercent
     );
-    const estimatedOperatingProfit = round2(split.cinemaKeep + productsProfit);
+
+    const expenseMap = new Map<
+      string,
+      { category: string; amount: number; count: number }
+    >();
+    for (const row of periodExpenses) {
+      const category = row.category || 'other';
+      const amount = Number(row.amount) || 0;
+      const existing = expenseMap.get(category);
+      if (existing) {
+        existing.amount += amount;
+        existing.count += 1;
+      } else {
+        expenseMap.set(category, { category, amount, count: 1 });
+      }
+    }
+    const knownCategories = new Set<string>(EXPENSE_CATEGORIES);
+    const expensesByCategory = [
+      ...EXPENSE_CATEGORIES.map((category) => {
+        const row = expenseMap.get(category);
+        return {
+          category,
+          label: expenseCategoryLabel(category),
+          hint: expenseCategoryHint(category),
+          amount: round2(row?.amount ?? 0),
+          count: row?.count ?? 0,
+          reducesTurnoverTax: expenseReducesTurnoverTax(category),
+        };
+      }),
+      ...Array.from(expenseMap.values())
+        .filter((row) => !knownCategories.has(row.category))
+        .map((row) => ({
+          category: row.category,
+          label: expenseCategoryLabel(row.category),
+          hint: expenseCategoryHint(row.category),
+          amount: round2(row.amount),
+          count: row.count,
+          reducesTurnoverTax: expenseReducesTurnoverTax(row.category),
+        })),
+    ];
+    const operatingExpensesTotal = round2(
+      expensesByCategory.reduce((sum, row) => sum + row.amount, 0)
+    );
+    const statutoryPaymentsTotal = round2(
+      expensesByCategory
+        .filter((row) =>
+          ['stamp_duty', 'state_duty', 'income_tax'].includes(row.category)
+        )
+        .reduce((sum, row) => sum + row.amount, 0)
+    );
+    const estimatedOperatingProfit = round2(
+      split.cinemaKeep + productsProfit - operatingExpensesTotal
+    );
 
     const fiscalSalesTotal = round2(Number(fiscalSales._sum.total) || 0);
     const fiscalReturnsTotal = round2(Number(fiscalReturns._sum.total) || 0);
@@ -538,10 +1114,63 @@ export async function getAccountingDashboard(params: {
         message: `${failedFiscalCount} ֆիսկալ կտրոն չի տպվել (status=failed)։ Չֆիսկալացված վաճառքը հարկային ռիսկ է — ստուգեք /admin/fiscal-ում։`,
       });
     }
-    if (Math.abs(fiscalDifference) > Math.max(1000, accountingTurnover * 0.01)) {
+    const mismatchDetails = await buildFiscalMismatchDetails({
+      periodStart,
+      periodEnd,
+      year,
+      quarter,
+      fiscalSalesTotal,
+      fiscalReturnsTotal,
+      fiscalSalesCount: fiscalSales._count._all,
+      fiscalReturnsCount: fiscalReturns._count._all,
+      fiscalNet,
+      failedFiscalCount,
+      ticketsNet,
+      ticketsCount: selectedBucket.ticketsCount,
+      productsNet,
+      ticketRefundsProcessed: round2(selectedBucket.ticketRefundsProcessed),
+      productReturnsProcessed: round2(selectedBucket.productReturnsProcessed),
+      accountingTurnover,
+      fiscalDifference,
+      soldPayments,
+      refundedPayments,
+      completedOrders,
+    });
+    const onlineTicketsAmount = mismatchDetails.onlineTurnover ?? 0;
+    const onlineTicketsCount = mismatchDetails.onlineCount ?? 0;
+    const residualDifference =
+      mismatchDetails.residualDifference ?? fiscalDifference;
+
+    const residualMismatch =
+      Math.abs(residualDifference) >
+      Math.max(1000, accountingTurnover * 0.01);
+
+    if (onlineTicketsAmount > 0) {
+      warnings.push({
+        level: 'info',
+        message: [
+          `Օնլայն տոմսեր՝ ${formatAmdText(onlineTicketsAmount)} (${onlineTicketsCount} հատ)։`,
+          'Մտնում են հարկման բազա, ՀԴՄ չի տպվում և սխալ չեն համարվում։',
+        ].join('\n'),
+        details: residualMismatch ? undefined : mismatchDetails,
+      });
+    }
+
+    if (residualMismatch) {
+      const residualHigher = residualDifference > 0;
       warnings.push({
         level: 'warning',
-        message: `ՀԴՄ զուտ գումարը և հաշվառման շրջանառությունը տարբերվում են ${formatAmdText(Math.abs(fiscalDifference))}-ով։ Ստուգեք չտպված կտրոնները և ժամանակային շեղումները։`,
+        message: [
+          'ՀԴՄ տպված կտրոնները և դրամարկղի/սկաների վաճառքը չեն համընկնում։',
+          `ՀԴՄ զուտ՝ ${formatAmdText(fiscalNet)} · հաշվառում առանց օնլայնի՝ ${formatAmdText(accountingTurnover - onlineTicketsAmount)} · մնացած տարբերություն՝ ${residualHigher ? '+' : '−'}${formatAmdText(Math.abs(residualDifference))}։`,
+          onlineTicketsAmount > 0
+            ? `Օնլայն ${formatAmdText(onlineTicketsAmount)}-ը հարկման բազայում է, այս համեմատությունից դուրս է։`
+            : residualHigher
+              ? 'ՀԴՄ-ն ավելի մեծ է՝ կան տպված կտրոններ առանց այս եռամսյակի վաճառքի։'
+              : 'Դրամարկղում կան վաճառքներ առանց տպված ՀԴՄ կտրոնի։',
+          '«Մանրամասներ»-ում երևում են կոնկրետ տոմսերը, պատվերներն ու կտրոնները։',
+        ].join('\n'),
+        details: mismatchDetails,
       });
     }
     if (selectedBucket.retroactiveRefunds > 0) {
@@ -600,6 +1229,18 @@ export async function getAccountingDashboard(params: {
           'Ապրանքների ինքնաարժեքը 0 է — գործնական շահույթը ճիշտ չի հաշվվի (հարկի վրա չի ազդում)։',
       });
     }
+    if (operatingExpensesTotal === 0) {
+      warnings.push({
+        level: 'info',
+        message:
+          'Այս եռամսյակում գործնական ծախսեր չկան (վարձ, աշխատավարձ, դրոշմանիշային վճար և այլն)։ Գրանցեք /admin/expenses էջում — դրանք կհանվեն գործնական շահույթից։ Դրոշմանիշային վճարը և պետական տուրքը շրջհարկը չեն նվազեցնում։',
+      });
+    } else if (statutoryPaymentsTotal > 0) {
+      warnings.push({
+        level: 'info',
+        message: `${formatAmdText(statutoryPaymentsTotal)} դրոշմանիշային վճար / պետական տուրք / եկամտային հարկ հաշվված է որպես գործնական ծախս, բայց շրջհարկի նվազեցման բանաձևում չի մասնակցում։`,
+      });
+    }
     if (
       selectedBucket.categories.has('popcorn') ||
       selectedBucket.categories.has('hot_dog') ||
@@ -652,6 +1293,9 @@ export async function getAccountingDashboard(params: {
         failedCount: failedFiscalCount,
         retroactiveRefunds: round2(selectedBucket.retroactiveRefunds),
         difference: fiscalDifference,
+        onlineTicketsAmount,
+        onlineTicketsCount,
+        differenceAfterOnline: residualDifference,
       },
       yearToDate: {
         turnover: ytdTurnover,
@@ -670,6 +1314,9 @@ export async function getAccountingDashboard(params: {
         producerSharePercent: split.sharePercent,
         producerShareAmount: split.producerShare,
         cinemaTicketKeep: split.cinemaKeep,
+        operatingExpensesTotal,
+        statutoryPaymentsTotal,
+        expensesByCategory,
         estimatedOperatingProfit,
       },
       tax: {
@@ -907,6 +1554,220 @@ export async function setTaxDocumentDeductible(input: {
   } catch (err) {
     console.error('[setTaxDocumentDeductible]', err);
     return { success: false, error: 'Թարմացումը ձախողվեց' };
+  }
+}
+
+function uniquePositiveIds(values: number[] | undefined): number[] {
+  return Array.from(
+    new Set(
+      (values ?? [])
+        .map((id) => Math.trunc(Number(id)))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )
+  );
+}
+
+async function cancelAccountingTicketById(
+  id: number,
+  adminId: number | null
+): Promise<boolean> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id },
+    include: {
+      payment: true,
+      order: {
+        include: {
+          orderItems: {
+            include: { product: { select: { category: true } } },
+          },
+        },
+      },
+    },
+  });
+  if (!ticket || ticket.status === 'cancelled') return false;
+
+  const itemsToRestore = (ticket.order?.orderItems ?? []).filter(
+    (item) => item.ticketId === id
+  );
+
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.ticket.update({
+        where: { id },
+        data: { status: 'cancelled' },
+      });
+      if (ticket.payment) {
+        await tx.payment.update({
+          where: { id: ticket.payment.id },
+          data: { status: 'refunded' },
+        });
+      }
+      for (const item of itemsToRestore) {
+        await returnOrderItemStock(
+          tx,
+          item.id,
+          item.productId,
+          item.product?.category ?? 'snack',
+          item.quantity
+        );
+      }
+      await revokeBonusForTicket(tx, id, adminId);
+      if (ticket.orderId) {
+        const remainingTickets = await tx.ticket.count({
+          where: {
+            orderId: ticket.orderId,
+            status: { not: 'cancelled' },
+          },
+        });
+        if (remainingTickets === 0) {
+          await tx.order.update({
+            where: { id: ticket.orderId },
+            data: { status: 'cancelled' },
+          });
+          await revokeBonusForOrder(tx, ticket.orderId, adminId);
+        }
+      }
+    },
+    { timeout: 15000 }
+  );
+  return true;
+}
+
+async function cancelAccountingOrderById(
+  id: number,
+  adminId: number | null
+): Promise<boolean> {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      orderItems: { include: { product: { select: { category: true } } } },
+    },
+  });
+  if (!order || order.status === 'cancelled') return false;
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const item of order.orderItems) {
+        await returnOrderItemStock(
+          tx,
+          item.id,
+          item.productId,
+          item.product?.category ?? 'snack',
+          item.quantity
+        );
+      }
+      await tx.order.update({
+        where: { id },
+        data: { status: 'cancelled' },
+      });
+      await revokeBonusForOrder(tx, id, adminId);
+    },
+    { timeout: 15000 }
+  );
+  return true;
+}
+
+export async function removeAccountingTicket(
+  ticketId: number
+): Promise<{ success: boolean; error: string | null }> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+  const id = Math.trunc(Number(ticketId));
+  if (!Number.isFinite(id) || id <= 0) {
+    return { success: false, error: 'Սխալ տոմս' };
+  }
+
+  try {
+    const cancelled = await cancelAccountingTicketById(
+      id,
+      Number(admin.id) || null
+    );
+    if (!cancelled) {
+      return { success: false, error: 'Տոմսը չի գտնվել կամ արդեն չեղարկված է' };
+    }
+    revalidatePath('/admin/accounting');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('[removeAccountingTicket]', err);
+    return { success: false, error: 'Տոմսի չեղարկումը ձախողվեց' };
+  }
+}
+
+export async function removeAccountingOrder(
+  orderId: number
+): Promise<{ success: boolean; error: string | null }> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+  const id = Math.trunc(Number(orderId));
+  if (!Number.isFinite(id) || id <= 0) {
+    return { success: false, error: 'Սխալ պատվեր' };
+  }
+
+  try {
+    const cancelled = await cancelAccountingOrderById(
+      id,
+      Number(admin.id) || null
+    );
+    if (!cancelled) {
+      return { success: false, error: 'Պատվերը չի գտնվել կամ արդեն չեղարկված է' };
+    }
+    revalidatePath('/admin/accounting');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('[removeAccountingOrder]', err);
+    return { success: false, error: 'Պատվերի չեղարկումը ձախողվեց' };
+  }
+}
+
+export async function removeAccountingMismatchItems(input: {
+  receiptIds?: number[];
+  ticketIds?: number[];
+  orderIds?: number[];
+}): Promise<{
+  success: boolean;
+  error: string | null;
+  deleted: { receipts: number; tickets: number; orders: number };
+}> {
+  const empty = { receipts: 0, tickets: 0, orders: 0 };
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { success: false, error: 'Մուտքն արգելված է', deleted: empty };
+  }
+
+  const receiptIds = uniquePositiveIds(input.receiptIds);
+  const ticketIds = uniquePositiveIds(input.ticketIds);
+  const orderIds = uniquePositiveIds(input.orderIds);
+  if (receiptIds.length + ticketIds.length + orderIds.length === 0) {
+    return { success: false, error: 'Ընտրված գրառում չկա', deleted: empty };
+  }
+
+  const adminId = Number(admin.id) || null;
+  const deleted = { ...empty };
+
+  try {
+    if (receiptIds.length > 0) {
+      const result = await prisma.fiscalReceipt.deleteMany({
+        where: { id: { in: receiptIds } },
+      });
+      deleted.receipts = result.count;
+    }
+    for (const id of ticketIds) {
+      if (await cancelAccountingTicketById(id, adminId)) deleted.tickets += 1;
+    }
+    for (const id of orderIds) {
+      if (await cancelAccountingOrderById(id, adminId)) deleted.orders += 1;
+    }
+
+    revalidatePath('/admin/accounting');
+    revalidatePath('/admin/fiscal');
+    return { success: true, error: null, deleted };
+  } catch (err) {
+    console.error('[removeAccountingMismatchItems]', err);
+    return { success: false, error: 'Ջնջումը ձախողվեց', deleted };
   }
 }
 

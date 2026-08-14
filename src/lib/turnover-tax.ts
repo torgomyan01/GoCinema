@@ -39,7 +39,7 @@ export const TAX_STREAM_RATES: Record<TaxStream, StreamTaxRates> = {
     baseRate: 0.1,
     deductionRate: 0.095,
     minRate: 0.01,
-    adgCode: '47.00',
+    adgCode: '47.19',
     labelHy: 'Ապրանքներ · առևտուր',
     activityHy: 'Առևտրային գործունեություն',
   },

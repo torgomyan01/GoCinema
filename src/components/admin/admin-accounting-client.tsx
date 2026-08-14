@@ -14,6 +14,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
+  Download,
   FileText,
   Info,
   Loader2,
@@ -29,6 +30,7 @@ import {
 import {
   createTaxDocument,
   deleteTaxDocument,
+  exportPekDeclarationXml,
   getAccountingDashboard,
   importTaxDocumentsFromXlsx,
   removeAccountingMismatchItems,
@@ -54,6 +56,7 @@ import {
 import type { TaxStream } from '@/lib/turnover-tax';
 import { EXPENSE_CATEGORY_GROUPS } from '@/lib/expenses';
 import { getStatutoryPaymentInfo } from '@/lib/statutory-payments';
+import MetaAdsImportButton from '@/components/admin/meta-ads-import';
 
 function toInputDate(date: Date): string {
   const y = date.getFullYear();
@@ -229,6 +232,7 @@ export default function AdminAccountingClient() {
 
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [isExportingPek, setIsExportingPek] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
@@ -256,6 +260,31 @@ export default function AdminAccountingClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleExportPekXml = async () => {
+    setIsExportingPek(true);
+    setError(null);
+    try {
+      const res = await exportPekDeclarationXml({ year, quarter });
+      if (!res.success || !res.xml || !res.filename) {
+        setError(res.error || 'XML-ը չհաջողվեց գեներացնել');
+        return;
+      }
+      const blob = new Blob([res.xml], { type: 'application/xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = res.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('XML-ը չհաջողվեց գեներացնել');
+    } finally {
+      setIsExportingPek(false);
+    }
+  };
 
   const openCreateDoc = (kind: TaxDocumentKind = 'producer') => {
     const costType = defaultCostTypeForKind(kind);
@@ -480,6 +509,19 @@ export default function AdminAccountingClient() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={() => void handleExportPekXml()}
+            disabled={isExportingPek || isLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-60"
+          >
+            {isExportingPek ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            ՊԵԿ XML
+          </button>
+          <button
+            type="button"
             onClick={() => setShowSettings(true)}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
@@ -636,11 +678,26 @@ export default function AdminAccountingClient() {
             </div>
           )}
 
+          {data.documents.marketingTotal > 0 && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+              <p className="font-semibold">
+                Մարքեթինգը հաշվվել է որպես փաստաթղթավորված ծախս ·{' '}
+                {formatAmd(data.documents.marketingTotal)}
+              </p>
+              <p className="mt-1 text-xs text-emerald-800">
+                {data.documents.marketingCount} Facebook Ads վճարում՝ գրանցված
+                հաշիվ-ապրանքագրով։ Իրացման ծախս է (հոդ. 258) և նվազեցնում է
+                շրջհարկը տոմսերի հոսքում (59.14, նվազեցում ծախսի 6%-ով)։ Ծախսեր
+                բաժնի հետ կապ չունի։
+              </p>
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Հարկման բազա (զուտ)"
               value={formatAmd(data.tax.totalTurnover)}
-              hint="Տոմս + ապրանք − վերադարձ"
+              hint="Տպված ՀԴՄ կտրոններ · վաճառք − վերադարձ"
             />
             <StatCard
               label={`Վճարման ենթակա · ${data.period.label}`}
@@ -652,9 +709,11 @@ export default function AdminAccountingClient() {
               label="Նվազեցվող ծախս"
               value={formatAmd(data.tax.totalDocumentedCosts)}
               hint={
-                data.documents.nonDeductibleTotal > 0
-                  ? `Չնվազեցվող՝ ${formatAmd(data.documents.nonDeductibleTotal)}`
-                  : 'Հաշիվ-ապրանքագրերով'
+                data.documents.marketingTotal > 0
+                  ? `ներառյալ մարքեթինգ ${formatAmd(data.documents.marketingTotal)}`
+                  : data.documents.nonDeductibleTotal > 0
+                    ? `Չնվազեցվող՝ ${formatAmd(data.documents.nonDeductibleTotal)}`
+                    : 'Հաշիվ-ապրանքագրերով'
               }
             />
             <StatCard
@@ -736,7 +795,7 @@ export default function AdminAccountingClient() {
                 data.revenue.byProductCategory.length > 0 ? (
                   <div className="mt-3 border-t border-gray-100 pt-3">
                     <p className="mb-2 text-xs font-medium text-gray-700">
-                      Վաճառք ըստ կատեգորիայի (համախառն)
+                      Վաճառք ըստ կատեգորիայի (ՀԴՄ)
                     </p>
                     <ul className="space-y-1.5 text-xs text-gray-600">
                       {sortCategories(data.revenue.byProductCategory).map(
@@ -773,10 +832,8 @@ export default function AdminAccountingClient() {
                       )}
                     </ul>
                     <p className="mt-2 text-xs text-gray-500">
-                      Բոլոր ապրանքները՝ ներառյալ պոպկորն և սառը թեյ, ՀԴՄ-ում
-                      դասակարգված են որպես մանրածախ առևտուր (47.x), ուստի
-                      հարկվում են նույն բանաձևով։ Վերադարձված միավորը դուրս է
-                      գրվում պատվերից, ուստի վերևի գումարներն արդեն զուտ են։
+                      Կատեգորիաները տպված ՀԴՄ կտրոնների տողերից են (47.x)։
+                      Հարկման բազան ներքևի զուտ տողն է։
                     </p>
                   </div>
                 ) : null
@@ -792,39 +849,30 @@ export default function AdminAccountingClient() {
               </h2>
               <dl className="space-y-2 text-sm">
                 <Row
-                  label={`Տոմսեր՝ զուտ (${data.revenue.ticketsCount} հատ)`}
+                  label={`Տոմսեր՝ ՀԴՄ (${data.revenue.ticketsCount} հատ)`}
                   value={formatAmd(data.revenue.ticketsNet)}
                   strong
                 />
                 <Row
-                  label={`Ձևակերպված վերադարձ (${data.revenue.ticketRefundsCount} տոմս)`}
+                  label={`ՀԴՄ տոմսի վերադարձ (${data.revenue.ticketRefundsCount} կտրոն)`}
                   value={formatAmd(data.revenue.ticketRefundsProcessed)}
                 />
                 <Row
-                  label="Ապրանքներ՝ զուտ"
+                  label="Ապրանքներ՝ ՀԴՄ զուտ"
                   value={formatAmd(data.revenue.productsNet)}
                   strong
                 />
-                <Row
-                  label="Ապրանքների ինքնաարժեք (P&L)"
-                  value={formatAmd(data.revenue.productsCost)}
-                />
-                <Row
-                  label="Ապրանքային շահույթ"
-                  value={formatAmd(data.revenue.productsProfit)}
-                />
               </dl>
               <p className="mt-3 text-xs text-gray-500">
-                Վերադարձված տոմսերն ու ապրանքները հարկման բազայում չեն. նրանք
-                դուրս են գրվում սկզբնական վաճառքից, ոչ թե հանվում վերադարձի օրվա
-                շրջանառությունից։
+                Հարկման բազան ընտրված եռամսյակում տպված ՀԴՄ կտրոններն են
+                (վաճառք − վերադարձ)։ Օնլայն կամ չտպված վաճառքը այստեղ չի մտնում։
               </p>
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900">
                 <FileText className="h-4 w-4 text-teal-600" />
-                ՀԴՄ ստուգում
+                ՀԴՄ կտրոններ · {data.period.label}
               </h2>
               <dl className="space-y-2 text-sm">
                 <Row
@@ -836,28 +884,17 @@ export default function AdminAccountingClient() {
                   value={`− ${formatAmd(data.fiscal.returnsTotal)}`}
                 />
                 <Row
-                  label="ՀԴՄ զուտ"
+                  label="ՀԴՄ զուտ = հարկման բազա"
                   value={formatAmd(data.fiscal.netTotal)}
                   strong
                 />
                 <Row
-                  label="Հաշվառման բազա"
-                  value={formatAmd(data.tax.totalTurnover)}
-                  strong
+                  label="Տոմսեր (59.14)"
+                  value={formatAmd(data.revenue.ticketsNet)}
                 />
-                {data.fiscal.onlineTicketsCount > 0 && (
-                  <Row
-                    label={`Օնլայն տոմսեր (${data.fiscal.onlineTicketsCount} հատ) · ՀԴՄ չի տպվում`}
-                    value={formatAmd(data.fiscal.onlineTicketsAmount)}
-                  />
-                )}
                 <Row
-                  label={
-                    data.fiscal.onlineTicketsCount > 0
-                      ? 'Տարբերություն (առանց օնլայնի)'
-                      : 'Տարբերություն'
-                  }
-                  value={formatAmd(data.fiscal.differenceAfterOnline)}
+                  label="Ապրանքներ (47.x)"
+                  value={formatAmd(data.revenue.productsNet)}
                 />
               </dl>
               <div className="mt-3 flex items-center gap-2 text-xs">
@@ -865,9 +902,7 @@ export default function AdminAccountingClient() {
                   <>
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                     <span className="text-emerald-700">
-                      {data.fiscal.onlineTicketsCount > 0
-                        ? 'Դրամարկղի կտրոնները տպված են · օնլայնը ՀԴՄ չի պահանջում'
-                        : 'Բոլոր կտրոնները տպված են'}
+                      Բոլոր կտրոնները տպված են
                     </span>
                   </>
                 ) : (
@@ -928,10 +963,24 @@ export default function AdminAccountingClient() {
 
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-semibold text-gray-900">
-                Փաստաթղթավորված հաշիվներ · {data.period.label}
-              </h2>
-              <div className="flex gap-3">
+              <div>
+                <h2 className="font-semibold text-gray-900">
+                  Փաստաթղթավորված հաշիվներ · {data.period.label}
+                </h2>
+                {data.documents.marketingTotal > 0 && (
+                  <p className="mt-1 text-xs text-emerald-800">
+                    Մարքեթինգը հաշվվել է որպես փաստաթղթավորված ծախս ·{' '}
+                    <span className="font-semibold tabular-nums">
+                      {formatAmd(data.documents.marketingTotal)}
+                    </span>
+                    {' '}
+                    ({data.documents.marketingCount} վճարում) · նվազեցնում է
+                    շրջհարկը
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <MetaAdsImportButton compact onImported={load} />
                 <button
                   type="button"
                   onClick={() => openCreateDoc('producer')}
@@ -951,8 +1000,8 @@ export default function AdminAccountingClient() {
 
             {data.documents.rows.length === 0 ? (
               <p className="py-8 text-center text-sm text-gray-500">
-                Այս եռամսյակում հաշիվ չկա։ Բեռնեք ՊԵԿ Excel-ը կամ ավելացրեք
-                ձեռքով։
+                Այս եռամսյակում հաշիվ չկա։ Բեռնեք ՊԵԿ Excel-ը, Facebook CSV-ն
+                կամ ավելացրեք ձեռքով։
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -1860,7 +1909,7 @@ function ExpenseBreakdownSection({
           </h2>
           <p className="mt-1 text-sm text-gray-500">
             {open
-              ? 'Բոլոր տեսակները երևում են այստեղ՝ նույնիսկ եթե գումարը 0 է։ Գրանցումը՝ «Ծախսեր» բաժնում։'
+              ? 'Ներքին ծախսեր՝ գործնական շահույթի համար։ Շրջհարկը նվազեցնում են միայն վերևի փաստաթղթավորված հաշիվները։'
               : 'Սեղմեք՝ մանրամասները բացելու'}
           </p>
         </div>

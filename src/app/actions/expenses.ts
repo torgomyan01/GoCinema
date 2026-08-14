@@ -55,6 +55,21 @@ function normalizeCategory(value: unknown) {
 }
 
 function parseDateOnly(value: string, endOfDay = false): Date | null {
+  const iso = String(value ?? '')
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const date = new Date(
+      Number(iso[1]),
+      Number(iso[2]) - 1,
+      Number(iso[3]),
+      endOfDay ? 23 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 999 : 0
+    );
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   if (endOfDay) {
@@ -252,6 +267,7 @@ export async function createExpense(input: {
     });
 
     revalidatePath('/admin/expenses');
+    revalidatePath('/admin/accounting');
     return { success: true, error: null };
   } catch (error) {
     console.error('[Create Expense] Error:', error);
@@ -309,6 +325,7 @@ export async function updateExpense(input: {
     });
 
     revalidatePath('/admin/expenses');
+    revalidatePath('/admin/accounting');
     return { success: true, error: null };
   } catch (error) {
     console.error('[Update Expense] Error:', error);
@@ -333,6 +350,7 @@ export async function deleteExpense(
     await prisma.expense.delete({ where: { id: expenseId } });
 
     revalidatePath('/admin/expenses');
+    revalidatePath('/admin/accounting');
     return { success: true, error: null };
   } catch (error) {
     console.error('[Delete Expense] Error:', error);

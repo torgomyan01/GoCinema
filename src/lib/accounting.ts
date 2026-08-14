@@ -177,9 +177,10 @@ export const TAX_COST_TYPE_META: Record<TaxCostType, TaxCostTypeMeta> = {
   },
 };
 
-export const TAX_COST_TYPE_LABELS: Record<TaxCostType, string> = Object.fromEntries(
-  TAX_COST_TYPES.map((t) => [t, TAX_COST_TYPE_META[t].label])
-) as Record<TaxCostType, string>;
+export const TAX_COST_TYPE_LABELS: Record<TaxCostType, string> =
+  Object.fromEntries(
+    TAX_COST_TYPES.map((t) => [t, TAX_COST_TYPE_META[t].label])
+  ) as Record<TaxCostType, string>;
 
 export const TAX_COST_TYPE_GROUPS: Array<{
   label: string;
@@ -222,9 +223,8 @@ export const TAX_COST_TYPE_GROUPS: Array<{
 ];
 
 /** Օրենքով շրջհարկը չնվազեցնող ծախսատեսակներ */
-export const NON_DEDUCTIBLE_COST_TYPES: readonly TaxCostType[] = TAX_COST_TYPES.filter(
-  (t) => !TAX_COST_TYPE_META[t].deductible
-);
+export const NON_DEDUCTIBLE_COST_TYPES: readonly TaxCostType[] =
+  TAX_COST_TYPES.filter((t) => !TAX_COST_TYPE_META[t].deductible);
 
 export function normalizeTaxCostType(value: unknown): TaxCostType {
   const str = String(value ?? '').trim();
@@ -275,7 +275,10 @@ export function quarterOfMonth(monthIndex: number): 1 | 2 | 3 | 4 {
   return (Math.floor(monthIndex / 3) + 1) as 1 | 2 | 3 | 4;
 }
 
-export function quarterBounds(year: number, quarter: number): { from: Date; to: Date } {
+export function quarterBounds(
+  year: number,
+  quarter: number
+): { from: Date; to: Date } {
   const q = Math.min(4, Math.max(1, Math.floor(quarter)));
   const from = new Date(year, (q - 1) * 3, 1, 0, 0, 0, 0);
   const to = new Date(year, q * 3, 0, 23, 59, 59, 999);
@@ -387,6 +390,9 @@ export interface AccountingWarningDetails {
   onlineTurnover?: number;
   onlineCount?: number;
   residualDifference?: number;
+  /** ՀԴՄ կտրոններ, որոնք կապված են այս եռամսյակի մուտք/պատվերին */
+  comparableFiscalNet?: number;
+  accountingWithoutOnline?: number;
 }
 
 export interface AccountingWarning {
@@ -407,15 +413,15 @@ export interface AccountingDashboard {
   };
   settings: AccountingSettingsRow;
   revenue: {
-    /** Հարկման բազա՝ ակտիվ (չվերադարձված) տոմսերի գումարը */
+    /** Հարկման բազա՝ տպված ՀԴՄ տոմսային տողեր (վաճառք − վերադարձ) */
     ticketsNet: number;
     ticketsCount: number;
-    /** Այս ժամանակաշրջանում ձևակերպված տոմսի վերադարձներ (բազայից արդեն դուրս են) */
+    /** Այս եռամսյակում տպված տոմսի վերադարձի կտրոններ */
     ticketRefundsProcessed: number;
     ticketRefundsCount: number;
-    /** Հարկման բազա՝ ապրանքի ակտիվ տողերը (վերադարձվածը հանված է order-ից) */
+    /** Հարկման բազա՝ տպված ՀԴՄ ապրանքային տողեր (վաճառք − վերադարձ) */
     productsNet: number;
-    /** Այս ժամանակաշրջանում ՀԴՄ-ով ձևակերպված ապրանքի վերադարձներ (տեղեկատվական) */
+    /** Այս եռամսյակում տպված ապրանքի վերադարձի կտրոններ */
     productReturnsProcessed: number;
     productsCost: number;
     productsProfit: number;
@@ -428,14 +434,6 @@ export interface AccountingDashboard {
     returnsCount: number;
     netTotal: number;
     failedCount: number;
-    /** Վերադարձներ, որոնց սկզբնական վաճառքը նախորդ եռամսյակում է եղել */
-    retroactiveRefunds: number;
-    difference: number;
-    /** Օնլայն տոմսեր՝ հարկման բազայում են, ՀԴՄ չի տպվում */
-    onlineTicketsAmount: number;
-    onlineTicketsCount: number;
-    /** ՀԴՄ − (հաշվառում − օնլայն) */
-    differenceAfterOnline: number;
   };
   yearToDate: {
     turnover: number;
@@ -449,6 +447,9 @@ export interface AccountingDashboard {
     productsCosts: number;
     nonDeductibleTotal: number;
     rows: TaxDocumentRow[];
+    /** Facebook/մարքեթինգ փաստաթղթավորված ծախս՝ նվազեցնում է շրջհարկը */
+    marketingTotal: number;
+    marketingCount: number;
   };
   operational: {
     producerSharePercent: number;

@@ -695,6 +695,11 @@ model Expense {
   spentBy     String   @db.VarChar(255) // ծախս վերցնողի անունը
   note        String?  @db.Text
   expenseDate DateTime // ո՞ր օրվա ծախսն է
+  /// Արտաքին ID՝ Meta Transaction ID և այլ import-ների համար
+  externalId       String? @unique @db.VarChar(120)
+  originalAmount   Float?
+  originalCurrency String? @db.VarChar(10)
+  fxRate           Float?
   createdById Int? // ո՞վ է գրանցել (ադմին)
   createdBy   User?    @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())

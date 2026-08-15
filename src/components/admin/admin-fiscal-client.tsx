@@ -5,6 +5,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
+  Plus,
   Printer,
   ReceiptText,
   RefreshCw,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   applyFiscalReprintResult,
+  createManualFiscalSale,
   deleteFiscalReceipts,
   getFiscalReceipts,
   getFiscalReceiptForReprint,
@@ -55,7 +57,24 @@ const OPERATION_LABELS: Record<string, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   box_office: 'Դրամարկղ',
   scanner: 'Մուտքի կետ',
+  hdm_direct: 'Արտաքին ՀԴՄ',
 };
+
+function toDateTimeLocal(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function emptyManualForm() {
+  return {
+    printedAt: toDateTimeLocal(new Date()),
+    ticketsAmount: '',
+    productsAmount: '',
+    paymentMethod: 'cash' as 'cash' | 'card',
+    fiscalNumber: '',
+    note: '',
+  };
+}
 
 export default function AdminFiscalClient() {
   const [items, setItems] = useState<FiscalReceiptListItem[]>([]);
@@ -73,6 +92,10 @@ export default function AdminFiscalClient() {
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualForm, setManualForm] = useState(emptyManualForm);
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -276,6 +299,37 @@ export default function AdminFiscalClient() {
     }
   };
 
+  const handleSaveManual = async () => {
+    if (isSavingManual) return;
+    setIsSavingManual(true);
+    setManualError(null);
+    try {
+      const res = await createManualFiscalSale({
+        printedAt: manualForm.printedAt,
+        ticketsAmount: Number(manualForm.ticketsAmount) || 0,
+        productsAmount: Number(manualForm.productsAmount) || 0,
+        paymentMethod: manualForm.paymentMethod,
+        fiscalNumber: manualForm.fiscalNumber.trim() || undefined,
+        note: manualForm.note.trim() || undefined,
+      });
+      if (!res.success) {
+        setManualError(res.error || 'Գրանցելիս սխալ է տեղի ունեցել');
+        return;
+      }
+      setShowManualForm(false);
+      setManualForm(emptyManualForm());
+      setNotice({
+        type: 'success',
+        message: 'Արտաքին ՀԴՄ վաճառքը գրանցվեց և կհաշվվի հաշվապահությունում',
+      });
+      await load();
+    } catch {
+      setManualError('Գրանցելիս սխալ է տեղի ունեցել');
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
+
   const filters: Array<{ id: StatusFilter; label: string }> = [
     { id: 'all', label: 'Բոլորը' },
     { id: 'printed', label: 'Տպված' },
@@ -323,6 +377,18 @@ export default function AdminFiscalClient() {
                   : 'ՀԴՄ agent…'}
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              setManualForm(emptyManualForm());
+              setManualError(null);
+              setShowManualForm(true);
+            }}
+            className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+          >
+            <Plus className="h-4 w-4" />
+            Ավելացնել վաճառք
+          </button>
           <button
             onClick={() => void load()}
             className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
@@ -530,11 +596,12 @@ export default function AdminFiscalClient() {
                       {item.cashierName ?? '—'}
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      {formatDateTime(item.createdAt)}
+                      {formatDateTime(item.fiscalTime ?? item.createdAt)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        {item.status === 'failed' && (
+                        {item.status === 'failed' &&
+                          item.source !== 'hdm_direct' && (
                           <button
                             onClick={() => void handleReprint(item.id)}
                             disabled={busyId === item.id || isDeleting}
@@ -549,7 +616,8 @@ export default function AdminFiscalClient() {
                           </button>
                         )}
                         {item.status === 'printed' &&
-                          item.operation === 'sale' && (
+                          item.operation === 'sale' &&
+                          item.source !== 'hdm_direct' && (
                             <button
                               onClick={() => void handleReturn(item)}
                               disabled={busyId === item.id || isDeleting}
@@ -580,6 +648,153 @@ export default function AdminFiscalClient() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showManualForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Արտաքին ՀԴՄ վաճառք
+                </h2>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Կտրոնը արդեն տպված է սարքով։ Այստեղ միայն գրանցում ենք, որ
+                  հաշվապահությունը հաշվի։
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowManualForm(false)}
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                aria-label="Փակել"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 px-5 py-4">
+              {manualError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {manualError}
+                </div>
+              )}
+              <label className="block text-sm text-gray-700">
+                Տպման ամսաթիվ
+                <input
+                  type="datetime-local"
+                  value={manualForm.printedAt}
+                  onChange={(e) =>
+                    setManualForm((prev) => ({
+                      ...prev,
+                      printedAt: e.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm text-gray-700">
+                  Տոմսեր (֏)
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={manualForm.ticketsAmount}
+                    onChange={(e) =>
+                      setManualForm((prev) => ({
+                        ...prev,
+                        ticketsAmount: e.target.value,
+                      }))
+                    }
+                    placeholder="0"
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="block text-sm text-gray-700">
+                  Ապրանքներ (֏)
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={manualForm.productsAmount}
+                    onChange={(e) =>
+                      setManualForm((prev) => ({
+                        ...prev,
+                        productsAmount: e.target.value,
+                      }))
+                    }
+                    placeholder="0"
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <label className="block text-sm text-gray-700">
+                Վճարում
+                <select
+                  value={manualForm.paymentMethod}
+                  onChange={(e) =>
+                    setManualForm((prev) => ({
+                      ...prev,
+                      paymentMethod: e.target.value as 'cash' | 'card',
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="cash">Կանխիկ</option>
+                  <option value="card">Քարտ</option>
+                </select>
+              </label>
+              <label className="block text-sm text-gray-700">
+                Ֆիսկալ № (ոչ պարտադիր)
+                <input
+                  type="text"
+                  value={manualForm.fiscalNumber}
+                  onChange={(e) =>
+                    setManualForm((prev) => ({
+                      ...prev,
+                      fiscalNumber: e.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-sm text-gray-700">
+                Նշում (ոչ պարտադիր)
+                <input
+                  type="text"
+                  value={manualForm.note}
+                  onChange={(e) =>
+                    setManualForm((prev) => ({
+                      ...prev,
+                      note: e.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setShowManualForm(false)}
+                className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Չեղարկել
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveManual()}
+                disabled={isSavingManual}
+                className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+              >
+                {isSavingManual && <Loader2 className="h-4 w-4 animate-spin" />}
+                Գրանցել
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

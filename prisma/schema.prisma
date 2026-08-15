@@ -253,7 +253,7 @@ model Payment {
 model FiscalReceipt {
   id            Int     @id @default(autoincrement())
   operation     String  @default("sale") @db.VarChar(20) // sale, return
-  source        String  @default("box_office") @db.VarChar(20) // box_office, scanner
+  source        String  @default("box_office") @db.VarChar(20) // box_office, scanner, hdm_direct
   paymentMethod String  @default("cash") @db.VarChar(20) // cash, card
   status        String  @default("printed") @db.VarChar(20) // printed, failed
   errorMessage  String? @db.Text

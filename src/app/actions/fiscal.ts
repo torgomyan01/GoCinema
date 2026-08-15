@@ -12,7 +12,7 @@ import {
 } from '@/lib/product-units';
 
 export type FiscalOperation = 'sale' | 'return';
-export type FiscalSource = 'box_office' | 'scanner';
+export type FiscalSource = 'box_office' | 'scanner' | 'hdm_direct';
 export type FiscalPaymentMethod = 'cash' | 'card';
 
 /** ՀԴՄ-ից ստացված ֆիսկալ պատասխանի ամբողջական տեսքը */
@@ -206,6 +206,125 @@ export async function recordFiscalReceipt(input: RecordFiscalReceiptInput) {
   }
 }
 
+function parseDateTimeLocal(value: string): Date | null {
+  const match = String(value ?? '')
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    0,
+    0
+  );
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Ուղիղ ՀԴՄ-ով տպված վաճառք, որը այս ծրագրով չի անցել։
+ * Գրանցվում է որպես printed, որ հաշվապահությունը հաշվի 5.1 / 9.1-ում։
+ */
+export async function createManualFiscalSale(input: {
+  printedAt: string;
+  ticketsAmount?: number;
+  productsAmount?: number;
+  paymentMethod?: FiscalPaymentMethod;
+  fiscalNumber?: string;
+  note?: string;
+}): Promise<{ success: boolean; error: string | null; id?: number }> {
+  const cashierId = await requireStaffUserId();
+  if (!cashierId) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const ticketsAmount = Math.round(Number(input.ticketsAmount) || 0);
+  const productsAmount = Math.round(Number(input.productsAmount) || 0);
+  if (ticketsAmount < 0 || productsAmount < 0) {
+    return { success: false, error: 'Գումարը չի կարող բացասական լինել' };
+  }
+  if (ticketsAmount <= 0 && productsAmount <= 0) {
+    return { success: false, error: 'Լրացրեք տոմսի և/կամ ապրանքի գումարը' };
+  }
+
+  const fiscalTime = parseDateTimeLocal(input.printedAt);
+  if (!fiscalTime) {
+    return { success: false, error: 'Ամսաթիվը սխալ է' };
+  }
+
+  const paymentMethod: FiscalPaymentMethod =
+    input.paymentMethod === 'card' ? 'card' : 'cash';
+  const fiscalNumber = toStr(input.fiscalNumber);
+  const note = toStr(input.note);
+  const total = ticketsAmount + productsAmount;
+
+  const items: Array<Record<string, unknown>> = [];
+  if (ticketsAmount > 0) {
+    items.push({
+      productCode: 'TICKET',
+      productName: 'Տոմս',
+      price: ticketsAmount,
+      qty: 1,
+      unit: 'տոմս',
+      dep: 1,
+      isTicket: true,
+    });
+  }
+  if (productsAmount > 0) {
+    items.push({
+      productCode: 'PROD-1',
+      productName: 'Ապրանք',
+      price: productsAmount,
+      qty: 1,
+      unit: 'հատ',
+      dep: 2,
+    });
+  }
+
+  try {
+    if (fiscalNumber) {
+      const existing = await prisma.fiscalReceipt.findFirst({
+        where: { fiscalNumber, status: 'printed' },
+        select: { id: true },
+      });
+      if (existing) {
+        return {
+          success: false,
+          error: `Այս ֆիսկալ համարով կտրոն արդեն կա (#${existing.id})`,
+        };
+      }
+    }
+
+    const created = await prisma.fiscalReceipt.create({
+      data: {
+        operation: 'sale',
+        source: 'hdm_direct',
+        paymentMethod,
+        status: 'printed',
+        fiscalNumber,
+        fiscalTime,
+        total,
+        requestPayload: {
+          manual: true,
+          note,
+          items,
+        } as Prisma.InputJsonValue,
+        cashierId,
+      },
+      select: { id: true },
+    });
+
+    revalidatePath('/admin/fiscal');
+    revalidatePath('/admin/accounting');
+    return { success: true, error: null, id: created.id };
+  } catch (error) {
+    console.error('[createManualFiscalSale]', error);
+    return { success: false, error: 'Գրանցելիս սխալ է տեղի ունեցել' };
+  }
+}
+
 export interface FiscalReceiptListItem {
   id: number;
   operation: string;
@@ -264,6 +383,9 @@ function fiscalSearchWhere(raw: string): Prisma.FiscalReceiptWhereInput | undefi
   }
   if (['մուտք', 'scanner', 'սկան'].some((word) => lower.includes(word))) {
     or.push({ source: 'scanner' });
+  }
+  if (['արտաքին', 'hdm', 'հդմ'].some((word) => lower.includes(word))) {
+    or.push({ source: 'hdm_direct' });
   }
   if (['քարտ', 'card'].some((word) => lower.includes(word))) {
     or.push({ paymentMethod: 'card' });

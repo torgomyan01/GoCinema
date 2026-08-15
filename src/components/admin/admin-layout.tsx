@@ -124,7 +124,10 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
               <nav className="flex-1 overflow-y-auto p-4">
                 <ul className="space-y-2">
                   {menuItems.map((item) => {
-                    const isActive = pathname === item.href;
+                    const isActive =
+                      pathname === item.href ||
+                      (item.href !== '/admin' &&
+                        pathname.startsWith(`${item.href}/`));
                     return (
                       <li key={item.href}>
                         <Link

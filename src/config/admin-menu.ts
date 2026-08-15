@@ -14,7 +14,6 @@ import {
   Sparkles,
   QrCode,
   Banknote,
-  FileBarChart,
   Bell,
   CreditCard,
   History,
@@ -24,6 +23,7 @@ import {
   Calculator,
   PartyPopper,
   Gift,
+  Instagram,
   LucideIcon,
 } from 'lucide-react';
 
@@ -200,11 +200,11 @@ export const adminMenuItems: AdminMenuItem[] = [
     bgColor: 'bg-indigo-50',
   },
   {
-    title: 'Ֆիլմերի հաշվետվություն',
-    icon: FileBarChart,
-    href: '/admin/reports',
-    color: 'text-indigo-600',
-    bgColor: 'bg-indigo-50',
+    title: 'SMM',
+    icon: Instagram,
+    href: '/admin/smm',
+    color: 'text-fuchsia-600',
+    bgColor: 'bg-fuchsia-50',
   },
   {
     title: 'Կարգավորումներ',

@@ -204,7 +204,39 @@ export function drawCover(
   ctx.drawImage(img, dx, dy, dw, dh);
 }
 
-export function wrapText(
+export function drawContain(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+) {
+  const scale = Math.min(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
+
+export function posterFitSize(
+  img: HTMLImageElement | null,
+  maxW: number,
+  maxH: number
+): { w: number; h: number } {
+  if (!img || !img.width || !img.height) {
+    return { w: Math.min(168, maxW), h: Math.min(240, maxH) };
+  }
+  const ratio = img.width / img.height;
+  let h = maxH;
+  let w = h * ratio;
+  if (w > maxW) {
+    w = maxW;
+    h = w / ratio;
+  }
+  return { w, h };
+}
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number

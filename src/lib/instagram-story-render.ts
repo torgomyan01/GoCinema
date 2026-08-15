@@ -3,11 +3,12 @@ import {
   FONT,
   STORY_HEIGHT,
   STORY_WIDTH,
-  drawCover,
+  drawContain,
   fillBrandBackground,
   formatSessionLine,
   groupScreenings,
   loadImage,
+  posterFitSize,
   roundRect,
 } from '@/lib/smm-canvas';
 
@@ -39,8 +40,8 @@ export async function renderInstagramStory(
   const gap = 18;
   const count = Math.max(movies.length, 1);
   const cardH = (bottom - top - gap * (count - 1)) / count;
-  const posterW = 168;
-  const posterH = Math.min(240, cardH - 36);
+  const maxPosterW = 280;
+  const maxPosterH = Math.max(120, cardH - 36);
 
   const images = await Promise.all(
     movies.map((movie) =>
@@ -57,20 +58,25 @@ export async function renderInstagramStory(
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    const img = images[index];
+    const { w: posterW, h: posterH } = posterFitSize(
+      img,
+      maxPosterW,
+      maxPosterH
+    );
     const posterX = 72;
     const posterY = y + (cardH - posterH) / 2;
     ctx.save();
     roundRect(ctx, posterX, posterY, posterW, posterH, 16);
     ctx.clip();
-    const img = images[index];
+    ctx.fillStyle = '#18181b';
+    ctx.fillRect(posterX, posterY, posterW, posterH);
     if (img) {
-      drawCover(ctx, img, posterX, posterY, posterW, posterH);
+      drawContain(ctx, img, posterX, posterY, posterW, posterH);
     } else {
-      ctx.fillStyle = '#27272a';
-      ctx.fillRect(posterX, posterY, posterW, posterH);
       ctx.fillStyle = '#71717a';
       ctx.font = `600 22px ${FONT}`;
-      ctx.fillText('GO', posterX + 58, posterY + posterH / 2);
+      ctx.fillText('GO', posterX + posterW / 2 - 16, posterY + posterH / 2);
     }
     ctx.restore();
 

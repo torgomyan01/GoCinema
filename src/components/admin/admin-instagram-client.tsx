@@ -155,7 +155,7 @@ export default function AdminInstagramClient({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]">
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900">Ֆիլմեր այսօրվանից</h2>
@@ -222,21 +222,21 @@ export default function AdminInstagramClient({
           )}
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-gray-950 p-4 shadow-sm">
+        <div className="rounded-2xl border border-gray-200 bg-gray-950 p-4 shadow-sm lg:sticky lg:top-4">
           <p className="mb-3 text-center text-xs font-medium text-gray-400">
             Նախադիտում · {STORY_WIDTH}×{STORY_HEIGHT}
           </p>
-          <div className="relative mx-auto w-full max-w-[280px] overflow-hidden rounded-2xl border border-white/10 bg-black">
+          <div className="relative mx-auto flex w-full justify-center rounded-2xl border border-white/10 bg-black">
             <div
               ref={overlayRef}
               hidden
-              className="absolute inset-0 z-10 flex items-center justify-center bg-black/40"
+              className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/40"
             >
               <Loader2 className="h-6 w-6 animate-spin text-white" />
             </div>
             <canvas
               ref={canvasRef}
-              className="block h-auto w-full"
+              className="block h-auto max-h-[min(720px,calc(100vh-14rem))] w-auto max-w-full"
               style={{ aspectRatio: `${STORY_WIDTH} / ${STORY_HEIGHT}` }}
             />
           </div>

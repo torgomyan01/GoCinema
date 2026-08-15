@@ -237,6 +237,8 @@ export function posterFitSize(
   }
   return { w, h };
 }
+
+export function wrapText(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number

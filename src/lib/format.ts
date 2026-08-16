@@ -7,6 +7,9 @@ export function formatPrice(value: number): string {
 /** Կինոյի պաշտոնական ժամային գոտի — չի կախված սերվերի/OS TZ-ից */
 export const CINEMA_TIMEZONE = 'Asia/Yerevan';
 
+/** Asia/Yerevan = UTC+4, DST չկա 2012-ից */
+const YEREVAN_OFFSET_MS = 4 * 60 * 60 * 1000;
+
 const ARMENIAN_MONTHS = [
   'հունվար',
   'փետրվար',
@@ -47,21 +50,34 @@ const ARMENIAN_WEEKDAYS = [
   'շաբաթ',
 ] as const;
 
-const WEEKDAY_INDEX: Record<string, number> = {
-  Sun: 0,
-  Mon: 1,
-  Tue: 2,
-  Wed: 3,
-  Thu: 4,
-  Fri: 5,
-  Sat: 6,
-};
-
 function parseDate(value: Date | string): Date {
-  return typeof value === 'string' ? new Date(value) : value;
+  if (value instanceof Date) return value;
+  const s = String(value).trim();
+  if (!s) return new Date(NaN);
+
+  // Արդեն UTC/offset ունի — չենք վերամեկնաբանում
+  if (/[zZ]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s)) {
+    return new Date(s);
+  }
+
+  // YYYY-MM-DD → Երևանի օր, 00:00
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return new Date(`${s}T00:00:00+04:00`);
+  }
+
+  // Naive datetime (առանց TZ) → միշտ Երևան UTC+4, ոչ OS/DST
+  const naive = s.match(
+    /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?/
+  );
+  if (naive) {
+    const sec = naive[4] ?? '00';
+    return new Date(`${naive[1]}T${naive[2]}:${naive[3]}:${sec}+04:00`);
+  }
+
+  return new Date(s);
 }
 
-/** Երևանի օր/ժամ — միասնական բոլոր սերվերների/OS-ների համար */
+/** Երևանի օր/ժամ — միայն ֆիքսված UTC+4, առանց OS/Intl DST */
 function yerevanParts(value: Date | string): {
   year: number;
   month: number;
@@ -73,28 +89,14 @@ function yerevanParts(value: Date | string): {
   const d = parseDate(value);
   if (Number.isNaN(d.getTime())) return null;
 
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: CINEMA_TIMEZONE,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    hourCycle: 'h23',
-    weekday: 'short',
-  }).formatToParts(d);
-
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? '';
-
-  const hourRaw = Number(get('hour'));
+  const yerevan = new Date(d.getTime() + YEREVAN_OFFSET_MS);
   return {
-    year: Number(get('year')),
-    month: Number(get('month')),
-    day: Number(get('day')),
-    hour: hourRaw === 24 ? 0 : hourRaw,
-    minute: Number(get('minute')),
-    weekday: WEEKDAY_INDEX[get('weekday')] ?? 0,
+    year: yerevan.getUTCFullYear(),
+    month: yerevan.getUTCMonth() + 1,
+    day: yerevan.getUTCDate(),
+    hour: yerevan.getUTCHours(),
+    minute: yerevan.getUTCMinutes(),
+    weekday: yerevan.getUTCDay(),
   };
 }
 
@@ -162,8 +164,7 @@ export function formatWeekdayHy(value: Date | string): string {
 }
 
 /**
- * Երևանի օր+ժամ (YYYY-MM-DD + HH:mm) → UTC Date։
- * Asia/Yerevan = UTC+4 (DST չկա 2012-ից)։
+ * Երևանի օր+ժամ (YYYY-MM-DD + HH:mm) → Date (UTC+4)։
  */
 export function yerevanDateTimeToUtc(dateKey: string, timeHy: string): Date {
   const dateParts = dateKey.split('-').map(Number);
@@ -176,8 +177,45 @@ export function yerevanDateTimeToUtc(dateKey: string, timeHy: string): Date {
   if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) {
     return new Date(NaN);
   }
-  const YEREVAN_OFFSET_MS = 4 * 60 * 60 * 1000;
-  return new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0) - YEREVAN_OFFSET_MS);
+  return new Date(`${dateKey}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+04:00`);
+}
+
+export function timeHyToMinutes(timeHy: string): number {
+  const [hh, mm] = timeHy.split(':').map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return NaN;
+  return hh * 60 + mm;
+}
+
+/** Երևանի HH:mm միջակայքերի համընկնում՝ [start, end) */
+export function yerevanTimeRangesOverlap(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string
+): boolean {
+  let a0 = timeHyToMinutes(startA);
+  let a1 = timeHyToMinutes(endA);
+  let b0 = timeHyToMinutes(startB);
+  let b1 = timeHyToMinutes(endB);
+  if ([a0, a1, b0, b1].some(Number.isNaN)) return false;
+  if (a1 <= a0) a1 += 24 * 60;
+  if (b1 <= b0) b1 += 24 * 60;
+  return a0 < b1 && a1 > b0;
+}
+
+/** HH:mm-ը Երևանի [start, end) միջակայքում է */
+export function isYerevanTimeWithinRange(
+  timeHy: string,
+  startHy: string,
+  endHy: string
+): boolean {
+  let t = timeHyToMinutes(timeHy);
+  let a0 = timeHyToMinutes(startHy);
+  let a1 = timeHyToMinutes(endHy);
+  if ([t, a0, a1].some(Number.isNaN)) return false;
+  if (a1 <= a0) a1 += 24 * 60;
+  if (t < a0 && a1 > 24 * 60) t += 24 * 60;
+  return t >= a0 && t < a1;
 }
 
 /** HH:mm + րոպեներ → HH:mm (24ժ, առանց timezone) */

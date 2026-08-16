@@ -16,9 +16,9 @@ export const RESERVATION_HOLD_MS = RESERVATION_HOLD_MINUTES * 60 * 1000;
 
 /**
  * VPost/gateway էջում գտնվելու ժամանակ hold-ը երկարացվում է այսքանով,
- * որպեսզի 5ր պատուհանը չլրանա քարտ մուտքագրելու ընթացքում։
+ * որպեսզի վճարման պատուհանը չլրանա քարտ մուտքագրելու և backlink-ի ընթացքում։
  */
-export const PAYMENT_GATEWAY_HOLD_MINUTES = 15;
+export const PAYMENT_GATEWAY_HOLD_MINUTES = 30;
 export const PAYMENT_GATEWAY_HOLD_MS =
   PAYMENT_GATEWAY_HOLD_MINUTES * 60 * 1000;
 
@@ -49,7 +49,7 @@ export function onlineHoldUntil(now: Date = new Date()): Date {
   return new Date(now.getTime() + RESERVATION_HOLD_MS);
 }
 
-/** VPost վճարման սկսելիս hold-ի երկարացում (+15ր այս պահից)։ */
+/** VPost վճարման սկսելիս hold-ի երկարացում (+30ր այս պահից)։ */
 export function paymentGatewayHoldUntil(now: Date = new Date()): Date {
   return new Date(now.getTime() + PAYMENT_GATEWAY_HOLD_MS);
 }

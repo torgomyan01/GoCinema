@@ -322,20 +322,25 @@ export async function updateOrderProducts(data: UpdateOrderProductsData) {
   }
 }
 
-export async function getOrderById(id: number) {
+export async function getOrderById(
+  id: number,
+  options?: { releaseExpired?: boolean }
+) {
   try {
-    const { releaseExpiredReservations } = await import(
-      '@/app/actions/tickets'
-    );
+    if (options?.releaseExpired !== false) {
+      const { releaseExpiredReservations } = await import(
+        '@/app/actions/tickets'
+      );
 
-    // Միայն այս պատվերի ցուցադրությունների hold-ները — ոչ ամբողջ բազան
-    const screeningRows = await prisma.ticket.findMany({
-      where: { orderId: id },
-      select: { screeningId: true },
-      distinct: ['screeningId'],
-    });
-    for (const row of screeningRows) {
-      await releaseExpiredReservations(row.screeningId);
+      // Միայն այս պատվերի ցուցադրությունների hold-ները — ոչ ամբողջ բազան
+      const screeningRows = await prisma.ticket.findMany({
+        where: { orderId: id },
+        select: { screeningId: true },
+        distinct: ['screeningId'],
+      });
+      for (const row of screeningRows) {
+        await releaseExpiredReservations(row.screeningId);
+      }
     }
 
     const order = await prisma.order.findUnique({

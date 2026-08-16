@@ -2,39 +2,34 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_URL } from '@/utils/consts';
-import { syncVPostOrderStatus } from '@/app/actions/payments';
+import { completeVPostReturn } from '@/app/actions/payments';
 import { getOrderById } from '@/app/actions/orders';
 
 interface VpostReturnClientProps {
   orderId: string;
 }
 
-const MAX_ATTEMPTS = 12;
-const RETRY_MS = 2000;
+const MAX_ATTEMPTS = 20;
+const RETRY_MS = 2500;
 
 /**
- * vPost վերադարձի նպատակային էջ։ backURL-ում query չենք ավելացնում —
- * ITF-ը կցում է իր պարամետրերը։
+ * vPost backURL սպասման էջ։ Login չի պահանջում և /account չի տանում,
+ * որ բանկից վերադարձին session-ը չկորչի։ Տոմսը paid է դառնում միայն
+ * vPost-ի հաջող պատասխանից հետո։
  */
 export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
   const router = useRouter();
-  const { data: session, status: sessionStatus } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const syncStartedRef = useRef(false);
 
-  const userId = session?.user
-    ? Number((session.user as { id?: string | number }).id)
-    : null;
-
   const redirectIfPaid = useCallback(
     async (idNum: number) => {
-      const refreshed = await getOrderById(idNum);
+      const refreshed = await getOrderById(idNum, { releaseExpired: false });
       if (!refreshed.success || !refreshed.order) return false;
       const tickets = refreshed.order.tickets as Array<{ status: string }>;
       const allPaid =
@@ -51,7 +46,10 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
 
   const runSync = useCallback(async () => {
     const idNum = parseInt(orderId, 10);
-    if (!Number.isFinite(idNum) || !userId) return;
+    if (!Number.isFinite(idNum)) {
+      setError('Անվավեր պատվեր');
+      return;
+    }
 
     setIsSyncing(true);
     setError(null);
@@ -62,10 +60,7 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
       for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
         setAttempt(i + 1);
 
-        const syncResult = await syncVPostOrderStatus({
-          userId,
-          orderId: idNum,
-        });
+        const syncResult = await completeVPostReturn(idNum);
 
         if (!syncResult.success) {
           setError(
@@ -75,7 +70,6 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
         }
 
         if (syncResult.state === 'paid') {
-          // Միայն եթե DB-ում տոմսերն իսկապես paid են — redirect
           if (await redirectIfPaid(idNum)) return;
           setError(
             'Վճարումը դեռ հաստատված չէ բազայում։ Սեղմեք «Կրկին ստուգել»։'
@@ -112,41 +106,17 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
     } finally {
       setIsSyncing(false);
     }
-  }, [orderId, userId, router, redirectIfPaid]);
+  }, [orderId, redirectIfPaid]);
 
   useEffect(() => {
-    if (sessionStatus === 'loading') return;
-
-    if (sessionStatus === 'unauthenticated' || !userId) {
-      router.replace(
-        `${SITE_URL.ACCOUNT}?callbackUrl=${encodeURIComponent(
-          SITE_URL.PAYMENT_VPOST_RETURN(orderId)
-        )}`
-      );
-      return;
-    }
-
     if (syncStartedRef.current) return;
     syncStartedRef.current = true;
     void runSync();
-  }, [sessionStatus, userId, orderId, router, runSync]);
+  }, [runSync]);
 
   const handleRetry = () => {
     void runSync();
   };
-
-  if (sessionStatus === 'loading' || sessionStatus === 'unauthenticated') {
-    return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 px-4">
-        <Loader2 className="w-12 h-12 text-purple-600 animate-spin" />
-        <p className="text-gray-600 text-center">
-          {sessionStatus === 'unauthenticated'
-            ? 'Վերահղում ենք մուտքի էջ…'
-            : 'Բեռնվում է…'}
-        </p>
-      </div>
-    );
-  }
 
   if (error) {
     return (
@@ -179,8 +149,12 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
   return (
     <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 px-4">
       <Loader2 className="w-12 h-12 text-purple-600 animate-spin" />
-      <p className="text-gray-600 text-center">
-        Ստուգում ենք վճարման կարգավիճակը…
+      <p className="text-gray-800 text-center font-medium">
+        Սպասում ենք վճարման հաստատմանը…
+      </p>
+      <p className="text-gray-500 text-center text-sm max-w-sm">
+        Խնդրում ենք չփակել այս էջը։ Տոմսը կհաստատվի միայն բանկի հաջող
+        պատասխանից հետո։
       </p>
       {attempt > 0 && (
         <p className="text-xs text-gray-400">

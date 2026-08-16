@@ -96,17 +96,17 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: 'lax',
+        // none+secure՝ բանկի cross-site POST backURL-ին cookie-ն չի կորչում
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
-        // Don't set domain explicitly - let browser handle it
       },
     },
     callbackUrl: {
       name: `next-auth.callback-url`,
       options: {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
       },
@@ -115,7 +115,7 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.csrf-token`,
       options: {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
       },

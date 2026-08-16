@@ -36,7 +36,9 @@ import {
   formatDateKey,
   formatTimeHy,
   formatWeekdayHy,
+  isYerevanTimeWithinRange,
   yerevanDateTimeToUtc,
+  yerevanTimeRangesOverlap,
 } from '@/lib/format';
 
 /**
@@ -210,20 +212,14 @@ export default function AdminScreeningsClient({
     (startTime: string, endTime: string): boolean => {
       if (!startTime || !endTime || !formData.date) return true;
 
-      const start = yerevanDateTimeToUtc(formData.date, startTime);
-      const end = yerevanDateTimeToUtc(formData.date, endTime);
-
-      return !formDateScreenings.some((screening) => {
-        const screeningStart = new Date(screening.startTime);
-        const screeningEnd = new Date(screening.endTime);
-
-        // Check for overlap
-        return (
-          (start >= screeningStart && start < screeningEnd) ||
-          (end > screeningStart && end <= screeningEnd) ||
-          (start <= screeningStart && end >= screeningEnd)
-        );
-      });
+      return !formDateScreenings.some((screening) =>
+        yerevanTimeRangesOverlap(
+          startTime,
+          endTime,
+          formatTimeHy(screening.startTime),
+          formatTimeHy(screening.endTime)
+        )
+      );
     },
     [formData.date, formDateScreenings]
   );
@@ -249,24 +245,18 @@ export default function AdminScreeningsClient({
 
         if (!endTime) continue;
 
-        const timeDate = yerevanDateTimeToUtc(formData.date, time);
-        const endTimeDate = yerevanDateTimeToUtc(formData.date, endTime);
-
-        const available = isTimeSlotAvailable(time, endTime);
-        const conflictingScreening = formDateScreenings.find((s) => {
-          const sStart = new Date(s.startTime);
-          const sEnd = new Date(s.endTime);
-          return (
-            (timeDate >= sStart && timeDate < sEnd) ||
-            (endTimeDate > sStart && endTimeDate <= sEnd) ||
-            (timeDate <= sStart && endTimeDate >= sEnd)
-          );
-        });
+        const occupyingScreening = formDateScreenings.find((s) =>
+          isYerevanTimeWithinRange(
+            time,
+            formatTimeHy(s.startTime),
+            formatTimeHy(s.endTime)
+          )
+        );
 
         slots.push({
           time,
-          available,
-          movie: conflictingScreening?.movie?.title,
+          available: !occupyingScreening,
+          movie: occupyingScreening?.movie?.title,
         });
       }
     }
@@ -278,7 +268,6 @@ export default function AdminScreeningsClient({
     formDateScreenings,
     movies,
     calculateEndTime,
-    isTimeSlotAvailable,
   ]);
 
   const handleDateChange = (date: Date) => {
@@ -1254,23 +1243,15 @@ export default function AdminScreeningsClient({
                         {timeSlots.map((slot) => {
                           const isSelected =
                             formData.startTime === slot.time ||
-                            (formData.startTime &&
-                              formData.endTime &&
+                            (Boolean(formData.startTime) &&
+                              Boolean(formData.endTime) &&
                               slot.time >= formData.startTime &&
-                              slot.time <= formData.endTime);
+                              slot.time < formData.endTime);
 
                           const calculatedEndTime = calculateEndTime(
                             slot.time,
                             formData.movieId
                           );
-                          const wouldOverlap =
-                            !slot.available &&
-                            slot.movie &&
-                            calculatedEndTime &&
-                            isTimeSlotAvailable(
-                              slot.time,
-                              calculatedEndTime
-                            ) === false;
 
                           return (
                             <button

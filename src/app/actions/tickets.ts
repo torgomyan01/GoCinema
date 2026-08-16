@@ -25,15 +25,88 @@ export async function releaseExpiredReservations(screeningId?: number) {
 
   const expired = await prisma.ticket.findMany({
     where,
-    select: { id: true, orderId: true },
+    select: {
+      id: true,
+      orderId: true,
+      holdUntil: true,
+      payment: { select: { method: true, transactionId: true } },
+    },
   });
 
   if (expired.length === 0) return 0;
 
-  const ticketIds = expired.map((t) => t.id);
-  const orderIds = Array.from(
+  const cardOrderIds = Array.from(
     new Set(
       expired
+        .filter(
+          (ticket) =>
+            ticket.orderId != null &&
+            ticket.payment?.method === 'card' &&
+            Boolean(ticket.payment.transactionId)
+        )
+        .map((ticket) => ticket.orderId as number)
+    )
+  );
+
+  const protectTicketIds = new Set<number>();
+  if (cardOrderIds.length > 0) {
+    try {
+      const { syncVPostOrderStatus } = await import('@/app/actions/payments');
+      for (const orderId of cardOrderIds) {
+        try {
+          const result = await syncVPostOrderStatus({ orderId });
+          if (!result.success) {
+            expired
+              .filter((ticket) => ticket.orderId === orderId)
+              .forEach((ticket) => protectTicketIds.add(ticket.id));
+          }
+        } catch (error) {
+          console.error(
+            '[releaseExpiredReservations] vPost sync failed:',
+            orderId,
+            error
+          );
+          expired
+            .filter((ticket) => ticket.orderId === orderId)
+            .forEach((ticket) => protectTicketIds.add(ticket.id));
+        }
+      }
+    } catch (error) {
+      console.error('[releaseExpiredReservations] vPost import failed:', error);
+      expired
+        .filter((ticket) => ticket.payment?.method === 'card')
+        .forEach((ticket) => protectTicketIds.add(ticket.id));
+    }
+  }
+
+  const CARD_GRACE_MS = 2 * 60 * 60 * 1000;
+  const stillExpired = await prisma.ticket.findMany({
+    where,
+    select: {
+      id: true,
+      orderId: true,
+      holdUntil: true,
+      payment: { select: { method: true, transactionId: true } },
+    },
+  });
+
+  const toCancel = stillExpired.filter((ticket) => {
+    if (protectTicketIds.has(ticket.id)) return false;
+    const isCardAttempt =
+      ticket.payment?.method === 'card' && Boolean(ticket.payment.transactionId);
+    if (!isCardAttempt) return true;
+    const holdEnd = ticket.holdUntil
+      ? new Date(ticket.holdUntil).getTime()
+      : 0;
+    return holdEnd > 0 && now.getTime() - holdEnd >= CARD_GRACE_MS;
+  });
+
+  if (toCancel.length === 0) return 0;
+
+  const ticketIds = toCancel.map((t) => t.id);
+  const orderIds = Array.from(
+    new Set(
+      toCancel
         .map((t) => t.orderId)
         .filter((id): id is number => id != null)
     )
@@ -154,6 +227,40 @@ export async function getUserTickets(userId: number) {
         error: 'Օգտատիրոջ ID-ն վավեր չէ',
         tickets: [],
       };
+    }
+
+    const pendingCardOrderIds = Array.from(
+      new Set(
+        (
+          await prisma.ticket.findMany({
+            where: {
+              userId: Number(userId),
+              status: AWAITING_PAYMENT_STATUS,
+              payment: {
+                is: {
+                  method: 'card',
+                  transactionId: { not: null },
+                },
+              },
+            },
+            select: { orderId: true },
+            take: 10,
+          })
+        )
+          .map((ticket) => ticket.orderId)
+          .filter((id): id is number => id != null)
+      )
+    );
+
+    if (pendingCardOrderIds.length > 0) {
+      try {
+        const { syncVPostOrderStatus } = await import('@/app/actions/payments');
+        for (const orderId of pendingCardOrderIds) {
+          await syncVPostOrderStatus({ orderId });
+        }
+      } catch (error) {
+        console.error('[Get User Tickets] vPost sync failed:', error);
+      }
     }
 
     const tickets = await prisma.ticket.findMany({

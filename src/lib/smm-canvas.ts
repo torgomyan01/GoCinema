@@ -1,3 +1,5 @@
+import { formatDateKey, formatTimeHy } from '@/lib/format';
+
 export const STORY_WIDTH = 1080;
 export const STORY_HEIGHT = 1920;
 export const FEED_SIZE = 1080;
@@ -105,8 +107,9 @@ export function groupScreenings(
 
   for (const row of screenings) {
     const date = new Date(row.startTime);
-    const key = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    const key = formatDateKey(date);
+    const time = formatTimeHy(date);
+    if (!key || !time) continue;
     let group = groups.get(key);
     if (!group) {
       group = { key, label: dayLabel(date), times: [] };

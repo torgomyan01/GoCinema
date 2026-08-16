@@ -19,7 +19,7 @@ import {
 } from '@/app/actions/screenings';
 import { SITE_URL } from '@/utils/consts';
 import { ageRatingClasses } from '@/lib/age-rating';
-import { formatPrice } from '@/lib/format';
+import { formatDateHy, formatDateKey, formatPrice, formatTimeHy } from '@/lib/format';
 import { isOccupiedTicketStatus } from '@/lib/reservation';
 
 interface HeroTicket {
@@ -39,21 +39,6 @@ interface HeroTicket {
   };
 }
 
-const AM_MONTHS_SHORT = [
-  'հնվ',
-  'փտվ',
-  'մրտ',
-  'ապր',
-  'մյս',
-  'հնս',
-  'հլս',
-  'օգս',
-  'սեպ',
-  'հոկ',
-  'նոյ',
-  'դեկ',
-];
-
 const MOCK_TICKET: HeroTicket = {
   id: null,
   startTime: new Date(new Date().setHours(20, 30, 0, 0)),
@@ -71,20 +56,11 @@ const MOCK_TICKET: HeroTicket = {
   },
 };
 
-function pad2(n: number) {
-  return n < 10 ? `0${n}` : `${n}`;
-}
-
 function formatShowtime(value: Date | string) {
-  const d = new Date(value);
-  const today = new Date();
-  const isToday =
-    d.getFullYear() === today.getFullYear() &&
-    d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate();
-  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  if (isToday) return `Այսօր · ${time}`;
-  return `${pad2(d.getDate())} ${AM_MONTHS_SHORT[d.getMonth()]} · ${time}`;
+  const time = formatTimeHy(value);
+  const todayKey = formatDateKey(new Date());
+  if (formatDateKey(value) === todayKey) return `Այսօր · ${time}`;
+  return `${formatDateHy(value, { month: 'short' })} · ${time}`;
 }
 
 function getAvailableSeats(

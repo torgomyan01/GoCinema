@@ -19,6 +19,7 @@ import {
   Popcorn,
   CupSoda,
   Gift,
+  UtensilsCrossed,
 } from 'lucide-react';
 import {
   isQuantityOnlyProduct,
@@ -50,6 +51,26 @@ function SeatIcon({
       <rect x="2" y="12" width="24" height="8" rx="1.5" />
       <path d="M5 12V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6" />
     </svg>
+  );
+}
+
+function OutsideFoodNotice({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={`flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-950 mb-2 ${
+        compact
+          ? 'px-2.5 py-2 text-[11px] leading-snug'
+          : 'px-3 py-2.5 text-sm leading-relaxed'
+      }`}
+    >
+      <UtensilsCrossed
+        className={`shrink-0 text-amber-700 ${compact ? 'mt-0.5 h-3.5 w-3.5' : 'mt-0.5 h-4 w-4'}`}
+      />
+      <p>
+        <strong>Արտաքին սնունդ չի թույլատրվում։</strong> Դահլիճ սեփական ուտելիք
+        և ըմպելիք բերելը արգելվում է։ Կարող եք գնել կինոբարից։
+      </p>
+    </div>
   );
 }
 
@@ -709,6 +730,9 @@ export default function BookingPageClient({
                 <h2 className="text-base font-bold text-gray-900">
                   Ընտրեք նստատեղ
                 </h2>
+                <div className="mt-3">
+                  <OutsideFoodNotice />
+                </div>
               </div>
 
               {/* Screen */}
@@ -996,6 +1020,8 @@ export default function BookingPageClient({
                     </div>
                   </div>
 
+                  <OutsideFoodNotice compact />
+
                   <button
                     onClick={handleContinueToCheckout}
                     disabled={isCreatingOrder || isReserving || !session?.user}
@@ -1150,6 +1176,10 @@ export default function BookingPageClient({
                     <span>{productsTotal.toFixed(0)} ֏</span>
                   </div>
                 )}
+              </div>
+
+              <div className="pt-2">
+                <OutsideFoodNotice compact />
               </div>
 
               <p className="text-xs text-gray-400 text-center pt-2 pb-1">
@@ -1335,8 +1365,8 @@ export default function BookingPageClient({
                                   Պոպկորն
                                 </p>
                                 <p className="text-sm text-gray-500">
-                                  {flavorGroupsFor('popcorn').length} համ ·
-                                  հետո չափը
+                                  {flavorGroupsFor('popcorn').length} համ · հետո
+                                  չափը
                                 </p>
                               </div>
                               {categoryCartQty('popcorn') > 0 && (
@@ -1478,7 +1508,9 @@ export default function BookingPageClient({
                       otherProducts.length === 0 && (
                         <div className="py-10 text-center">
                           <ShoppingCart className="mx-auto mb-3 h-12 w-12 text-gray-200" />
-                          <p className="text-sm text-gray-400">Ապրանքներ չկան</p>
+                          <p className="text-sm text-gray-400">
+                            Ապրանքներ չկան
+                          </p>
                         </div>
                       )}
                   </div>
@@ -1518,9 +1550,7 @@ export default function BookingPageClient({
                           <button
                             key={group.flavorKey}
                             type="button"
-                            onClick={() =>
-                              setPickerFlavorKey(group.flavorKey)
-                            }
+                            onClick={() => setPickerFlavorKey(group.flavorKey)}
                             className={`relative overflow-hidden rounded-2xl border text-left transition ${
                               inCart > 0
                                 ? 'border-purple-400 bg-purple-50 ring-2 ring-purple-200'
@@ -1671,10 +1701,7 @@ export default function BookingPageClient({
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      handleProductQuantityChange(
-                                        product.id,
-                                        1
-                                      )
+                                      handleProductQuantityChange(product.id, 1)
                                     }
                                     className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-600 text-white active:scale-90"
                                   >
@@ -1755,8 +1782,8 @@ export default function BookingPageClient({
                 <div className="mt-3 space-y-2.5 text-sm leading-relaxed text-gray-600">
                   <p>
                     Այս տարբերակով տեղերը պահվում են ձեզ համար մինչև մուտքի մոտ
-                    վճարելը։ Եթե ամրագրեք և չգաք, այդ տեղերը մնում են զբաղված,
-                    և այլ հանդիսատեսներ չեն կարող դրանք վերցնել։
+                    վճարելը։ Եթե ամրագրեք և չգաք, այդ տեղերը մնում են զբաղված, և
+                    այլ հանդիսատեսներ չեն կարող դրանք վերցնել։
                   </p>
                   <p>
                     Խնդրում ենք ամրագրել միայն այն դեպքում, երբ իսկապես
@@ -1765,6 +1792,13 @@ export default function BookingPageClient({
                   <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
                     Կրկնակի չեղարկումների կամ չգալու դեպքում հաշիվը կարող է
                     արգելափակվել, և այս հնարավորությունից կզրկվեք։
+                  </p>
+                  <p className="flex items-start gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-orange-950">
+                    <UtensilsCrossed className="mt-0.5 h-4 w-4 shrink-0 text-orange-700" />
+                    <span>
+                      <strong>Արտաքին սնունդ չի թույլատրվում։</strong> Դահլիճ
+                      սեփական ուտելիք և ըմպելիք բերելը արգելվում է։
+                    </span>
                   </p>
                   <p className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-violet-900">
                     <Gift className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
@@ -1783,9 +1817,7 @@ export default function BookingPageClient({
                   disabled={isReserving}
                   className="flex-1 rounded-xl bg-purple-600 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isReserving
-                    ? 'Ամրագրվում է...'
-                    : 'Հասկանում եմ, ամրագրել'}
+                  {isReserving ? 'Ամրագրվում է...' : 'Հասկանում եմ, ամրագրել'}
                 </button>
                 <button
                   type="button"

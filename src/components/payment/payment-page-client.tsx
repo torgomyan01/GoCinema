@@ -113,7 +113,7 @@ const TELCELL_ENABLED = false;
 export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,12 +178,14 @@ export default function PaymentPageClient({ orderId }: PaymentPageClientProps) {
     loadOrder();
   }, [orderId]);
 
-  // Check if user is logged in
+  // Check if user is logged in — միայն session-ը բեռնվելուց հետո,
+  // որ բանկից վերադարձին loading-ի պահին /account չտանի (logout)։
   useEffect(() => {
-    if (!session?.user && !isLoading) {
+    if (sessionStatus === 'loading' || isLoading) return;
+    if (!session?.user) {
       router.push('/account');
     }
-  }, [session, router, isLoading]);
+  }, [session, sessionStatus, router, isLoading]);
 
   // Քարտով վճարման ավտո-sync ՉԻ սկսվում պարզապես էջ բացելիս կամ back անելիս։
   // Հաստատումը կատարվում է /payment/[id]/vpost-return էջից (vPost-ի backURL)։

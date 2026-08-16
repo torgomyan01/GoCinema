@@ -37,7 +37,11 @@ import {
   resolveGoCinemaOrderIdForDisplay,
   type VPostProviderInfo,
 } from '@/lib/vpost';
-import { isUnpaidHeldStatus, paymentGatewayHoldUntil } from '@/lib/reservation';
+import {
+  AWAITING_PAYMENT_STATUS,
+  isUnpaidHeldStatus,
+  paymentGatewayHoldUntil,
+} from '@/lib/reservation';
 import { createNotification, formatAmd } from '@/lib/notifications';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -654,9 +658,12 @@ export async function createVPostOrderForOrder(
   }
 }
 
-export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
+export async function syncVPostOrderStatus(data: {
+  orderId: number;
+  userId?: number;
+}) {
   try {
-    if (!data.userId || !data.orderId) {
+    if (!data.orderId) {
       return {
         success: false,
         error: 'Բոլոր պարտադիր դաշտերը պետք է լրացված լինեն',
@@ -711,7 +718,7 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       };
     }
 
-    if (order.userId !== data.userId) {
+    if (data.userId != null && order.userId !== data.userId) {
       return {
         success: false,
         error: 'Պատվերը ձերն չէ',
@@ -1064,6 +1071,84 @@ export async function syncVPostOrderStatus(data: CreateVPostOrderForOrderData) {
       error: 'Քարտային վճարման կարգավիճակը ստուգելիս սխալ է տեղի ունեցել',
     };
   }
+}
+
+/**
+ * vPost backURL — session չի պահանջում (բանկի redirect-ը կարող է cookie չուղարկել)։
+ * Hold-ը երկարացնում է, ապա ստուգում/հաստատում է տոմսը։
+ */
+export async function completeVPostReturn(orderId: number) {
+  try {
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      return {
+        success: false,
+        error: 'Անվավեր պատվեր',
+      };
+    }
+
+    await prisma.ticket.updateMany({
+      where: {
+        orderId,
+        status: AWAITING_PAYMENT_STATUS,
+      },
+      data: { holdUntil: paymentGatewayHoldUntil() },
+    });
+
+    return await syncVPostOrderStatus({ orderId });
+  } catch (error: any) {
+    console.error('[Complete VPost Return] Error:', error);
+    return {
+      success: false,
+      error: 'Քարտային վճարման կարգավիճակը ստուգելիս սխալ է տեղի ունեցել',
+    };
+  }
+}
+
+/** Փակված backlink էջի դեպքում՝ սպասող քարտային պատվերները հաստատել vPost-ից։ */
+export async function reconcilePendingVPostPayments(limit = 25) {
+  const tickets = await prisma.ticket.findMany({
+    where: {
+      status: AWAITING_PAYMENT_STATUS,
+      payment: {
+        is: {
+          method: 'card',
+          transactionId: { not: null },
+        },
+      },
+    },
+    select: { orderId: true },
+    take: Math.max(1, limit) * 6,
+    orderBy: { updatedAt: 'asc' },
+  });
+
+  const orderIds = Array.from(
+    new Set(
+      tickets
+        .map((ticket) => ticket.orderId)
+        .filter((id): id is number => id != null)
+    )
+  ).slice(0, limit);
+
+  const results: Array<{ orderId: number; state?: string; ok: boolean }> = [];
+  for (const orderId of orderIds) {
+    const result = await syncVPostOrderStatus({ orderId });
+    results.push({
+      orderId,
+      ok: result.success,
+      state: 'state' in result ? String(result.state) : undefined,
+    });
+  }
+
+  paymentServerLog('vpost_reconcile', {
+    checked: results.length,
+    paid: results.filter((r) => r.state === 'paid').length,
+  });
+
+  return {
+    success: true as const,
+    checked: results.length,
+    results,
+  };
 }
 
 export async function createTelcellInvoiceForOrder(

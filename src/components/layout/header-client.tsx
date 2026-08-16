@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { SITE_URL } from '@/utils/consts';
 import { TIER_LABELS_HY } from '@/lib/bonus-labels';
+import { formatPrice } from '@/lib/format';
 import Image from 'next/image';
 import clsx from 'clsx';
 
@@ -149,7 +150,7 @@ export default function HeaderClient({
             <Coins
               className={compact ? 'h-3 w-3 shrink-0' : 'h-3.5 w-3.5 shrink-0'}
             />
-            {bonusPoints.toLocaleString('hy-AM')}
+            {formatPrice(bonusPoints)}
           </span>
         )}
       </Link>
@@ -281,7 +282,7 @@ export default function HeaderClient({
                                 Բոնուս միավորներ
                               </p>
                               <p className="text-lg font-bold tabular-nums text-amber-900">
-                                {bonusPoints.toLocaleString('hy-AM')}
+                                {formatPrice(bonusPoints)}
                               </p>
                             </div>
                           </div>

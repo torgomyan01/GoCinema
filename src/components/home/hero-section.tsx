@@ -39,22 +39,25 @@ interface HeroTicket {
   };
 }
 
-const MOCK_TICKET: HeroTicket = {
-  id: null,
-  startTime: new Date(new Date().setHours(20, 30, 0, 0)),
-  basePrice: 2500,
-  availableSeats: 42,
-  isMock: true,
-  movie: {
-    title: 'GoCinema Hall',
-    image: '/images/hero-background.png',
-    slug: null,
-    ageRating: null,
-  },
-  hall: {
-    name: '99 Սուերմարկետ 2 հարկ',
-  },
-};
+function mockHeroTicket(): HeroTicket {
+  const todayKey = formatDateKey(new Date());
+  return {
+    id: null,
+    startTime: `${todayKey}T20:30:00+04:00`,
+    basePrice: 2500,
+    availableSeats: 42,
+    isMock: true,
+    movie: {
+      title: 'GoCinema Hall',
+      image: '/images/hero-background.png',
+      slug: null,
+      ageRating: null,
+    },
+    hall: {
+      name: '99 Սուերմարկետ 2 հարկ',
+    },
+  };
+}
 
 function formatShowtime(value: Date | string) {
   const time = formatTimeHy(value);
@@ -235,7 +238,7 @@ function HeroTicketCard({
 }
 
 export default function HeroSection() {
-  const [ticket, setTicket] = useState<HeroTicket>(MOCK_TICKET);
+  const [ticket, setTicket] = useState<HeroTicket>(mockHeroTicket);
 
   useEffect(() => {
     const load = async () => {

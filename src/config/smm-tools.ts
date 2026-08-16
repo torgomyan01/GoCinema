@@ -38,6 +38,22 @@ export const SMM_TOOLS: SmmTool[] = [
     badge: '9:16 PNG',
   },
   {
+    id: 'premiere-video',
+    href: '/admin/smm/premiere-video',
+    title: 'Պրեմիերայի վիդեո',
+    description:
+      'Վաճառող հայտարարություն Մարտունիում՝ տղամարդու ձայն, ֆոնային sound և մինչև 15 վայրկյան վիդեո',
+    badge: '15վ · վիդեո',
+  },
+  {
+    id: 'trailer-video',
+    href: '/admin/smm/trailer-video',
+    title: 'Թրեյլերի վիդեո',
+    description:
+      'Բեռնիր թրեյլերը, ավելացրու վաճառող ձայն և սուբտիտրներ, պահպանիր ամբողջ վիդեոն',
+    badge: 'թրեյլեր · վիդեո',
+  },
+  {
     id: 'caption',
     href: '/admin/smm/caption',
     title: 'Տեքստ / caption',

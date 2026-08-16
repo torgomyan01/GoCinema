@@ -6,9 +6,11 @@ import {
   CalendarDays,
   ChevronRight,
   Clapperboard,
+  Film,
   Megaphone,
   Sparkles,
   Type,
+  Video,
 } from 'lucide-react';
 import { SMM_TOOLS } from '@/config/smm-tools';
 
@@ -17,6 +19,8 @@ const TOOL_ICONS: Record<string, typeof CalendarClock> = {
   movie: Clapperboard,
   today: CalendarDays,
   premiere: Sparkles,
+  'premiere-video': Video,
+  'trailer-video': Film,
   caption: Type,
 };
 

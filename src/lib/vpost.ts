@@ -438,17 +438,30 @@ export function hasVPostConfig() {
 
 /**
  * Գանձման ռեժիմ.
- * - single-phase (լռելյայն)՝ գումարը գանձվում է միանգամից, `payment_approved`
- *   (status 1) արդեն նշանակում է հաջող վճարում (առանձին confirm-payment պետք չէ)։
- * - two-phase (`PAYMENT_TWO_PHASE=true`)՝ գումարը սառեցվում է, ապա անհրաժեշտ է
- *   `confirm-payment`՝ վաճառողի հաշվին փոխանցելու համար (վերջնական՝ `payment_deposited`)։
+ * ITF մերչանտը հաճախ սառեցնում է գումարը (`payment_approved`)։
+ * Օնլայն տոմսի վճարման ժամանակ մենք ավտոմատ կանչում ենք confirm-payment,
+ * որ գումարը միանգամից գանձվի (`payment_deposited`), ոչ թե մնա hold-ում։
  *
- * Եթե ITF-ի confirm-payment-ը վերադարձնում է «Կարգավորումները չեն գտնվել»,
- * ապա հաշիվը single-phase է, և պետք է թողնել լռելյայն արժեքը (false)։
+ * `PAYMENT_TWO_PHASE` այլևս չի կառավարում այդ ավտոգանձումը։
  */
 export function isVPostTwoPhaseEnabled(): boolean {
   const value = (process.env.PAYMENT_TWO_PHASE || '').trim().toLowerCase();
   return value === 'true' || value === '1' || value === 'yes';
+}
+
+export function isVPostConfirmServiceDisabled(result: {
+  message?: string;
+  data?: { responseCode?: string; error?: string };
+}): boolean {
+  const code = String(result.data?.responseCode ?? '').trim();
+  if (code === '550') return true;
+  const msg = `${result.message ?? ''} ${result.data?.error ?? ''}`;
+  return (
+    /կարգավորումները չեն գտնվել/i.test(msg) ||
+    /չեք կարող օգտվել այս ծառայությունից/i.test(msg) ||
+    /ծառայություն\s*:\s*2/i.test(msg) ||
+    /service\s*:\s*2/i.test(msg)
+  );
 }
 
 export async function createVPostOrder(payload: {

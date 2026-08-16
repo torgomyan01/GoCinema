@@ -17,12 +17,12 @@ import {
   cancelVPostPayment,
   getNormalizedTransactionsFromVPostEnvelope,
   hasVPostConfig,
-  isVPostTwoPhaseEnabled,
   isVPostPaymentDeposited,
   isVPostPaymentDeclined,
   isVPostPaymentNeedsConfirmation,
   isVPostPaymentStarted,
   isVPostPaymentCaptured,
+  isVPostConfirmServiceDisabled,
   getVPostPaymentState,
   getVPostTransactionAmount,
   buildVPostProviderInfoFromTransaction,
@@ -767,14 +767,10 @@ export async function syncVPostOrderStatus(data: {
       items: txList.map(summarizeTransactionForLog),
     });
 
-    const twoPhase = isVPostTwoPhaseEnabled();
-
-    // Երկու փուլով վճարում — հաստատում (confirm-payment) անհրաժեշտ է։
-    // Single-phase հաշվի դեպքում confirm չենք կանչում (ITF-ը վերադարձնում է
-    // «Կարգավորումները չեն գտնվել»)՝ authorized-ն արդեն գանձված է։
-    const txNeedingConfirm = twoPhase
-      ? txList.find(isVPostPaymentNeedsConfirmation)
-      : undefined;
+    // Տոմսի օնլայն վճարում — սառեցված գումարը միանգամից գանձել (confirm-payment)։
+    const txNeedingConfirm = txList.find(isVPostPaymentNeedsConfirmation);
+    let captureConfirmed = false;
+    let captureUnavailable = false;
     if (txNeedingConfirm) {
       const confirmOrderIds = getVPostConfirmOrderIdCandidates({
         itfOrderId: txNeedingConfirm.order?.id,
@@ -802,7 +798,8 @@ export async function syncVPostOrderStatus(data: {
         partnerOrderId: confirmResult.data?.partnerOrderId,
       });
 
-      if (confirmResult.status) {
+      if (confirmResult.status === true || confirmResult.duplicate) {
+        captureConfirmed = true;
         const refreshed = await resolveVPostTransactionsForGoCinemaOrder({
           orderId: order.id,
           knownItfOrderIds: refs.itfOrderIds,
@@ -816,8 +813,17 @@ export async function syncVPostOrderStatus(data: {
           data: { list: refreshed.list },
         };
         txList = refreshed.list;
+      } else if (isVPostConfirmServiceDisabled(confirmResult)) {
+        captureUnavailable = true;
+        paymentServerLog('vpost_confirm_service_disabled', {
+          orderId: order.id,
+          message: confirmResult.message,
+        });
       }
-      // ResponseCode 00 ≠ deposited — միայն list-ի payment_deposited է վավեր
+    }
+
+    if (captureConfirmed && txList.length === 0 && txNeedingConfirm) {
+      txList = [txNeedingConfirm];
     }
 
     if (!txResponse.status && txList.length === 0) {
@@ -861,12 +867,14 @@ export async function syncVPostOrderStatus(data: {
       orderInternalStatus: newestTx.order?.status,
     });
 
-    // ՎՃԱՐՎԱԾ որոշում — ՄԻԱՅՆ երբ vPost-ը հստակ հաստատել է։
-    // - two-phase՝ միայն `payment_deposited`
-    // - single-phase՝ `payment_approved`/`autoauthorized`/`deposited`
-    const paidTx = twoPhase
-      ? txList.find(isVPostPaymentDeposited)
-      : txList.find(isVPostPaymentCaptured);
+    // ՎՃԱՐՎԱԾ՝ գանձված (deposited), կամ confirm-payment-ը հաջող է,
+    // կամ ITF-ը confirm չի աջակցում ու approved-ն արդեն վերջնական է։
+    const paidTx =
+      txList.find(isVPostPaymentDeposited) ||
+      (captureConfirmed
+        ? txList.find(isVPostPaymentCaptured) || txNeedingConfirm
+        : undefined) ||
+      (captureUnavailable ? txList.find(isVPostPaymentCaptured) : undefined);
 
     // Եթե հաստատված գործարք չկա, և ամենանորը դեռ payment_started (0) է
     // (օր. օգտատերը back է արել առանց վճարման) → Չենք մարկում paid։
@@ -1016,19 +1024,18 @@ export async function syncVPostOrderStatus(data: {
       };
     }
 
-    // Two-phase՝ authorized (սառեցված), բայց դեռ չգանձված — confirm-payment-ը վերևում
-    // փորձվել է, բայց deposited դեռ չի դարձել։ Չենք մարկում paid, թողնում ենք pending։
-    if (twoPhase && txList.some(isVPostPaymentNeedsConfirmation)) {
+    // Սառեցված է, confirm-payment-ը դեռ չի գանձել — կրկին փորձել backlink/cron-ով։
+    if (!paidTx && txList.some(isVPostPaymentNeedsConfirmation) && !captureUnavailable) {
       paymentServerLog('vpost_sync_decision', {
         orderId: order.id,
         decision: 'pending',
-        reason: 'authorized_not_deposited',
+        reason: 'authorized_not_captured',
       });
       return {
         success: true,
         state: 'pending' as const,
         canRestart: false,
-        message: 'Վճարումը հաստատվում է, խնդրում ենք սպասել…',
+        message: 'Վճարումը գանձվում է, խնդրում ենք սպասել…',
       };
     }
 

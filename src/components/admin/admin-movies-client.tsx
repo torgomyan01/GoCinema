@@ -17,12 +17,15 @@ import {
   Play,
   Clapperboard,
   Ticket as TicketIcon,
+  Building2,
+  FileText,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Autocomplete, AutocompleteItem } from '@heroui/react';
 import AdminLayout from './admin-layout';
 import FileUpload from './file-upload';
+import DocumentUpload from './document-upload';
 import MovieTicketsModal from './movie-tickets-modal';
 import {
   getMovies,
@@ -31,6 +34,7 @@ import {
   archiveMovie,
   restoreMovie,
   getProducerUsers,
+  getMovieCompanies,
 } from '@/app/actions/movies';
 import { AGE_RATING_OPTIONS, ageRatingClasses } from '@/lib/age-rating';
 
@@ -40,6 +44,29 @@ interface ProducerUser {
   phone: string | null;
   email?: string | null;
 }
+
+interface MovieCompany {
+  id: number;
+  name: string;
+  tin: string;
+  isActive?: boolean;
+}
+
+const emptyForm = () => ({
+  title: '',
+  slug: '',
+  image: '',
+  duration: '',
+  ageRating: '',
+  genre: '',
+  releaseDate: '',
+  description: '',
+  trailerUrl: '',
+  producerIds: [] as number[],
+  companyIds: [] as number[],
+  contractUrl: '',
+  contractName: '',
+});
 
 interface AdminMoviesClientProps {
   user: {
@@ -62,8 +89,11 @@ interface Movie {
   releaseDate: Date | string;
   description?: string | null;
   trailerUrl?: string | null;
+  contractUrl?: string | null;
+  contractName?: string | null;
   isActive?: boolean;
   producers?: ProducerUser[];
+  companies?: MovieCompany[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -98,6 +128,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
   ];
 
   const [producerUsers, setProducerUsers] = useState<ProducerUser[]>([]);
+  const [movieCompanies, setMovieCompanies] = useState<MovieCompany[]>([]);
   const [ticketsMovie, setTicketsMovie] = useState<Movie | null>(null);
   const [showTicketsButton, setShowTicketsButton] = useState(false);
 
@@ -115,18 +146,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
   }, []);
 
   // Form state
-  const [formData, setFormData] = useState({
-    title: '',
-    slug: '',
-    image: '',
-    duration: '',
-    ageRating: '',
-    genre: '',
-    releaseDate: '',
-    description: '',
-    trailerUrl: '',
-    producerIds: [] as number[],
-  });
+  const [formData, setFormData] = useState(emptyForm());
 
   // Load movies from database
   useEffect(() => {
@@ -159,6 +179,18 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       }
     };
     loadProducers();
+
+    const loadCompanies = async () => {
+      try {
+        const result = await getMovieCompanies();
+        if (result.success && result.companies) {
+          setMovieCompanies(result.companies);
+        }
+      } catch (error) {
+        console.error('Error loading companies:', error);
+      }
+    };
+    loadCompanies();
   }, []);
 
   const filteredMovies = movies.filter((movie) => {
@@ -216,18 +248,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
   };
 
   const handleAddMovie = () => {
-    setFormData({
-      title: '',
-      slug: '',
-      image: '',
-      duration: '',
-      ageRating: '',
-      genre: '',
-      releaseDate: '',
-      description: '',
-      trailerUrl: '',
-      producerIds: [],
-    });
+    setFormData(emptyForm());
     setIsAddModalOpen(true);
   };
 
@@ -244,6 +265,9 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       description: movie.description || '',
       trailerUrl: movie.trailerUrl || '',
       producerIds: (movie.producers ?? []).map((p) => p.id),
+      companyIds: (movie.companies ?? []).map((c) => c.id),
+      contractUrl: movie.contractUrl || '',
+      contractName: movie.contractName || '',
     });
     setIsEditModalOpen(true);
   };
@@ -254,6 +278,15 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       producerIds: prev.producerIds.includes(producerId)
         ? prev.producerIds.filter((id) => id !== producerId)
         : [...prev.producerIds, producerId],
+    }));
+  };
+
+  const toggleCompany = (companyId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      companyIds: prev.companyIds.includes(companyId)
+        ? prev.companyIds.filter((id) => id !== companyId)
+        : [...prev.companyIds, companyId],
     }));
   };
 
@@ -275,6 +308,9 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           trailerUrl: formData.trailerUrl || null,
           isActive: true,
           producerIds: formData.producerIds,
+          companyIds: formData.companyIds,
+          contractUrl: formData.contractUrl || null,
+          contractName: formData.contractName || null,
         });
 
         if (result.success && result.movie) {
@@ -296,6 +332,9 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           description: formData.description || null,
           trailerUrl: formData.trailerUrl || null,
           producerIds: formData.producerIds,
+          companyIds: formData.companyIds,
+          contractUrl: formData.contractUrl || null,
+          contractName: formData.contractName || null,
         });
 
         if (result.success && result.movie) {
@@ -317,18 +356,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       setIsLoading(false);
 
       // Reset form
-      setFormData({
-        title: '',
-        slug: '',
-        image: '',
-        duration: '',
-        ageRating: '',
-        genre: '',
-        releaseDate: '',
-        description: '',
-        trailerUrl: '',
-        producerIds: [],
-      });
+      setFormData(emptyForm());
     }
   };
 
@@ -498,6 +526,25 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                           </span>
                         )}
                       </div>
+                      {(movie.companies?.length ?? 0) > 0 && (
+                        <div className="flex items-start gap-2 text-sm text-gray-600">
+                          <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span>
+                            {movie.companies!.map((c) => c.name).join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      {movie.contractUrl && (
+                        <a
+                          href={movie.contractUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-sm text-purple-700 hover:underline"
+                        >
+                          <FileText className="h-4 w-4" />
+                          {movie.contractName || 'Պայմանագիր'}
+                        </a>
+                      )}
                     </div>
 
                     {/* Actions */}
@@ -801,6 +848,76 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                       placeholder="Ֆիլմի նկարագրություն"
                     />
                   </div>
+
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                      <Building2 className="w-4 h-4 text-purple-500" />
+                      Ընկերություններ
+                    </label>
+                    {movieCompanies.length === 0 ? (
+                      <p className="text-xs text-gray-500 rounded-lg border border-dashed border-gray-300 px-4 py-3">
+                        Գործընկեր ընկերություններ չկան։ Նախ ավելացրու{' '}
+                        <Link
+                          href="/admin/companies"
+                          className="font-semibold text-purple-600 hover:underline"
+                        >
+                          Ընկերություններ
+                        </Link>{' '}
+                        բաժնում, ապա կցիր ֆիլմին։
+                      </p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                        {movieCompanies.map((company) => {
+                          const checked = formData.companyIds.includes(
+                            company.id
+                          );
+                          return (
+                            <label
+                              key={company.id}
+                              className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                                checked ? 'bg-purple-50' : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleCompany(company.id)}
+                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                              />
+                              <span className="flex-1 text-sm text-gray-800">
+                                {company.name}
+                                <span className="text-gray-400">
+                                  {' '}
+                                  · ՀՎՀՀ {company.tin}
+                                </span>
+                                {company.isActive === false && (
+                                  <span className="ml-2 text-xs text-gray-400">
+                                    (անջատված)
+                                  </span>
+                                )}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-gray-500">
+                      Կարող ես կցել մեկ կամ մի քանի գործընկեր ընկերություն։
+                    </p>
+                  </div>
+
+                  <DocumentUpload
+                    url={formData.contractUrl}
+                    fileName={formData.contractName}
+                    onChange={({ url, fileName }) =>
+                      setFormData({
+                        ...formData,
+                        contractUrl: url,
+                        contractName: fileName,
+                      })
+                    }
+                    label="Ֆիլմի պայմանագիր"
+                  />
 
                   <div>
                     <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">

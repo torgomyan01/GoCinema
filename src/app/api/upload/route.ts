@@ -15,18 +15,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedTypes.includes(file.type)) {
+    const kind = String(formData.get('kind') || 'image');
+    const imageTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+    ];
+    const documentTypes = [
+      ...imageTypes,
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    const allowedExts =
+      kind === 'document'
+        ? ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'doc', 'docx']
+        : ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    const fileExtension = (file.name.split('.').pop() || '').toLowerCase();
+    if (!allowedExts.includes(fileExtension)) {
       return NextResponse.json(
-        { error: 'Միայն նկարների ֆայլեր են թույլատրված (JPEG, PNG, WebP, GIF)' },
+        { error: 'Ֆայլի տեսակը թույլատրված չէ' },
         { status: 400 }
       );
     }
 
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const allowedTypes = kind === 'document' ? documentTypes : imageTypes;
+    const typeOk =
+      allowedTypes.includes(file.type) ||
+      (kind === 'document' && !file.type);
+    if (!typeOk) {
+      return NextResponse.json(
+        {
+          error:
+            kind === 'document'
+              ? 'Թույլատրվում են PDF, Word և նկար ֆայլեր'
+              : 'Միայն նկարների ֆայլեր են թույլատրված (JPEG, PNG, WebP, GIF)',
+        },
+        { status: 400 }
+      );
+    }
+
+    const maxSize = (kind === 'document' ? 15 : 5) * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'Ֆայլի չափը չպետք է գերազանցի 5MB' },
+        {
+          error:
+            kind === 'document'
+              ? 'Ֆայլի չափը չպետք է գերազանցի 15MB'
+              : 'Ֆայլի չափը չպետք է գերազանցի 5MB',
+        },
         { status: 400 }
       );
     }
@@ -42,7 +81,6 @@ export async function POST(request: NextRequest) {
 
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 15);
-    const fileExtension = file.name.split('.').pop();
     const filename = `${timestamp}-${randomString}.${fileExtension}`;
     const filepath = join(uploadDir, filename);
 
@@ -55,6 +93,7 @@ export async function POST(request: NextRequest) {
       success: true,
       url: fileUrl,
       filename: filename,
+      originalName: file.name,
     });
   } catch (error: any) {
     console.error('[Upload API] Error:', error);

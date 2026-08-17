@@ -1,0 +1,650 @@
+'use client';
+
+import { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  FileText,
+  Pencil,
+  Plus,
+  ScrollText,
+  X,
+} from 'lucide-react';
+import {
+  attachSignedLicenseContract,
+  createLicenseContract,
+  updateLicenseContractBody,
+  type LicenseContractView,
+} from '@/app/actions/license-contracts';
+import DocumentUpload from '@/components/admin/document-upload';
+import LicenseContractBody from '@/components/contracts/license-contract-body';
+import {
+  contractStatusLabel,
+  formatContractDate,
+  type LicenseContractContent,
+} from '@/lib/license-contract';
+
+type CompanyOption = {
+  id: number;
+  name: string;
+  tin: string;
+  bankName: string | null;
+  bankAccount: string | null;
+  address: string | null;
+  director: string | null;
+  email: string | null;
+  isActive: boolean;
+};
+
+type MovieOption = {
+  id: number;
+  title: string;
+  duration: number;
+  ageRating: string | null;
+  releaseDate: Date | string;
+  hasContract: boolean;
+};
+
+function toDateInput(value: Date | string) {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  return date.toISOString().slice(0, 10);
+}
+
+function todayInput() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function contractPath(token: string) {
+  return `/contract/${token}`;
+}
+
+function contractContent(row: LicenseContractView): LicenseContractContent {
+  return {
+    number: row.number,
+    contractDate: row.contractDate,
+    premiereDate: row.premiereDate,
+    movieTitle: row.movieTitle,
+    productionCountry: row.productionCountry,
+    language: row.language,
+    durationMinutes: row.durationMinutes,
+    ageRating: row.ageRating,
+    royaltyPercent: row.royaltyPercent,
+    company: {
+      name: row.companyName,
+      tin: row.companyTin,
+      bankName: row.companyBankName,
+      bankAccount: row.companyBankAccount,
+      address: row.companyAddress,
+      director: row.companyDirector,
+      email: row.companyEmail,
+    },
+  };
+}
+
+type Props = {
+  initialContracts: LicenseContractView[];
+  initialError: string | null;
+  companies: CompanyOption[];
+  movies: MovieOption[];
+};
+
+export default function AdminContractsClient({
+  initialContracts,
+  initialError,
+  companies,
+  movies,
+}: Props) {
+  const [contracts, setContracts] = useState(initialContracts);
+  const [error, setError] = useState(initialError);
+  const [isOpen, setIsOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [preview, setPreview] = useState<LicenseContractView | null>(null);
+  const [editingText, setEditingText] = useState(false);
+  const [editHtml, setEditHtml] = useState('');
+  const [savingText, setSavingText] = useState(false);
+  const documentRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [signTarget, setSignTarget] = useState<LicenseContractView | null>(null);
+  const [signedUrl, setSignedUrl] = useState('');
+  const [signedName, setSignedName] = useState('');
+
+  const [companyId, setCompanyId] = useState('');
+  const [movieId, setMovieId] = useState('');
+  const [contractDate, setContractDate] = useState(todayInput());
+  const [premiereDate, setPremiereDate] = useState('');
+  const [productionCountry, setProductionCountry] = useState(
+    'Հայաստանի Հանրապետություն'
+  );
+  const [language, setLanguage] = useState('Հայերեն');
+  const [royaltyPercent, setRoyaltyPercent] = useState('50');
+
+  const selectedCompany = companies.find((c) => String(c.id) === companyId);
+  const selectedMovie = movies.find((m) => String(m.id) === movieId);
+  const availableMovies = useMemo(
+    () => movies.filter((m) => !m.hasContract),
+    [movies]
+  );
+
+  const openCreate = () => {
+    setCompanyId('');
+    setMovieId('');
+    setContractDate(todayInput());
+    setPremiereDate('');
+    setProductionCountry('Հայաստանի Հանրապետություն');
+    setLanguage('Հայերեն');
+    setRoyaltyPercent('50');
+    setFormError(null);
+    setIsOpen(true);
+  };
+
+  const handleMovieChange = (id: string) => {
+    setMovieId(id);
+    const movie = movies.find((m) => String(m.id) === id);
+    if (movie) setPremiereDate(toDateInput(movie.releaseDate));
+  };
+
+  const handleCreate = async () => {
+    setSaving(true);
+    setFormError(null);
+    try {
+      const res = await createLicenseContract({
+        movieId: Number(movieId),
+        companyId: Number(companyId),
+        contractDate,
+        premiereDate,
+        productionCountry,
+        language,
+        royaltyPercent: Number(royaltyPercent),
+      });
+      if (!res.success || !res.contract) {
+        setFormError(res.error || 'Չհաջողվեց ստեղծել');
+        return;
+      }
+      setContracts((prev) => [res.contract!, ...prev]);
+      setIsOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyLink = async (row: LicenseContractView) => {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${contractPath(row.publicToken)}`
+      );
+      setCopiedId(row.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      setError('Չհաջողվեց պատճենել հղումը');
+    }
+  };
+
+  const handleAttachSigned = async () => {
+    if (!signTarget || !signedUrl) return;
+    const res = await attachSignedLicenseContract(
+      signTarget.id,
+      signedUrl,
+      signedName
+    );
+    if (!res.success || !res.contract) {
+      setError(res.error || 'Չհաջողվեց կցել');
+      return;
+    }
+    setContracts((prev) =>
+      prev.map((row) => (row.id === res.contract!.id ? res.contract! : row))
+    );
+    setSignTarget(null);
+    setSignedUrl('');
+    setSignedName('');
+  };
+
+  const startEditingText = () => {
+    const html = documentRef.current?.innerHTML || preview?.bodyHtml || '';
+    setEditHtml(html);
+    setEditingText(true);
+  };
+
+  const handleSaveText = async () => {
+    if (!preview) return;
+    const html = editorRef.current?.innerHTML || editHtml;
+    setSavingText(true);
+    setError(null);
+    try {
+      const res = await updateLicenseContractBody(preview.id, html);
+      if (!res.success || !res.contract) {
+        setError(res.error || 'Չհաջողվեց պահպանել տեքստը');
+        return;
+      }
+      setContracts((prev) =>
+        prev.map((row) => (row.id === res.contract!.id ? res.contract! : row))
+      );
+      setPreview(res.contract);
+      setEditingText(false);
+    } finally {
+      setSavingText(false);
+    }
+  };
+
+  return (
+    <div className="p-4 sm:p-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-slate-100 p-2">
+            <ScrollText className="h-6 w-6 text-slate-700" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Պայմանագրեր</h1>
+            <p className="text-sm text-gray-600">
+              Լիցենզային պայմանագիր ֆիլմի համար. հղումը ուղարկիր արտադրողին
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
+        >
+          <Plus className="h-4 w-4" />
+          Ստեղծել պայմանագիր
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {contracts.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center text-sm text-gray-500">
+          Պայմանագիր չկա։ Ստեղծիր առաջինը։
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {contracts.map((row) => (
+            <li
+              key={row.id}
+              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500">
+                    № {row.number}
+                  </p>
+                  <h2 className="font-semibold text-gray-900">{row.movieTitle}</h2>
+                  <p className="text-sm text-gray-600">{row.companyName}</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {formatContractDate(row.contractDate)} · պրեմիերա{' '}
+                    {formatContractDate(row.premiereDate)} · ռոյալթի{' '}
+                    {row.royaltyPercent}%
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-slate-700">
+                    {contractStatusLabel(row.status)}
+                    {row.agreedAt && (
+                      <span className="ml-2 text-xs font-normal text-gray-500">
+                        հաստատվել է {formatContractDate(row.agreedAt)}
+                      </span>
+                    )}
+                    {row.bodyHtml && (
+                      <span className="ml-2 text-xs font-normal text-purple-600">
+                        · տեքստը խմբագրված է
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void copyLink(row)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    {copiedId === row.id ? (
+                      <Check className="h-4 w-4 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                    Հղում
+                  </button>
+                  <a
+                    href={contractPath(row.publicToken)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Բացել
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreview(row);
+                      setEditingText(false);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Տեքստ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignTarget(row);
+                      setSignedUrl(row.signedUrl || '');
+                      setSignedName(row.signedName || '');
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white"
+                  >
+                    Սկան
+                  </button>
+                </div>
+              </div>
+              {row.signedUrl && (
+                <a
+                  href={row.signedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 text-sm text-purple-700 hover:underline"
+                >
+                  <FileText className="h-4 w-4" />
+                  {row.signedName || 'Ստորագրված ֆայլ'}
+                </a>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+          <div className="my-8 w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Նոր պայմանագիր
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {formError}
+              </div>
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="sm:col-span-2 text-sm">
+                <span className="mb-1 block font-medium text-gray-700">
+                  Ընկերություն *
+                </span>
+                <select
+                  value={companyId}
+                  onChange={(e) => setCompanyId(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:border-slate-400"
+                >
+                  <option value="">Ընտրել…</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name} · ՀՎՀՀ {company.tin}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedCompany && (
+                <div className="sm:col-span-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                  <p>Տնօրեն՝ {selectedCompany.director || '—'}</p>
+                  <p>Հասցե՝ {selectedCompany.address || '—'}</p>
+                  <p>Email՝ {selectedCompany.email || '—'}</p>
+                  <p>
+                    {selectedCompany.bankName || '—'} ·{' '}
+                    {selectedCompany.bankAccount || '—'}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Ռեկվիզիտները վերցվում են ընկերության քարտից։ Եթե թերի են,{' '}
+                    <Link href="/admin/companies" className="underline">
+                      լրացրու ընկերությունում
+                    </Link>
+                    ։
+                  </p>
+                </div>
+              )}
+
+              <label className="sm:col-span-2 text-sm">
+                <span className="mb-1 block font-medium text-gray-700">
+                  Ֆիլմ *
+                </span>
+                <select
+                  value={movieId}
+                  onChange={(e) => handleMovieChange(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:border-slate-400"
+                >
+                  <option value="">Ընտրել…</option>
+                  {availableMovies.map((movie) => (
+                    <option key={movie.id} value={movie.id}>
+                      {movie.title}
+                    </option>
+                  ))}
+                </select>
+                {availableMovies.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Բոլոր ֆիլմերն արդեն պայմանագիր ունեն։
+                  </p>
+                )}
+              </label>
+
+              {selectedMovie && (
+                <p className="sm:col-span-2 text-xs text-gray-500">
+                  Տևողություն՝ {selectedMovie.duration} րոպե
+                  {selectedMovie.ageRating
+                    ? ` · ${selectedMovie.ageRating}`
+                    : ''}
+                </p>
+              )}
+
+              <label className="text-sm">
+                <span className="mb-1 block font-medium text-gray-700">
+                  Կնքման ամսաթիվ
+                </span>
+                <input
+                  type="date"
+                  value={contractDate}
+                  onChange={(e) => setContractDate(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium text-gray-700">
+                  Պրեմիերա
+                </span>
+                <input
+                  type="date"
+                  value={premiereDate}
+                  onChange={(e) => setPremiereDate(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium text-gray-700">
+                  Արտադրող երկիր
+                </span>
+                <input
+                  value={productionCountry}
+                  onChange={(e) => setProductionCountry(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium text-gray-700">Լեզու</span>
+                <input
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium text-gray-700">
+                  Ռոյալթի %
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={royaltyPercent}
+                  onChange={(e) => setRoyaltyPercent(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700"
+              >
+                Փակել
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCreate()}
+                disabled={saving}
+                className="rounded-xl bg-black px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {saving ? 'Ստեղծվում է…' : 'Ստեղծել և ստանալ հղում'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4">
+          <div className="mx-auto my-6 max-w-4xl rounded-2xl bg-[#f4f1ea] p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-gray-700">
+                {editingText
+                  ? 'Խմբագրիր տեքստը ուղիղ փաստաթղթի վրա'
+                  : preview.bodyHtml
+                    ? 'Պահպանված խմբագրված տեքստ'
+                    : 'Կաղապարից գեներացված տեքստ'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {editingText ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditingText(false)}
+                      className="rounded-lg bg-white px-3 py-2 text-sm font-semibold"
+                    >
+                      Չեղարկել
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingText}
+                      onClick={() => void handleSaveText()}
+                      className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {savingText ? 'Պահպանվում է…' : 'Պահպանել տեքստը'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={startEditingText}
+                      className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-sm font-semibold"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Խմբագրել տեքստը
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreview(null);
+                        setEditingText(false);
+                      }}
+                      className="rounded-lg bg-white px-3 py-2 text-sm font-semibold"
+                    >
+                      Փակել
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {editingText ? (
+              <div
+                key="editor"
+                ref={editorRef}
+                contentEditable
+                suppressContentEditableWarning
+                dangerouslySetInnerHTML={{ __html: editHtml }}
+                className="rounded-xl ring-2 ring-purple-400 ring-offset-2 outline-none"
+              />
+            ) : (
+              <div ref={documentRef}>
+                <LicenseContractBody
+                  content={contractContent(preview)}
+                  bodyHtml={preview.bodyHtml}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {signTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">
+                Ստորագրված սկան · {signTarget.number}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setSignTarget(null)}
+                className="rounded-lg p-2 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <DocumentUpload
+              url={signedUrl}
+              fileName={signedName}
+              onChange={({ url, fileName }) => {
+                setSignedUrl(url);
+                setSignedName(fileName);
+              }}
+              deleteOnRemove={false}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSignTarget(null)}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold"
+              >
+                Փակել
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAttachSigned()}
+                disabled={!signedUrl}
+                className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Պահպանել
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

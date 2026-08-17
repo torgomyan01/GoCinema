@@ -15,8 +15,11 @@ export interface CreateMovieData {
   releaseDate: Date | string;
   description?: string | null;
   trailerUrl?: string | null;
+  contractUrl?: string | null;
+  contractName?: string | null;
   isActive?: boolean;
   producerIds?: number[];
+  companyIds?: number[];
 }
 
 export interface UpdateMovieData extends Partial<CreateMovieData> {
@@ -33,6 +36,9 @@ export async function getMovies() {
         producers: {
           select: { id: true, name: true, phone: true },
         },
+        companies: {
+          select: { id: true, name: true, tin: true },
+        },
       },
     });
     return { success: true, movies };
@@ -46,7 +52,23 @@ export async function getMovies() {
   }
 }
 
-/** Բոլոր օգտատերերը, ովքեր ունեն producer role — ֆիլմին կցելու համար */
+/** Գործընկեր ընկերություններ՝ ֆիլմին կցելու համար */
+export async function getMovieCompanies() {
+  try {
+    const companies = await prisma.company.findMany({
+      select: { id: true, name: true, tin: true, isActive: true },
+      orderBy: { name: 'asc' },
+    });
+    return { success: true, companies };
+  } catch (error: any) {
+    console.error('[Get Movie Companies] Error:', error);
+    return {
+      success: false,
+      error: 'Ընկերությունները բեռնելիս սխալ է տեղի ունեցել',
+      companies: [],
+    };
+  }
+}
 export async function getProducerUsers() {
   try {
     const users = await prisma.user.findMany({
@@ -196,6 +218,7 @@ export async function createMovie(data: CreateMovieData) {
     }
 
     const producerIds = (data.producerIds ?? []).filter((id) => id > 0);
+    const companyIds = (data.companyIds ?? []).filter((id) => id > 0);
     const movie = await prisma.movie.create({
       data: {
         title: data.title,
@@ -208,13 +231,19 @@ export async function createMovie(data: CreateMovieData) {
         releaseDate: new Date(data.releaseDate),
         description: data.description || null,
         trailerUrl: data.trailerUrl || null,
+        contractUrl: data.contractUrl || null,
+        contractName: data.contractName || null,
         isActive: data.isActive !== undefined ? data.isActive : true,
         ...(producerIds.length > 0 && {
           producers: { connect: producerIds.map((id) => ({ id })) },
         }),
+        ...(companyIds.length > 0 && {
+          companies: { connect: companyIds.map((id) => ({ id })) },
+        }),
       },
       include: {
         producers: { select: { id: true, name: true, phone: true } },
+        companies: { select: { id: true, name: true, tin: true } },
       },
     });
 
@@ -237,7 +266,7 @@ export async function createMovie(data: CreateMovieData) {
 
 export async function updateMovie(data: UpdateMovieData) {
   try {
-    const { id, producerIds, ...updateData } = data;
+    const { id, producerIds, companyIds, ...updateData } = data;
 
     // Validation
     if (!id) {
@@ -287,9 +316,17 @@ export async function updateMovie(data: UpdateMovieData) {
               .map((pid) => ({ id: pid })),
           },
         }),
+        ...(companyIds !== undefined && {
+          companies: {
+            set: companyIds
+              .filter((cid) => cid > 0)
+              .map((cid) => ({ id: cid })),
+          },
+        }),
       },
       include: {
         producers: { select: { id: true, name: true, phone: true } },
+        companies: { select: { id: true, name: true, tin: true } },
       },
     });
 

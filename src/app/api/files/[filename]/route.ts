@@ -9,6 +9,10 @@ const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
 function guardFilename(filename: string): boolean {
@@ -36,13 +40,17 @@ export async function GET(
     const contentType = MIME_TYPES[ext] ?? 'application/octet-stream';
 
     const fileBuffer = await readFile(filePath);
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    };
+    if (ext === '.pdf' || ext === '.doc' || ext === '.docx') {
+      headers['Content-Disposition'] = `inline; filename="${filename}"`;
+    }
 
     return new NextResponse(fileBuffer, {
       status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
+      headers,
     });
   } catch (error: any) {
     console.error('[Files API GET] Error:', error);

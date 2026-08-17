@@ -6,8 +6,6 @@ import {
   ShoppingCart,
   Ticket,
   Users,
-  BarChart3,
-  Settings,
   HelpCircle,
   Mail,
   Headphones,
@@ -24,6 +22,8 @@ import {
   PartyPopper,
   Gift,
   Instagram,
+  Building2,
+  ScrollText,
   LucideIcon,
 } from 'lucide-react';
 
@@ -193,11 +193,18 @@ export const adminMenuItems: AdminMenuItem[] = [
     bgColor: 'bg-red-50',
   },
   {
-    title: 'Վիճակագրություն',
-    icon: BarChart3,
-    href: '/admin/analytics',
-    color: 'text-indigo-600',
-    bgColor: 'bg-indigo-50',
+    title: 'Ընկերություններ',
+    icon: Building2,
+    href: '/admin/companies',
+    color: 'text-slate-600',
+    bgColor: 'bg-slate-50',
+  },
+  {
+    title: 'Պայմանագրեր',
+    icon: ScrollText,
+    href: '/admin/contracts',
+    color: 'text-stone-600',
+    bgColor: 'bg-stone-50',
   },
   {
     title: 'SMM',
@@ -205,12 +212,5 @@ export const adminMenuItems: AdminMenuItem[] = [
     href: '/admin/smm',
     color: 'text-fuchsia-600',
     bgColor: 'bg-fuchsia-50',
-  },
-  {
-    title: 'Կարգավորումներ',
-    icon: Settings,
-    href: '/admin/settings',
-    color: 'text-gray-600',
-    bgColor: 'bg-gray-50',
   },
 ];

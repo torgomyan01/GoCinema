@@ -71,6 +71,7 @@ export default function SupportWidget() {
   const isLoggedIn = Boolean(session?.user);
   const pathname = usePathname();
   const isAdminArea = pathname?.startsWith('/admin') ?? false;
+  const isContractPage = pathname?.startsWith('/contract') ?? false;
 
   const lastRealId = messages.reduce(
     (max, m) => (m.id > 0 && m.id > max ? m.id : max),
@@ -275,7 +276,7 @@ export default function SupportWidget() {
     }
   };
 
-  if (isAdminArea) return null;
+  if (isAdminArea || isContractPage) return null;
 
   return (
     <>

@@ -1,3 +1,4 @@
+import LicenseContractLetterhead from '@/components/contracts/license-contract-letterhead';
 import './license-contract-document.css';
 import {
   armenianGenitive,
@@ -26,6 +27,7 @@ export default function LicenseContractDocument({ content }: Props) {
 
   return (
     <article className="lc-sheet">
+      <LicenseContractLetterhead />
       <h1>Լ ի ց ե ն զ ա յ ի ն &nbsp; պ ա յ մ ա ն ա գ ի ր</h1>
       <p className="lc-sub">
         <strong>№ {content.number}</strong>
@@ -623,7 +625,7 @@ export default function LicenseContractDocument({ content }: Props) {
         </div>
       </section>
 
-      <section className="lc-page-break lc-article">
+      <section className="lc-page-break lc-appendix">
         <h1>Հավելված 1</h1>
         <p className="lc-sub">
           {date}-ին կնքված № {content.number} լիցենզային պայմանագրի անբաժանելի

@@ -1,12 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Armenian:wght@400;600;700&display=swap');
+
 .lc-sheet {
   width: 210mm;
   max-width: 100%;
   margin: 0 auto;
   background: #fff;
-  padding: 18mm 18mm 16mm;
+  padding: 14mm 16mm 16mm;
   color: #1a1a1a;
-  font-family: "Sylfaen", "Noto Sans Armenian", "DejaVu Sans", "Arial Unicode MS", Arial, sans-serif;
+  font-family:
+    'Noto Serif Armenian', 'Sylfaen', 'Noto Sans Armenian', 'DejaVu Sans',
+    'Arial Unicode MS', Georgia, serif;
   line-height: 1.45;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  counter-reset: article;
+}
+
+.lc-letterhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 0 0 12px;
+  border-bottom: 2.5px solid #1a1a1a;
+  box-shadow: 0 3px 0 #e61e21;
+}
+
+.lc-letterhead-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.lc-letterhead-logo {
+  width: 70px;
+  height: auto;
+  flex-shrink: 0;
+  display: block;
+}
+
+.lc-letterhead-tag {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #5c5348;
+}
+
+.lc-letterhead-meta {
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #3d3d3d;
+  max-width: 58%;
+}
+
+.lc-confidential {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #a16207;
+}
+
+@media (max-width: 640px) {
+  .lc-letterhead {
+    flex-direction: column;
+  }
+
+  .lc-letterhead-meta {
+    text-align: left;
+    max-width: none;
+  }
 }
 
 .lc-sheet h1,
@@ -48,6 +113,8 @@
 
 .lc-article {
   margin-top: 16px;
+  counter-increment: article;
+  counter-reset: clause;
 }
 
 .lc-article h2 {
@@ -57,24 +124,69 @@
   text-transform: uppercase;
 }
 
-.lc-clauses {
+.lc-clauses,
+.lc-sublist {
+  list-style: none;
   margin: 0;
-  padding-left: 22px;
+  padding-left: 0;
 }
 
-.lc-clauses > li {
+.lc-article .lc-clauses > li {
+  counter-increment: clause;
+  counter-reset: subclause;
+  position: relative;
+  padding-left: 2.8em;
   margin: 7px 0;
   text-align: justify;
   font-size: 13.5px;
 }
 
-.lc-sublist {
-  margin: 6px 0 6px 18px;
-  padding-left: 18px;
+.lc-article .lc-clauses > li::before {
+  content: counter(article) '.' counter(clause) '.';
+  position: absolute;
+  left: 0;
+  font-weight: 700;
 }
 
-.lc-sublist li {
+.lc-sublist {
+  margin: 6px 0 4px;
+}
+
+.lc-sublist > li {
+  counter-increment: subclause;
+  position: relative;
+  padding-left: 3.6em;
   margin: 4px 0;
+  text-align: justify;
+  font-size: 13.5px;
+}
+
+.lc-sublist > li::before {
+  content: counter(article) '.' counter(clause) '.' counter(subclause) '.';
+  position: absolute;
+  left: 0;
+  font-weight: 600;
+}
+
+.lc-appendix {
+  margin-top: 16px;
+  counter-reset: annex;
+}
+
+.lc-appendix .lc-clauses > li {
+  counter-increment: annex;
+  position: relative;
+  padding-left: 2em;
+  margin: 7px 0;
+  text-align: justify;
+  font-size: 13.5px;
+}
+
+.lc-appendix .lc-clauses > li::before {
+  content: counter(annex) '.';
+  position: absolute;
+  left: 0;
+  font-weight: 700;
 }
 
 .lc-table {
@@ -146,12 +258,16 @@
     margin: 0;
     box-shadow: none;
     width: auto;
-    padding: 10mm 12mm;
+    padding: 8mm 10mm 10mm;
   }
 
   .lc-sheet a {
     color: inherit;
     text-decoration: none;
+  }
+
+  .lc-letterhead-logo {
+    width: 72px;
   }
 }
 

@@ -356,6 +356,32 @@ export async function updateLicenseContractBody(
   }
 }
 
+export async function deleteLicenseContract(
+  id: number
+): Promise<{ success: boolean; error?: string }> {
+  if (!(await requireAdmin())) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  try {
+    const existing = await prisma.licenseContract.findUnique({
+      where: { id },
+      select: { publicToken: true },
+    });
+    if (!existing) {
+      return { success: false, error: 'Պայմանագիրը չի գտնվել' };
+    }
+
+    await prisma.licenseContract.delete({ where: { id } });
+    revalidatePath('/admin/contracts');
+    revalidatePath(`/contract/${existing.publicToken}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[deleteLicenseContract]', error);
+    return { success: false, error: 'Չհաջողվեց ջնջել պայմանագիրը' };
+  }
+}
+
 export async function getPublicLicenseContract(token: string): Promise<{
   success: boolean;
   error?: string;

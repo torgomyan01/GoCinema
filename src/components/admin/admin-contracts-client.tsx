@@ -10,11 +10,13 @@ import {
   Pencil,
   Plus,
   ScrollText,
+  Trash2,
   X,
 } from 'lucide-react';
 import {
   attachSignedLicenseContract,
   createLicenseContract,
+  deleteLicenseContract,
   updateLicenseContractBody,
   type LicenseContractView,
 } from '@/app/actions/license-contracts';
@@ -111,6 +113,8 @@ export default function AdminContractsClient({
   const [signTarget, setSignTarget] = useState<LicenseContractView | null>(null);
   const [signedUrl, setSignedUrl] = useState('');
   const [signedName, setSignedName] = useState('');
+  const [movieOptions, setMovieOptions] = useState(movies);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const [companyId, setCompanyId] = useState('');
   const [movieId, setMovieId] = useState('');
@@ -123,10 +127,10 @@ export default function AdminContractsClient({
   const [royaltyPercent, setRoyaltyPercent] = useState('50');
 
   const selectedCompany = companies.find((c) => String(c.id) === companyId);
-  const selectedMovie = movies.find((m) => String(m.id) === movieId);
+  const selectedMovie = movieOptions.find((m) => String(m.id) === movieId);
   const availableMovies = useMemo(
-    () => movies.filter((m) => !m.hasContract),
-    [movies]
+    () => movieOptions.filter((m) => !m.hasContract),
+    [movieOptions]
   );
 
   const openCreate = () => {
@@ -143,7 +147,7 @@ export default function AdminContractsClient({
 
   const handleMovieChange = (id: string) => {
     setMovieId(id);
-    const movie = movies.find((m) => String(m.id) === id);
+    const movie = movieOptions.find((m) => String(m.id) === id);
     if (movie) setPremiereDate(toDateInput(movie.releaseDate));
   };
 
@@ -165,6 +169,13 @@ export default function AdminContractsClient({
         return;
       }
       setContracts((prev) => [res.contract!, ...prev]);
+      setMovieOptions((prev) =>
+        prev.map((movie) =>
+          movie.id === res.contract!.movieId
+            ? { ...movie, hasContract: true }
+            : movie
+        )
+      );
       setIsOpen(false);
     } finally {
       setSaving(false);
@@ -206,6 +217,46 @@ export default function AdminContractsClient({
     const html = documentRef.current?.innerHTML || preview?.bodyHtml || '';
     setEditHtml(html);
     setEditingText(true);
+  };
+
+  const handleDelete = async (row: LicenseContractView) => {
+    const signedNote = row.signedUrl
+      ? ' Ստորագրված ֆայլը կմնա սերվերում, բայց պայմանագիրը ցանկից կհեռացվի։'
+      : '';
+    if (
+      !window.confirm(
+        `Ջնջե՞լ № ${row.number} պայմանագիրը («${row.movieTitle}»)։ Հանրային հղումը այլևս չի աշխատի։${signedNote}`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingId(row.id);
+    setError(null);
+    try {
+      const res = await deleteLicenseContract(row.id);
+      if (!res.success) {
+        setError(res.error || 'Չհաջողվեց ջնջել պայմանագիրը');
+        return;
+      }
+      setContracts((prev) => prev.filter((item) => item.id !== row.id));
+      setMovieOptions((prev) =>
+        prev.map((movie) =>
+          movie.id === row.movieId ? { ...movie, hasContract: false } : movie
+        )
+      );
+      if (preview?.id === row.id) {
+        setPreview(null);
+        setEditingText(false);
+      }
+      if (signTarget?.id === row.id) {
+        setSignTarget(null);
+        setSignedUrl('');
+        setSignedName('');
+      }
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleSaveText = async () => {
@@ -339,6 +390,15 @@ export default function AdminContractsClient({
                     className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white"
                   >
                     Սկան
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(row)}
+                    disabled={deletingId === row.id}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deletingId === row.id ? 'Ջնջվում է…' : 'Ջնջել'}
                   </button>
                 </div>
               </div>

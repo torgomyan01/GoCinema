@@ -20,12 +20,35 @@ function modelId(): string {
   return 'eleven_v3';
 }
 
-/** v3: Natural 0.5 — Creative (0) հայերենում հաճախ կոտրում է արտասանությունը */
+/** v3: Robust 1 — հայերեն արտասանությունն ավելի կայուն է */
 function v3VoiceSettings() {
   return {
-    stability: 0.5,
+    stability: 1,
     similarity_boost: 0.75,
   };
+}
+
+function ttsPayload(text: string) {
+  return {
+    text: text.trim(),
+    model_id: modelId(),
+    language_code: 'hy',
+    voice_settings: v3VoiceSettings(),
+    apply_text_normalization: 'off' as const,
+  };
+}
+
+function elevenErrorMessage(status: number, body: string): string {
+  const snippet = body.replace(/\s+/g, ' ').trim().slice(0, 180);
+  const blockedByCloudflare =
+    status === 403 &&
+    /just a moment|cf-ray|cloudflare|<!doctype html|<html/i.test(body);
+
+  if (blockedByCloudflare) {
+    return 'ElevenLabs TTS սխալ (403). Cloudflare-ը արգելափակել է սերվերի IP-ն, ոչ API key-ը։ VPS-ից ստուգիր՝ curl -I https://api.elevenlabs.io/v1/user -H "xi-api-key: $ELEVENLABS_API_KEY"';
+  }
+
+  return `ElevenLabs TTS սխալ (${status})${snippet ? `: ${snippet}` : ''}`;
 }
 
 async function elevenFetch(path: string, init: RequestInit): Promise<Response> {
@@ -35,7 +58,9 @@ async function elevenFetch(path: string, init: RequestInit): Promise<Response> {
   }
   return fetch(`${ELEVEN_BASE}${path}`, {
     ...init,
+    cache: 'no-store',
     headers: {
+      'User-Agent': 'GoCinema/1.0 (+https://gocinema.am)',
       'xi-api-key': key,
       ...(init.headers || {}),
     },
@@ -45,12 +70,7 @@ async function elevenFetch(path: string, init: RequestInit): Promise<Response> {
 export async function elevenLabsTextToSpeech(
   text: string
 ): Promise<{ mime: string; bytes: Buffer }> {
-  const body = {
-    text: text.trim(),
-    model_id: modelId(),
-    voice_settings: v3VoiceSettings(),
-    apply_text_normalization: 'off',
-  };
+  const body = ttsPayload(text);
 
   const res = await elevenFetch(
     `/v1/text-to-speech/${voiceId()}?output_format=mp3_44100_128`, {
@@ -64,9 +84,7 @@ export async function elevenLabsTextToSpeech(
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(
-      `ElevenLabs TTS սխալ (${res.status})${detail ? `: ${detail.slice(0, 240)}` : ''}`
-    );
+    throw new Error(elevenErrorMessage(res.status, detail));
   }
 
   const bytes = Buffer.from(await res.arrayBuffer());
@@ -117,12 +135,7 @@ export async function elevenLabsTextToSpeechWithAlignment(
   bytes: Buffer;
   alignment: ElevenLabsAlignment | null;
 }> {
-  const body = {
-    text: text.trim(),
-    model_id: modelId(),
-    voice_settings: v3VoiceSettings(),
-    apply_text_normalization: 'off',
-  };
+  const body = ttsPayload(text);
 
   const res = await elevenFetch(
     `/v1/text-to-speech/${voiceId()}/with-timestamps?output_format=mp3_44100_128`,

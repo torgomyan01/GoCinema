@@ -1,4 +1,5 @@
 import type { SmmPremiere } from '@/app/actions/instagram-story';
+import { rewriteForArmenianSpeech } from '@/lib/armenian-speech';
 import { MONTH_FULL } from '@/lib/smm-canvas';
 import { formatDateKey } from '@/lib/format';
 
@@ -51,23 +52,16 @@ export function salesVoiceoverForPremiere(premiere: SmmPremiere): string {
 }
 
 /**
- * Eleven v3-ին ուղարկվող տեքստ։
- * Միայն պաշտոնական tag-եր + հայերեն կետադրություն։
- * Անգլերեն «trailer» tag-երը v3-ը հաճախ բարձրաձայն է կարդում։
+ * Eleven v3-ին ուղարկվող տեքստ՝ հայերեն արտասանությամբ։
+ * Tag չենք դնում, որ մոդելը անգլերենի չանցնի։
  */
 export function toMovieTrailerTts(text: string): string {
   const lines = stripAudioTags(text)
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
-  if (lines.length === 0) return text.trim();
-
-  return lines
-    .map((line, i) => {
-      if (i === 0 || i === lines.length - 1) return `[excited] ${line}`;
-      return line;
-    })
-    .join('\n');
+  if (lines.length === 0) return rewriteForArmenianSpeech(text.trim());
+  return lines.map((line) => rewriteForArmenianSpeech(line)).join('\n');
 }
 
 export function salesCaptionForPremiere(premiere: SmmPremiere): string {
@@ -102,43 +96,19 @@ export function subtitleCuesFromVoiceover(
 ): SubtitleCue[] {
   const lines = text
     .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => stripAudioTags(line).length > 0);
+    .map((line) => stripAudioTags(line).trim())
+    .filter(Boolean);
   if (lines.length === 0) return [];
 
-  const chars = alignment?.characters ?? [];
-  const starts = alignment?.character_start_times_seconds ?? [];
-  const ends = alignment?.character_end_times_seconds ?? [];
-  const total = ends.at(-1) ?? fallbackDuration;
-
-  if (!chars.length || starts.length !== chars.length) {
-    const slice = total / lines.length;
-    return lines.map((line, i) => ({
-      text: stripAudioTags(line),
-      start: i * slice,
-      end: i === lines.length - 1 ? total : (i + 1) * slice,
-    }));
-  }
-
-  const isSpace = (value: string) => /\s/.test(value);
-  let idx = 0;
-  const cues: SubtitleCue[] = [];
-  for (const line of lines) {
-    while (idx < chars.length && isSpace(chars[idx] ?? '')) idx += 1;
-    const startIdx = Math.min(idx, chars.length - 1);
-    for (const ch of line) {
-      if (isSpace(ch)) continue;
-      while (idx < chars.length && isSpace(chars[idx] ?? '')) idx += 1;
-      if (idx < chars.length) idx += 1;
-    }
-    const endIdx = Math.max(startIdx, idx - 1);
-    const start = starts[startIdx] ?? cues.at(-1)?.end ?? 0;
-    const end = ends[endIdx] ?? start + 0.8;
-    cues.push({
-      text: stripAudioTags(line),
-      start,
-      end: Math.max(end, start + 0.5),
-    });
-  }
-  return cues;
+  const aligned = alignment?.character_end_times_seconds?.at(-1);
+  const total =
+    Number.isFinite(aligned) && (aligned as number) > 0.4
+      ? (aligned as number)
+      : fallbackDuration;
+  const slice = total / lines.length;
+  return lines.map((line, i) => ({
+    text: line,
+    start: i * slice,
+    end: i === lines.length - 1 ? total + 0.25 : (i + 1) * slice,
+  }));
 }

@@ -47,6 +47,50 @@ function createRecorder(stream: MediaStream): {
   }
 }
 
+const LOGO_SRC = '/images/gocinema-smm-logo.png';
+const LOGO_SIZE = 100;
+const LOGO_MARGIN = 36;
+
+async function loadSmmLogo(): Promise<HTMLCanvasElement | null> {
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('logo'));
+      el.src = LOGO_SRC;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = pixels.data;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 36 && data[i + 1] < 36 && data[i + 2] < 36) {
+        data[i + 3] = 0;
+      }
+    }
+    ctx.putImageData(pixels, 0, 0);
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
+function drawSmmLogo(
+  ctx: CanvasRenderingContext2D,
+  logo: HTMLCanvasElement | null,
+  width: number
+) {
+  if (!logo) return;
+  const scale = LOGO_SIZE / Math.max(logo.width, logo.height);
+  const dw = logo.width * scale;
+  const dh = logo.height * scale;
+  ctx.drawImage(logo, width - dw - LOGO_MARGIN, LOGO_MARGIN, dw, dh);
+}
+
 async function decodeAudio(
   ctx: AudioContext,
   dataUrl: string
@@ -60,6 +104,7 @@ export async function recordKenBurnsVideo(options: {
   source: HTMLCanvasElement;
   voiceDataUrl: string;
   soundDataUrl?: string | null;
+  cues?: SubtitleCue[];
   maxSeconds?: number;
   onProgress?: (ratio: number) => void;
 }): Promise<{ blob: Blob; mime: string; durationMs: number }> {
@@ -146,6 +191,8 @@ export async function recordKenBurnsVideo(options: {
     if (event.data.size > 0) chunks.push(event.data);
   };
 
+  const logo = await loadSmmLogo();
+  const cues = timedCues(options.cues ?? [], voiceDuration);
   const started = performance.now();
   const draw = () => {
     const elapsed = (performance.now() - started) / 1000;
@@ -158,6 +205,9 @@ export async function recordKenBurnsVideo(options: {
     frameCtx.fillStyle = '#09090f';
     frameCtx.fillRect(0, 0, width, height);
     frameCtx.drawImage(poster, dx, dy, dw, dh);
+    drawSmmLogo(frameCtx, logo, width);
+    const cue = cueAt(cues, elapsed);
+    if (cue) drawSubtitle(frameCtx, cue.text, width, height);
     options.onProgress?.(t);
   };
 
@@ -203,6 +253,22 @@ export function downloadBlob(blob: Blob, filename: string) {
 export function videoExtension(mime: string): string {
   if (mime.includes('mp4')) return 'mp4';
   return 'webm';
+}
+
+function timedCues(cues: SubtitleCue[], voiceDuration: number): SubtitleCue[] {
+  const lines = cues.map((cue) => cue.text.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  const total = Math.max(0.8, voiceDuration);
+  const slice = total / lines.length;
+  return lines.map((text, i) => ({
+    text,
+    start: i * slice,
+    end: i === lines.length - 1 ? total + 0.3 : (i + 1) * slice,
+  }));
+}
+
+function cueAt(cues: SubtitleCue[], t: number): SubtitleCue | undefined {
+  return cues.find((item) => t >= item.start && t < item.end);
 }
 
 function wrapSubtitle(
@@ -373,11 +439,14 @@ export async function recordTrailerWithVoiceAndSubtitles(options: {
       if (event.data.size > 0) chunks.push(event.data);
     };
 
+    const logo = await loadSmmLogo();
+    const cues = timedCues(options.cues, voiceBuffer.duration);
     const draw = (t: number) => {
       frameCtx.fillStyle = '#09090f';
       frameCtx.fillRect(0, 0, width, height);
       drawCoverVideo(frameCtx, video, width, height);
-      const cue = options.cues.find((item) => t >= item.start && t < item.end);
+      drawSmmLogo(frameCtx, logo, width);
+      const cue = cueAt(cues, t);
       if (cue) drawSubtitle(frameCtx, cue.text, width, height);
       options.onProgress?.(Math.min(1, t / duration));
     };
@@ -413,9 +482,8 @@ export async function recordTrailerWithVoiceAndSubtitles(options: {
       draw(0);
       timer = window.setInterval(() => {
         const wall = (performance.now() - started) / 1000;
-        const t = Math.min(duration, video.currentTime || wall);
-        draw(t);
-        if (video.ended || t >= duration - 0.04 || wall >= duration + 0.35) {
+        draw(wall);
+        if (video.ended || wall >= duration + 0.35) {
           finish();
         }
       }, 1000 / 30);

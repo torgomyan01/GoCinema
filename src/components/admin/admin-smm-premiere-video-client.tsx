@@ -143,6 +143,7 @@ export default function AdminSmmPremiereVideoClient({
         source: canvas,
         voiceDataUrl: audio.voiceDataUrl,
         soundDataUrl: audio.soundDataUrl,
+        cues: audio.cues,
         maxSeconds: audio.maxSeconds ?? 15,
         onProgress: setProgress,
       });

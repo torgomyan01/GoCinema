@@ -91,7 +91,11 @@ export async function generatePremiereVideoAudio(data: {
     const sound = await elevenLabsTrailerSound(SMM_VIDEO_MAX_SECONDS).catch(
       () => null
     );
-    const cues = subtitleCuesFromVoiceover(ttsText, voice.alignment);
+    const cues = subtitleCuesFromVoiceover(
+      voiceover,
+      voice.alignment,
+      voice.alignment?.character_end_times_seconds?.at(-1) ?? 12
+    );
 
     return {
       success: true,

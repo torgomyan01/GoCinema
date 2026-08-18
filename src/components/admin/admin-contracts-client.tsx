@@ -328,7 +328,7 @@ export default function AdminContractsClient({
       const sent = res.results.find((item) => item.status === 'sent');
       const message = summarizeReportResult(res.results);
       if (failed) {
-        setError(message || res.error);
+        setError(message || res.error || 'Չհաջողվեց ուղարկել հաշվետվությունը');
       } else {
         setNotice(`${res.weekLabel} · ${message}`);
       }
@@ -373,7 +373,7 @@ export default function AdminContractsClient({
       }
       const message = summarizeReportResult(res.results);
       if (res.results.some((item) => item.status === 'failed')) {
-        setError(message || res.error);
+        setError(message || res.error || 'Չհաջողվեց ուղարկել հաշվետվությունը');
       } else {
         setNotice(`${res.weekLabel} · ${message}`);
       }

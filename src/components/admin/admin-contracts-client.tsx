@@ -7,6 +7,7 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  Mail,
   Pencil,
   Plus,
   ScrollText,
@@ -20,6 +21,7 @@ import {
   updateLicenseContractBody,
   type LicenseContractView,
 } from '@/app/actions/license-contracts';
+import { sendProducerWeeklyReportEmail } from '@/app/actions/producer-weekly-reports';
 import DocumentUpload from '@/components/admin/document-upload';
 import LicenseContractBody from '@/components/contracts/license-contract-body';
 import {
@@ -115,6 +117,10 @@ export default function AdminContractsClient({
   const [signedName, setSignedName] = useState('');
   const [movieOptions, setMovieOptions] = useState(movies);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [sendingReportId, setSendingReportId] = useState<number | 'all' | null>(
+    null
+  );
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [companyId, setCompanyId] = useState('');
   const [movieId, setMovieId] = useState('');
@@ -259,6 +265,123 @@ export default function AdminContractsClient({
     }
   };
 
+  const summarizeReportResult = (
+    results: Array<{ movieTitle: string; status: string; reason?: string; recipients: string[] }>
+  ) => {
+    const sent = results.filter((row) => row.status === 'sent');
+    const skipped = results.filter((row) => row.status === 'skipped');
+    const failed = results.filter((row) => row.status === 'failed');
+    if (failed.length) {
+      const reasons = [
+        ...new Set(failed.map((row) => row.reason || 'սխալ')),
+      ];
+      if (reasons.length === 1) {
+        return `${failed.length} հաշվետվություն չգնաց։ ${reasons[0]}`;
+      }
+      return failed
+        .map((row) => `${row.movieTitle}: ${row.reason || 'սխալ'}`)
+        .join(' · ');
+    }
+    if (sent.length) {
+      const emails = sent.flatMap((row) => row.recipients);
+      return `Ուղարկվեց ${sent.length} հաշվետվություն${emails.length ? ` · ${emails.join(', ')}` : ''}`;
+    }
+    return skipped[0]?.reason || 'Հաշվետվություն չուղարկվեց';
+  };
+
+  const handleSendReport = async (row: LicenseContractView, force = false) => {
+    const question = force
+      ? `Կրկի՞ն ուղարկել նախորդ շաբաթվա հաշվետվությունը «${row.movieTitle}» ֆիլմի համար։`
+      : `Ուղարկե՞լ նախորդ շաբաթվա հաշվետվությունը «${row.movieTitle}» ֆիլմի արտադրողին։`;
+    if (!window.confirm(question)) return;
+
+    setSendingReportId(row.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await sendProducerWeeklyReportEmail({
+        movieId: row.movieId,
+        period: 'previous',
+        force,
+      });
+      if (!res.success && !res.results.length) {
+        setError(res.error || 'Չհաջողվեց ուղարկել հաշվետվությունը');
+        return;
+      }
+      const alreadySent = res.results.some(
+        (item) =>
+          item.status === 'skipped' &&
+          item.reason?.includes('արդեն ուղարկված')
+      );
+      if (alreadySent && !force) {
+        if (
+          window.confirm(
+            'Այս շաբաթվա հաշվետվությունն արդեն ուղարկված է։ Կրկի՞ն ուղարկել։'
+          )
+        ) {
+          setSendingReportId(null);
+          await handleSendReport(row, true);
+          return;
+        }
+      }
+      const failed = res.results.some((item) => item.status === 'failed');
+      const sent = res.results.find((item) => item.status === 'sent');
+      const message = summarizeReportResult(res.results);
+      if (failed) {
+        setError(message || res.error);
+      } else {
+        setNotice(`${res.weekLabel} · ${message}`);
+      }
+      if (sent) {
+        setContracts((prev) =>
+          prev.map((item) =>
+            item.id === row.id
+              ? {
+                  ...item,
+                  lastWeeklyReport: {
+                    weekStart: new Date(),
+                    weekEnd: new Date(),
+                    sentAt: new Date(),
+                    recipients: JSON.stringify(sent.recipients),
+                  },
+                }
+              : item
+          )
+        );
+      }
+    } finally {
+      setSendingReportId(null);
+    }
+  };
+
+  const handleSendAllReports = async () => {
+    if (
+      !window.confirm(
+        'Ուղարկե՞լ նախորդ շաբաթվա հաշվետվությունները բոլոր ֆիլմ արտադրողներին։ Արդեն ուղարկվածները կրկին չեն գնա։'
+      )
+    ) {
+      return;
+    }
+    setSendingReportId('all');
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await sendProducerWeeklyReportEmail({ period: 'previous' });
+      if (!res.success && !res.results.length) {
+        setError(res.error || 'Չհաջողվեց ուղարկել հաշվետվությունները');
+        return;
+      }
+      const message = summarizeReportResult(res.results);
+      if (res.results.some((item) => item.status === 'failed')) {
+        setError(message || res.error);
+      } else {
+        setNotice(`${res.weekLabel} · ${message}`);
+      }
+    } finally {
+      setSendingReportId(null);
+    }
+  };
+
   const handleSaveText = async () => {
     if (!preview) return;
     const html = editorRef.current?.innerHTML || editHtml;
@@ -294,15 +417,34 @@ export default function AdminContractsClient({
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
-        >
-          <Plus className="h-4 w-4" />
-          Ստեղծել պայմանագիր
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleSendAllReports()}
+            disabled={sendingReportId === 'all'}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Mail className="h-4 w-4" />
+            {sendingReportId === 'all'
+              ? 'Ուղարկվում է…'
+              : 'Շաբաթական հաշվետվություններ'}
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
+          >
+            <Plus className="h-4 w-4" />
+            Ստեղծել պայմանագիր
+          </button>
+        </div>
       </div>
+
+      {notice && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {notice}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -346,6 +488,13 @@ export default function AdminContractsClient({
                       </span>
                     )}
                   </p>
+                  {row.lastWeeklyReport?.sentAt && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Վերջին հաշվետվություն՝{' '}
+                      {formatContractDate(row.lastWeeklyReport.sentAt)}
+                      {row.companyEmail ? ` · ${row.companyEmail}` : ''}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -390,6 +539,15 @@ export default function AdminContractsClient({
                     className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white"
                   >
                     Սկան
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSendReport(row)}
+                    disabled={sendingReportId === row.id || sendingReportId === 'all'}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <Mail className="h-4 w-4" />
+                    {sendingReportId === row.id ? 'Ուղարկվում է…' : 'Հաշվետվություն'}
                   </button>
                   <button
                     type="button"

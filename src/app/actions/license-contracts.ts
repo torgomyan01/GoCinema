@@ -42,6 +42,12 @@ export type LicenseContractView = {
   createdAt: Date;
   movie: { id: number; title: string };
   company: { id: number; name: string; tin: string };
+  lastWeeklyReport?: {
+    weekStart: Date;
+    weekEnd: Date;
+    sentAt: Date | null;
+    recipients: string;
+  } | null;
 };
 
 export type LicenseContractInput = {
@@ -188,7 +194,44 @@ export async function getLicenseContracts(): Promise<{
         company: { select: { id: true, name: true, tin: true } },
       },
     });
-    return { success: true, contracts };
+    const movieIds = contracts.map((row) => row.movieId);
+    const reports =
+      movieIds.length === 0
+        ? []
+        : await prisma.producerWeeklyReport.findMany({
+            where: { movieId: { in: movieIds }, status: 'sent' },
+            orderBy: { sentAt: 'desc' },
+            select: {
+              movieId: true,
+              weekStart: true,
+              weekEnd: true,
+              sentAt: true,
+              recipients: true,
+            },
+          });
+    const lastByMovie = new Map<number, (typeof reports)[number]>();
+    for (const report of reports) {
+      if (!lastByMovie.has(report.movieId)) {
+        lastByMovie.set(report.movieId, report);
+      }
+    }
+    return {
+      success: true,
+      contracts: contracts.map((row) => {
+        const last = lastByMovie.get(row.movieId);
+        return {
+          ...row,
+          lastWeeklyReport: last
+            ? {
+                weekStart: last.weekStart,
+                weekEnd: last.weekEnd,
+                sentAt: last.sentAt,
+                recipients: last.recipients,
+              }
+            : null,
+        };
+      }),
+    };
   } catch (error) {
     console.error('[getLicenseContracts]', error);
     return {

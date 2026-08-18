@@ -19,6 +19,7 @@ import {
   Ticket as TicketIcon,
   Building2,
   FileText,
+  Mail,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -37,6 +38,8 @@ import {
   getMovieCompanies,
 } from '@/app/actions/movies';
 import { AGE_RATING_OPTIONS, ageRatingClasses } from '@/lib/age-rating';
+import { sendProducerWeeklyReportEmail } from '@/app/actions/producer-weekly-reports';
+import { getYerevanCalendarWeek } from '@/lib/format';
 
 interface ProducerUser {
   id: number;
@@ -106,6 +109,11 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
   const [isLoading, setIsLoading] = useState(true);
+  const [testMovie, setTestMovie] = useState<Movie | null>(null);
+  const [testEmail, setTestEmail] = useState('');
+  const [testFrom, setTestFrom] = useState('');
+  const [testTo, setTestTo] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
 
   // Available genres
   const genres = [
@@ -270,6 +278,69 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       contractName: movie.contractName || '',
     });
     setIsEditModalOpen(true);
+  };
+
+  const openTestReport = (movie: Movie) => {
+    const saved =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('gocinema-test-report-email')
+        : '';
+    const week = getYerevanCalendarWeek(new Date(), 'current');
+    setTestEmail(saved || user.email || '');
+    setTestFrom(week.startKey);
+    setTestTo(week.endKey);
+    setTestMovie(movie);
+  };
+
+  const applyTestPeriod = (which: 'current' | 'previous') => {
+    const week = getYerevanCalendarWeek(new Date(), which);
+    setTestFrom(week.startKey);
+    setTestTo(week.endKey);
+  };
+
+  const handleSendTestReport = async () => {
+    if (!testMovie) return;
+    const email = testEmail.trim();
+    if (!email) {
+      alert('Գրիր email-ը');
+      return;
+    }
+    if (!testFrom || !testTo) {
+      alert('Նշիր ժամանակահատվածը');
+      return;
+    }
+    if (testTo < testFrom) {
+      alert('Ավարտի ամսաթիվը չի կարող սկզբից շուտ լինել');
+      return;
+    }
+    setSendingTest(true);
+    try {
+      localStorage.setItem('gocinema-test-report-email', email);
+      const res = await sendProducerWeeklyReportEmail({
+        movieId: testMovie.id,
+        testTo: email,
+        from: testFrom,
+        to: testTo,
+      });
+      const failed = res.results.find((row) => row.status === 'failed');
+      if (!res.success || failed) {
+        alert(
+          failed?.reason ||
+            res.error ||
+            'Չհաջողվեց ուղարկել թեստային հաշվետվությունը'
+        );
+        return;
+      }
+      alert(
+        `Թեստային հաշվետվությունը ուղարկվեց ${email}-ին (${res.weekLabel})`
+      );
+      setTestMovie(null);
+    } catch (error) {
+      console.error(error);
+      alert('Թեստային հաշվետվություն ուղարկելիս սխալ է տեղի ունեցել');
+    } finally {
+      setSendingTest(false);
+    }
   };
 
   const toggleProducer = (producerId: number) => {
@@ -559,6 +630,14 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                           Ցուցադրություններ և տոմսեր
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => openTestReport(movie)}
+                        className="w-full px-3 py-2 bg-slate-50 text-slate-700 rounded-lg font-medium hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Mail className="w-4 h-4" />
+                        Թեստային հաշվետվություն
+                      </button>
                       {movie.trailerUrl && (
                         <a
                           href={movie.trailerUrl}
@@ -993,6 +1072,99 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {testMovie && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">
+                  Թեստային հաշվետվություն
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setTestMovie(null)}
+                  className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="mb-3 text-sm text-gray-600">
+                «{testMovie.title}» ֆիլմի հաշվետվությունը կգնա այս email-ին, ոչ
+                արտադրողին։
+              </p>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                Email
+              </label>
+              <input
+                type="email"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                placeholder="email@example.com"
+                className="mb-4 w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <p className="mb-2 text-xs font-medium text-gray-500">
+                Ժամանակահատված
+              </p>
+              <div className="mb-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyTestPeriod('current')}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+                >
+                  Այս շաբաթ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyTestPeriod('previous')}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+                >
+                  Նախորդ շաբաթ
+                </button>
+              </div>
+              <div className="mb-4 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    Սկիզբ
+                  </label>
+                  <input
+                    type="date"
+                    value={testFrom}
+                    onChange={(e) => setTestFrom(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    Ավարտ
+                  </label>
+                  <input
+                    type="date"
+                    value={testTo}
+                    onChange={(e) => setTestTo(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTestMovie(null)}
+                  className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                >
+                  Չեղարկել
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSendTestReport()}
+                  disabled={sendingTest}
+                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {sendingTest ? 'Ուղարկվում է…' : 'Ուղարկել'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {ticketsMovie && (
           <MovieTicketsModal

@@ -156,6 +156,11 @@ export function formatDateKey(value: Date | string): string {
   return `${parts.year}-${m}-${day}`;
 }
 
+/** 0 կիրակի … 6 շաբաթ, Երևանի օրով */
+export function getYerevanWeekday(value: Date | string = new Date()): number | null {
+  return yerevanParts(value)?.weekday ?? null;
+}
+
 /** Շաբաթվա օրվա հայերեն անուն */
 export function formatWeekdayHy(value: Date | string): string {
   const parts = yerevanParts(value);
@@ -228,4 +233,77 @@ export function addMinutesToTimeHy(timeHy: string, minutesToAdd: number): string
   const h = Math.floor(total / 60);
   const m = total % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** DD.MM.YYYY — Երևանի օրով */
+export function formatDateNumericHy(value: Date | string): string {
+  const parts = yerevanParts(value);
+  if (!parts) return '';
+  return `${pad2(parts.day)}.${pad2(parts.month)}.${parts.year}`;
+}
+
+export type YerevanWeekRange = {
+  start: Date;
+  end: Date;
+  startKey: string;
+  endKey: string;
+};
+
+/** Երևանի օրացուցային շաբաթ՝ երկուշաբթի 00:00 — կիրակի 23:59:59.999 */
+export function getYerevanCalendarWeek(
+  now: Date = new Date(),
+  which: 'current' | 'previous' = 'previous'
+): YerevanWeekRange {
+  const parts = yerevanParts(now);
+  if (!parts) {
+    throw new Error('Invalid date');
+  }
+  const daysFromMonday = (parts.weekday + 6) % 7;
+  const todayStart = new Date(
+    `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T00:00:00+04:00`
+  );
+  const currentMonday = new Date(
+    todayStart.getTime() - daysFromMonday * 24 * 60 * 60 * 1000
+  );
+  const start =
+    which === 'previous'
+      ? new Date(currentMonday.getTime() - 7 * 24 * 60 * 60 * 1000)
+      : currentMonday;
+  const nextMonday = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const end = new Date(nextMonday.getTime() - 1);
+  return {
+    start,
+    end,
+    startKey: formatDateKey(start),
+    endKey: formatDateKey(end),
+  };
+}
+
+/** Երևանի օրերի միջակայք՝ from 00:00 — to 23:59:59.999 */
+export function getYerevanDayRange(
+  fromKey: string,
+  toKey: string
+): YerevanWeekRange | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromKey) || !/^\d{4}-\d{2}-\d{2}$/.test(toKey)) {
+    return null;
+  }
+  const start = new Date(`${fromKey}T00:00:00+04:00`);
+  const toStart = new Date(`${toKey}T00:00:00+04:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(toStart.getTime())) {
+    return null;
+  }
+  if (toStart.getTime() < start.getTime()) {
+    return null;
+  }
+  const end = new Date(toStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return {
+    start,
+    end,
+    startKey: fromKey,
+    endKey: toKey,
+  };
 }

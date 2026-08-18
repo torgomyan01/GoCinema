@@ -127,6 +127,7 @@ model Movie {
   producers        User[]            @relation("MovieProducers")
   companies        Company[]         @relation("MovieCompanies")
   licenseContract  LicenseContract?
+  weeklyReports    ProducerWeeklyReport[]
 
   @@index([slug])
   @@index([genre])
@@ -794,6 +795,7 @@ model Company {
 
   movies            Movie[]            @relation("MovieCompanies")
   licenseContracts  LicenseContract[]
+  weeklyReports     ProducerWeeklyReport[]
 
   @@index([name])
   @@index([isActive])
@@ -848,4 +850,31 @@ model LicenseContract {
   @@index([status])
   @@index([createdAt])
   @@map("license_contracts")
+}
+
+model ProducerWeeklyReport {
+  id              Int      @id @default(autoincrement())
+  movieId         Int
+  companyId       Int?
+  weekStart       DateTime @db.Date
+  weekEnd         DateTime @db.Date
+  recipients      String   @db.Text
+  screeningsCount Int      @default(0)
+  ticketsSold     Int      @default(0)
+  revenue         Int      @default(0)
+  royaltyPercent  Int      @default(50)
+  royaltyAmount   Int      @default(0)
+  status          String   @db.VarChar(20)
+  error           String?  @db.Text
+  sentAt          DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  movie   Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@unique([movieId, weekStart])
+  @@index([status])
+  @@index([sentAt])
+  @@map("producer_weekly_reports")
 }

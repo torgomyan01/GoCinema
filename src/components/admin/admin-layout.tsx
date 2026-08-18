@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
@@ -20,6 +20,7 @@ import { isAdminRole } from '@/lib/roles';
 import NotificationBell from '@/components/admin/notification-bell';
 import SupportMenuBadge from '@/components/admin/support-menu-badge';
 import ContactMenuBadge from '@/components/admin/contact-menu-badge';
+import { dispatchMondayWeeklyReports } from '@/app/actions/producer-weekly-reports';
 
 interface AdminLayoutProps {
   user: {
@@ -37,6 +38,17 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    if (!isAdminRole(user.role)) return;
+    const dayKey = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Yerevan',
+    });
+    const storageKey = `gocinema-monday-reports:${dayKey}`;
+    if (sessionStorage.getItem(storageKey) === '1') return;
+    sessionStorage.setItem(storageKey, '1');
+    void dispatchMondayWeeklyReports();
+  }, [user.role]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);

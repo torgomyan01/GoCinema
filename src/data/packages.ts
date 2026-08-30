@@ -11,6 +11,7 @@ export interface PackageItem {
   gradient: string;
   iconBg: string;
   accent: string;
+  slideImage: string;
 }
 
 export const packages: PackageItem[] = [
@@ -31,6 +32,7 @@ export const packages: PackageItem[] = [
     gradient: 'from-purple-600 via-fuchsia-600 to-pink-600',
     iconBg: 'bg-purple-500/20 text-purple-300',
     accent: 'text-purple-300',
+    slideImage: '/images/packages/pkg-private-party.png',
   },
   {
     id: 'corporate',
@@ -49,6 +51,7 @@ export const packages: PackageItem[] = [
     gradient: 'from-blue-600 via-indigo-600 to-violet-600',
     iconBg: 'bg-blue-500/20 text-blue-300',
     accent: 'text-blue-300',
+    slideImage: '/images/packages/pkg-corporate.png',
   },
   {
     id: 'vip-date',
@@ -66,5 +69,6 @@ export const packages: PackageItem[] = [
     gradient: 'from-rose-600 via-red-600 to-orange-600',
     iconBg: 'bg-rose-500/20 text-rose-300',
     accent: 'text-rose-300',
+    slideImage: '/images/packages/pkg-vip-date.png',
   },
 ];

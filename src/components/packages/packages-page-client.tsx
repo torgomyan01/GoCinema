@@ -94,6 +94,19 @@ export default function PackagesPageClient() {
             ձեր հատուկ միջոցառման վայրը՝ ծնունդ, կորպորատիվ հանդիպում թե
             ռոմանտիկ անակնկալ։
           </motion.p>
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.28 }}
+            className="mt-5"
+          >
+            <Link
+              href={SITE_URL.PACKAGES_SLIDE}
+              className="inline-flex items-center rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              21:9 սլայդ նկարելու համար
+            </Link>
+          </motion.div>
         </div>
 
         <div className="max-w-6xl mx-auto space-y-12">

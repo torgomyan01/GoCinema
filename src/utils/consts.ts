@@ -20,6 +20,7 @@ export const SITE_URL = {
   PRODUCER: '/producer',
   PRODUCER_MOVIE: (movieId: string | number) => `/producer/${movieId}`,
   PACKAGES: '/packages',
+  PACKAGES_SLIDE: '/packages/slide',
   ABOUT: '/about',
   CONTACTS: '/contacts',
   FAQ: '/faq',

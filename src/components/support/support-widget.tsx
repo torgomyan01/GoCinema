@@ -72,6 +72,7 @@ export default function SupportWidget() {
   const pathname = usePathname();
   const isAdminArea = pathname?.startsWith('/admin') ?? false;
   const isContractPage = pathname?.startsWith('/contract') ?? false;
+  const isPackagesSlide = pathname?.startsWith('/packages/slide') ?? false;
 
   const lastRealId = messages.reduce(
     (max, m) => (m.id > 0 && m.id > max ? m.id : max),
@@ -276,7 +277,7 @@ export default function SupportWidget() {
     }
   };
 
-  if (isAdminArea || isContractPage) return null;
+  if (isAdminArea || isContractPage || isPackagesSlide) return null;
 
   return (
     <>

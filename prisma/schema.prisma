@@ -835,9 +835,12 @@ model LicenseContract {
   agreedAt        DateTime?
   agreedIp        String?   @db.VarChar(80)
   agreedUserAgent String?   @db.VarChar(500)
-  signedUrl       String?   @db.VarChar(500)
-  signedName      String?   @db.VarChar(255)
-  signedAt        DateTime?
+  licenseeSignedUrl   String?   @db.VarChar(500)
+  licenseeSignedName  String?   @db.VarChar(255)
+  licenseeSignedAt    DateTime?
+  licensorSignedUrl   String?   @db.VarChar(500)
+  licensorSignedName  String?   @db.VarChar(255)
+  licensorSignedAt    DateTime?
   bodyHtml        String?   @db.LongText
 
   createdAt DateTime @default(now())

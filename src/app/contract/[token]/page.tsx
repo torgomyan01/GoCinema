@@ -35,8 +35,10 @@ export default async function PublicContractPage({ params }: Props) {
       number={data.contract.number}
       status={data.contract.status}
       agreedAt={data.contract.agreedAt}
-      signedUrl={data.contract.signedUrl}
-      signedName={data.contract.signedName}
+      licenseeSignedUrl={data.contract.licenseeSignedUrl}
+      licenseeSignedName={data.contract.licenseeSignedName}
+      licensorSignedUrl={data.contract.licensorSignedUrl}
+      licensorSignedName={data.contract.licensorSignedName}
       content={data.contract.content}
       bodyHtml={data.contract.bodyHtml}
     />

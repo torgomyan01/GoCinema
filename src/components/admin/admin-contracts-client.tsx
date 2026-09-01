@@ -113,8 +113,13 @@ export default function AdminContractsClient({
   const documentRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const [signTarget, setSignTarget] = useState<LicenseContractView | null>(null);
-  const [signedUrl, setSignedUrl] = useState('');
-  const [signedName, setSignedName] = useState('');
+  const [licenseeSignedUrl, setLicenseeSignedUrl] = useState('');
+  const [licenseeSignedName, setLicenseeSignedName] = useState('');
+  const [licensorSignedUrl, setLicensorSignedUrl] = useState('');
+  const [licensorSignedName, setLicensorSignedName] = useState('');
+  const [savingSignedSide, setSavingSignedSide] = useState<
+    'licensee' | 'licensor' | null
+  >(null);
   const [movieOptions, setMovieOptions] = useState(movies);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [sendingReportId, setSendingReportId] = useState<number | 'all' | null>(
@@ -200,13 +205,20 @@ export default function AdminContractsClient({
     }
   };
 
-  const handleAttachSigned = async () => {
-    if (!signTarget || !signedUrl) return;
+  const handleAttachSigned = async (side: 'licensee' | 'licensor') => {
+    if (!signTarget) return;
+    const signedUrl = side === 'licensee' ? licenseeSignedUrl : licensorSignedUrl;
+    const signedName = side === 'licensee' ? licenseeSignedName : licensorSignedName;
+    if (!signedUrl) return;
+
+    setSavingSignedSide(side);
     const res = await attachSignedLicenseContract(
       signTarget.id,
+      side,
       signedUrl,
       signedName
     );
+    setSavingSignedSide(null);
     if (!res.success || !res.contract) {
       setError(res.error || 'Չհաջողվեց կցել');
       return;
@@ -214,9 +226,14 @@ export default function AdminContractsClient({
     setContracts((prev) =>
       prev.map((row) => (row.id === res.contract!.id ? res.contract! : row))
     );
-    setSignTarget(null);
-    setSignedUrl('');
-    setSignedName('');
+    setSignTarget(res.contract);
+    if (side === 'licensee') {
+      setLicenseeSignedUrl(res.contract.licenseeSignedUrl || '');
+      setLicenseeSignedName(res.contract.licenseeSignedName || '');
+    } else {
+      setLicensorSignedUrl(res.contract.licensorSignedUrl || '');
+      setLicensorSignedName(res.contract.licensorSignedName || '');
+    }
   };
 
   const startEditingText = () => {
@@ -226,9 +243,10 @@ export default function AdminContractsClient({
   };
 
   const handleDelete = async (row: LicenseContractView) => {
-    const signedNote = row.signedUrl
-      ? ' Ստորագրված ֆայլը կմնա սերվերում, բայց պայմանագիրը ցանկից կհեռացվի։'
-      : '';
+    const signedNote =
+      row.licenseeSignedUrl || row.licensorSignedUrl
+        ? ' Կցված ֆայլերը կմնան սերվերում, բայց պայմանագիրը ցանկից կհեռացվի։'
+        : '';
     if (
       !window.confirm(
         `Ջնջե՞լ № ${row.number} պայմանագիրը («${row.movieTitle}»)։ Հանրային հղումը այլևս չի աշխատի։${signedNote}`
@@ -257,8 +275,10 @@ export default function AdminContractsClient({
       }
       if (signTarget?.id === row.id) {
         setSignTarget(null);
-        setSignedUrl('');
-        setSignedName('');
+        setLicenseeSignedUrl('');
+        setLicenseeSignedName('');
+        setLicensorSignedUrl('');
+        setLicensorSignedName('');
       }
     } finally {
       setDeletingId(null);
@@ -533,8 +553,10 @@ export default function AdminContractsClient({
                     type="button"
                     onClick={() => {
                       setSignTarget(row);
-                      setSignedUrl(row.signedUrl || '');
-                      setSignedName(row.signedName || '');
+                      setLicenseeSignedUrl(row.licenseeSignedUrl || '');
+                      setLicenseeSignedName(row.licenseeSignedName || '');
+                      setLicensorSignedUrl(row.licensorSignedUrl || '');
+                      setLicensorSignedName(row.licensorSignedName || '');
                     }}
                     className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white"
                   >
@@ -560,16 +582,31 @@ export default function AdminContractsClient({
                   </button>
                 </div>
               </div>
-              {row.signedUrl && (
-                <a
-                  href={row.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex items-center gap-2 text-sm text-purple-700 hover:underline"
-                >
-                  <FileText className="h-4 w-4" />
-                  {row.signedName || 'Ստորագրված ֆայլ'}
-                </a>
+              {(row.licenseeSignedUrl || row.licensorSignedUrl) && (
+                <div className="mt-3 flex flex-wrap gap-4">
+                  {row.licenseeSignedUrl && (
+                    <a
+                      href={row.licenseeSignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-purple-700 hover:underline"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Լիցենզատու · {row.licenseeSignedName || 'Ֆայլ'}
+                    </a>
+                  )}
+                  {row.licensorSignedUrl && (
+                    <a
+                      href={row.licensorSignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-purple-700 hover:underline"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Լիցենզառու · {row.licensorSignedName || 'Ֆայլ'}
+                    </a>
+                  )}
+                </div>
               )}
             </li>
           ))}
@@ -821,44 +858,78 @@ export default function AdminContractsClient({
 
       {signTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">
-                Ստորագրված սկան · {signTarget.number}
+                Ստորագրված սկաններ · {signTarget.number}
               </h2>
               <button
                 type="button"
-                onClick={() => setSignTarget(null)}
+                onClick={() => {
+                  setSignTarget(null);
+                  setLicenseeSignedUrl('');
+                  setLicenseeSignedName('');
+                  setLicensorSignedUrl('');
+                  setLicensorSignedName('');
+                }}
                 className="rounded-lg p-2 hover:bg-gray-100"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <DocumentUpload
-              url={signedUrl}
-              fileName={signedName}
-              onChange={({ url, fileName }) => {
-                setSignedUrl(url);
-                setSignedName(fileName);
-              }}
-              deleteOnRemove={false}
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setSignTarget(null)}
-                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold"
-              >
-                Փակել
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleAttachSigned()}
-                disabled={!signedUrl}
-                className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                Պահպանել
-              </button>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h3 className="mb-1 text-sm font-semibold text-gray-900">
+                  Լիցենզատուի կողմից
+                </h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  Լիցենզատուի ստորագրված օրինակը
+                </p>
+                <DocumentUpload
+                  url={licenseeSignedUrl}
+                  fileName={licenseeSignedName}
+                  onChange={({ url, fileName }) => {
+                    setLicenseeSignedUrl(url);
+                    setLicenseeSignedName(fileName);
+                  }}
+                  deleteOnRemove={false}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleAttachSigned('licensee')}
+                  disabled={!licenseeSignedUrl || savingSignedSide === 'licensee'}
+                  className="mt-3 w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {savingSignedSide === 'licensee' ? 'Պահպանվում է…' : 'Պահպանել'}
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h3 className="mb-1 text-sm font-semibold text-gray-900">
+                  Լիցենզառուի կողմից
+                </h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  GoCinema-ի ստորագրված օրինակը
+                </p>
+                <DocumentUpload
+                  url={licensorSignedUrl}
+                  fileName={licensorSignedName}
+                  onChange={({ url, fileName }) => {
+                    setLicensorSignedUrl(url);
+                    setLicensorSignedName(fileName);
+                  }}
+                  deleteOnRemove={false}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleAttachSigned('licensor')}
+                  disabled={!licensorSignedUrl || savingSignedSide === 'licensor'}
+                  className="mt-3 w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {savingSignedSide === 'licensor' ? 'Պահպանվում է…' : 'Պահպանել'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

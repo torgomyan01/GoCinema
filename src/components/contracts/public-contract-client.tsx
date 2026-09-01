@@ -10,37 +10,112 @@ import {
 import {
   agreeToLicenseContract,
   uploadSignedLicenseByToken,
+  type LicenseSignedSide,
 } from '@/app/actions/license-contracts';
 import LicenseContractBody from '@/components/contracts/license-contract-body';
 import { GOCINEMA_LEGAL } from '@/lib/gocinema-legal';
 import type { LicenseContractContent } from '@/lib/license-contract';
+
+type SignedFileState = {
+  url: string | null;
+  name: string | null;
+};
 
 type Props = {
   token: string;
   number: string;
   status: string;
   agreedAt: Date | string | null;
-  signedUrl: string | null;
-  signedName: string | null;
+  licenseeSignedUrl: string | null;
+  licenseeSignedName: string | null;
+  licensorSignedUrl: string | null;
+  licensorSignedName: string | null;
   content: LicenseContractContent;
   bodyHtml?: string | null;
 };
+
+type SignedSlotProps = {
+  title: string;
+  subtitle: string;
+  file: SignedFileState;
+  uploading: boolean;
+  disabled: boolean;
+  onUpload: (file: File) => void;
+};
+
+function SignedFileSlot({
+  title,
+  subtitle,
+  file,
+  uploading,
+  disabled,
+  onUpload,
+}: SignedSlotProps) {
+  return (
+    <div className="border border-white/10 bg-black/20 p-4">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        <p className="mt-1 text-xs text-white/55">{subtitle}</p>
+      </div>
+
+      {file.url ? (
+        <a
+          href={file.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-sm font-medium text-[#d4a574] underline underline-offset-4"
+        >
+          <FileUp className="h-4 w-4" />
+          {file.name || 'Ստորագրված ֆայլ'}
+        </a>
+      ) : (
+        <label className="block">
+          <input
+            type="file"
+            accept=".pdf,image/jpeg,image/png,image/webp"
+            disabled={disabled || uploading}
+            onChange={(e) => {
+              const nextFile = e.target.files?.[0];
+              if (nextFile) onUpload(nextFile);
+              e.target.value = '';
+            }}
+            className="block w-full text-sm text-white/80 file:mr-3 file:border-0 file:bg-[#d4a574] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[#0c0b0a] disabled:opacity-50"
+          />
+          <p className="mt-2 text-xs text-white/45">
+            PDF կամ նկար, մինչև 15MB
+            {uploading ? ' · Ներբեռնվում է…' : ''}
+          </p>
+        </label>
+      )}
+    </div>
+  );
+}
 
 export default function PublicContractClient({
   token,
   number,
   agreedAt: initialAgreedAt,
-  signedUrl: initialSignedUrl,
-  signedName: initialSignedName,
+  licenseeSignedUrl: initialLicenseeUrl,
+  licenseeSignedName: initialLicenseeName,
+  licensorSignedUrl: initialLicensorUrl,
+  licensorSignedName: initialLicensorName,
   content,
   bodyHtml,
 }: Props) {
   const [agreedAt, setAgreedAt] = useState<Date | string | null>(initialAgreedAt);
-  const [signedUrl, setSignedUrl] = useState(initialSignedUrl);
-  const [signedName, setSignedName] = useState(initialSignedName);
+  const [licenseeFile, setLicenseeFile] = useState<SignedFileState>({
+    url: initialLicenseeUrl,
+    name: initialLicenseeName,
+  });
+  const [licensorFile, setLicensorFile] = useState<SignedFileState>({
+    url: initialLicensorUrl,
+    name: initialLicensorName,
+  });
   const [checked, setChecked] = useState(Boolean(initialAgreedAt));
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingSide, setUploadingSide] = useState<LicenseSignedSide | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
 
   const handleAgree = async () => {
@@ -62,21 +137,28 @@ export default function PublicContractClient({
     }
   };
 
-  const handleUpload = async (file: File) => {
-    setUploading(true);
+  const handleUpload = async (side: LicenseSignedSide, file: File) => {
+    setUploadingSide(side);
     setError(null);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await uploadSignedLicenseByToken(token, formData);
+      const res = await uploadSignedLicenseByToken(token, side, formData);
       if (!res.success) {
         setError(res.error || 'Չհաջողվեց կցել ֆայլը');
         return;
       }
-      setSignedUrl(res.signedUrl || null);
-      setSignedName(res.signedName || file.name);
+      const next = {
+        url: res.signedUrl || null,
+        name: res.signedName || file.name,
+      };
+      if (side === 'licensee') {
+        setLicenseeFile(next);
+      } else {
+        setLicensorFile(next);
+      }
     } finally {
-      setUploading(false);
+      setUploadingSide(null);
     }
   };
 
@@ -130,8 +212,8 @@ export default function PublicContractClient({
                 Էլեկտրոնային հաստատում
               </h2>
               <p className="mt-1 text-sm text-white/65">
-                Կարդացեք փաստաթուղթը, հաստատեք պայմանները, տպեք և կցեք
-                ստորագրված օրինակը։
+                Կարդացեք փաստաթուղթը, հաստատեք պայմանները, տպեք, ստորագրեք և
+                կցեք երկու կողմերի ստորագրված օրինակները։
               </p>
             </div>
           </div>
@@ -147,7 +229,7 @@ export default function PublicContractClient({
               3. Տպեք և ստորագրեք
             </li>
             <li className="border border-white/10 bg-white/5 px-3 py-2">
-              4. Կցեք ստորագրված PDF-ը
+              4. Կցեք երկու կողմերի ստորագրված ֆայլերը
             </li>
           </ol>
 
@@ -160,7 +242,8 @@ export default function PublicContractClient({
           {agreedAt ? (
             <p className="mb-5 flex items-center gap-2 border border-emerald-400/30 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
-              Պայմաններին համաձայն եք։ Կարող եք տպել և կցել ստորագրված տարբերակը։
+              Պայմաններին համաձայն եք։ Կարող եք տպել և կցել ստորագրված
+              տարբերակները։
             </p>
           ) : (
             <div className="mb-5 space-y-4">
@@ -186,39 +269,23 @@ export default function PublicContractClient({
           )}
 
           {agreedAt && (
-            <div>
-              {signedUrl ? (
-                <a
-                  href={signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-[#d4a574] underline underline-offset-4"
-                >
-                  <FileUp className="h-4 w-4" />
-                  {signedName || 'Ստորագրված ֆայլ'}
-                </a>
-              ) : (
-                <label className="block">
-                  <span className="mb-2 flex items-center gap-2 text-sm font-medium text-white/85">
-                    <FileUp className="h-4 w-4 text-[#d4a574]" />
-                    Կցել ստորագրված օրինակը
-                  </span>
-                  <input
-                    type="file"
-                    accept=".pdf,image/jpeg,image/png,image/webp"
-                    disabled={uploading}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void handleUpload(file);
-                    }}
-                    className="block w-full text-sm text-white/80 file:mr-3 file:border-0 file:bg-[#d4a574] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[#0c0b0a]"
-                  />
-                  <p className="mt-2 text-xs text-white/45">
-                    PDF կամ նկար, մինչև 15MB
-                    {uploading ? ' · Ներբեռնվում է…' : ''}
-                  </p>
-                </label>
-              )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SignedFileSlot
+                title="Լիցենզատուի կողմից"
+                subtitle="Լիցենզատուի ստորագրված օրինակը"
+                file={licenseeFile}
+                uploading={uploadingSide === 'licensee'}
+                disabled={!agreedAt}
+                onUpload={(file) => void handleUpload('licensee', file)}
+              />
+              <SignedFileSlot
+                title="Լիցենզառուի կողմից"
+                subtitle={`${GOCINEMA_LEGAL.shortName}-ի ստորագրված օրինակը`}
+                file={licensorFile}
+                uploading={uploadingSide === 'licensor'}
+                disabled={!agreedAt}
+                onUpload={(file) => void handleUpload('licensor', file)}
+              />
             </div>
           )}
         </section>

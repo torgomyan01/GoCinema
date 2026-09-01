@@ -35,9 +35,12 @@ export type LicenseContractView = {
   companyEmail: string | null;
   status: string;
   agreedAt: Date | null;
-  signedUrl: string | null;
-  signedName: string | null;
-  signedAt: Date | null;
+  licenseeSignedUrl: string | null;
+  licenseeSignedName: string | null;
+  licenseeSignedAt: Date | null;
+  licensorSignedUrl: string | null;
+  licensorSignedName: string | null;
+  licensorSignedAt: Date | null;
   bodyHtml: string | null;
   createdAt: Date;
   movie: { id: number; title: string };
@@ -59,6 +62,43 @@ export type LicenseContractInput = {
   language: string;
   royaltyPercent: number;
 };
+
+export type LicenseSignedSide = 'licensee' | 'licensor';
+
+function resolveContractStatus(
+  agreedAt: Date | null,
+  licenseeSignedUrl: string | null,
+  licensorSignedUrl: string | null
+) {
+  if (licenseeSignedUrl && licensorSignedUrl) return 'signed';
+  if (agreedAt) return 'agreed';
+  return 'pending';
+}
+
+async function saveSignedLicenseFile(file: File) {
+  if (file.size > 15 * 1024 * 1024) {
+    return { error: 'Ֆայլի չափը չպետք է գերազանցի 15MB' } as const;
+  }
+
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const allowed = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
+  if (!allowed.includes(ext)) {
+    return { error: 'Թույլատրվում են PDF և նկար ֆայլեր' } as const;
+  }
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const uploadDir = join(process.cwd(), 'uploads');
+  if (!existsSync(uploadDir)) {
+    await mkdir(uploadDir, { recursive: true });
+  }
+  const filename = `${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
+  await writeFile(join(uploadDir, filename), bytes);
+
+  return {
+    signedUrl: `/api/files/${filename}`,
+    signedName: file.name || filename,
+  } as const;
+}
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -324,6 +364,7 @@ export async function createLicenseContract(data: LicenseContractInput): Promise
 
 export async function attachSignedLicenseContract(
   id: number,
+  side: LicenseSignedSide,
   signedUrl: string,
   signedName: string
 ): Promise<{ success: boolean; error?: string; contract?: LicenseContractView }> {
@@ -334,14 +375,47 @@ export async function attachSignedLicenseContract(
     return { success: false, error: 'Ֆայլը պարտադիր է' };
   }
 
+  const existing = await prisma.licenseContract.findUnique({
+    where: { id },
+    select: {
+      agreedAt: true,
+      licenseeSignedUrl: true,
+      licensorSignedUrl: true,
+    },
+  });
+  if (!existing) {
+    return { success: false, error: 'Պայմանագիրը չի գտնվել' };
+  }
+
+  const now = new Date();
+  const sideData =
+    side === 'licensee'
+      ? {
+          licenseeSignedUrl: signedUrl,
+          licenseeSignedName: signedName || 'signed.pdf',
+          licenseeSignedAt: now,
+        }
+      : {
+          licensorSignedUrl: signedUrl,
+          licensorSignedName: signedName || 'signed.pdf',
+          licensorSignedAt: now,
+        };
+
+  const licenseeSignedUrl =
+    side === 'licensee' ? signedUrl : existing.licenseeSignedUrl;
+  const licensorSignedUrl =
+    side === 'licensor' ? signedUrl : existing.licensorSignedUrl;
+
   try {
     const contract = await prisma.licenseContract.update({
       where: { id },
       data: {
-        signedUrl,
-        signedName: signedName || 'signed.pdf',
-        signedAt: new Date(),
-        status: 'signed',
+        ...sideData,
+        status: resolveContractStatus(
+          existing.agreedAt,
+          licenseeSignedUrl,
+          licensorSignedUrl
+        ),
       },
       include: {
         movie: { select: { id: true, title: true } },
@@ -349,6 +423,7 @@ export async function attachSignedLicenseContract(
       },
     });
     revalidatePath('/admin/contracts');
+    revalidatePath(`/contract/${contract.publicToken}`);
     return { success: true, contract };
   } catch (error) {
     console.error('[attachSignedLicenseContract]', error);
@@ -432,8 +507,10 @@ export async function getPublicLicenseContract(token: string): Promise<{
     number: string;
     status: string;
     agreedAt: Date | null;
-    signedUrl: string | null;
-    signedName: string | null;
+    licenseeSignedUrl: string | null;
+    licenseeSignedName: string | null;
+    licensorSignedUrl: string | null;
+    licensorSignedName: string | null;
     content: LicenseContractContent;
     bodyHtml: string | null;
   };
@@ -456,8 +533,10 @@ export async function getPublicLicenseContract(token: string): Promise<{
       number: row.number,
       status: row.status,
       agreedAt: row.agreedAt,
-      signedUrl: row.signedUrl,
-      signedName: row.signedName,
+      licenseeSignedUrl: row.licenseeSignedUrl,
+      licenseeSignedName: row.licenseeSignedName,
+      licensorSignedUrl: row.licensorSignedUrl,
+      licensorSignedName: row.licensorSignedName,
       content: toContent(row),
       bodyHtml: row.bodyHtml,
     },
@@ -504,6 +583,7 @@ export async function agreeToLicenseContract(token: string): Promise<{
 
 export async function uploadSignedLicenseByToken(
   token: string,
+  side: LicenseSignedSide,
   formData: FormData
 ): Promise<{
   success: boolean;
@@ -513,7 +593,12 @@ export async function uploadSignedLicenseByToken(
 }> {
   const row = await prisma.licenseContract.findUnique({
     where: { publicToken: token.trim() },
-    select: { id: true, agreedAt: true },
+    select: {
+      id: true,
+      agreedAt: true,
+      licenseeSignedUrl: true,
+      licensorSignedUrl: true,
+    },
   });
   if (!row) {
     return { success: false, error: 'Պայմանագիրը չի գտնվել' };
@@ -529,37 +614,46 @@ export async function uploadSignedLicenseByToken(
   if (!(file instanceof File) || file.size === 0) {
     return { success: false, error: 'Ֆայլը չի ներբեռնվել' };
   }
-  if (file.size > 15 * 1024 * 1024) {
-    return { success: false, error: 'Ֆայլի չափը չպետք է գերազանցի 15MB' };
+
+  const saved = await saveSignedLicenseFile(file);
+  if ('error' in saved) {
+    return { success: false, error: saved.error };
   }
 
-  const ext = (file.name.split('.').pop() || '').toLowerCase();
-  const allowed = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
-  if (!allowed.includes(ext)) {
-    return { success: false, error: 'Թույլատրվում են PDF և նկար ֆայլեր' };
-  }
+  const sideData =
+    side === 'licensee'
+      ? {
+          licenseeSignedUrl: saved.signedUrl,
+          licenseeSignedName: saved.signedName,
+          licenseeSignedAt: new Date(),
+        }
+      : {
+          licensorSignedUrl: saved.signedUrl,
+          licensorSignedName: saved.signedName,
+          licensorSignedAt: new Date(),
+        };
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const uploadDir = join(process.cwd(), 'uploads');
-  if (!existsSync(uploadDir)) {
-    await mkdir(uploadDir, { recursive: true });
-  }
-  const filename = `${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
-  await writeFile(join(uploadDir, filename), bytes);
-
-  const signedUrl = `/api/files/${filename}`;
-  const signedName = file.name || filename;
+  const licenseeSignedUrl =
+    side === 'licensee' ? saved.signedUrl : row.licenseeSignedUrl;
+  const licensorSignedUrl =
+    side === 'licensor' ? saved.signedUrl : row.licensorSignedUrl;
 
   await prisma.licenseContract.update({
     where: { id: row.id },
     data: {
-      signedUrl,
-      signedName,
-      signedAt: new Date(),
-      status: 'signed',
+      ...sideData,
+      status: resolveContractStatus(
+        row.agreedAt,
+        licenseeSignedUrl,
+        licensorSignedUrl
+      ),
     },
   });
 
   revalidatePath('/admin/contracts');
-  return { success: true, signedUrl, signedName };
+  return {
+    success: true,
+    signedUrl: saved.signedUrl,
+    signedName: saved.signedName,
+  };
 }

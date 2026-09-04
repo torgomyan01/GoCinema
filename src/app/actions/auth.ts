@@ -104,22 +104,30 @@ export async function registerUser(formData: {
       let bonusPoints = existingUser.bonusPoints;
       let referralError: string | null = null;
       try {
-        await grantWelcomeBonus(user.id);
-        await ensureReferralCode(user.id);
+        const bonusResult = await prisma.$transaction(async (tx) => {
+          await grantWelcomeBonus(user.id, tx);
+          await ensureReferralCode(user.id, tx);
 
-        const code = formData.referralCode?.trim();
-        if (code) {
-          const referral = await applyReferralCode(prisma, user.id, code);
-          if (!referral.ok) {
-            referralError = referral.error ?? null;
+          let refError: string | null = null;
+          const code = formData.referralCode?.trim();
+          if (code) {
+            const referral = await applyReferralCode(tx, user.id, code);
+            if (!referral.ok) {
+              refError = referral.error ?? null;
+            }
           }
-        }
 
-        const fresh = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { bonusPoints: true },
+          const fresh = await tx.user.findUnique({
+            where: { id: user.id },
+            select: { bonusPoints: true },
+          });
+          return {
+            bonusPoints: fresh?.bonusPoints ?? existingUser.bonusPoints,
+            referralError: refError,
+          };
         });
-        if (fresh) bonusPoints = fresh.bonusPoints;
+        bonusPoints = bonusResult.bonusPoints;
+        referralError = bonusResult.referralError;
       } catch (bonusError) {
         console.error('[Register Action] Bonus error (claim):', bonusError);
       }
@@ -154,18 +162,24 @@ export async function registerUser(formData: {
     let bonusPoints = 0;
     let referralError: string | null = null;
     try {
-      bonusPoints = await grantWelcomeBonus(user.id);
-      await ensureReferralCode(user.id);
+      const bonusResult = await prisma.$transaction(async (tx) => {
+        let points = await grantWelcomeBonus(user.id, tx);
+        await ensureReferralCode(user.id, tx);
 
-      const code = formData.referralCode?.trim();
-      if (code) {
-        const referral = await applyReferralCode(prisma, user.id, code);
-        if (referral.ok) {
-          bonusPoints += referral.points;
-        } else {
-          referralError = referral.error ?? null;
+        let refError: string | null = null;
+        const code = formData.referralCode?.trim();
+        if (code) {
+          const referral = await applyReferralCode(tx, user.id, code);
+          if (referral.ok) {
+            points += referral.points;
+          } else {
+            refError = referral.error ?? null;
+          }
         }
-      }
+        return { bonusPoints: points, referralError: refError };
+      });
+      bonusPoints = bonusResult.bonusPoints;
+      referralError = bonusResult.referralError;
     } catch (bonusError) {
       console.error('[Register Action] Bonus error:', bonusError);
     }

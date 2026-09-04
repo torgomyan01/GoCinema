@@ -132,6 +132,10 @@ export async function commitRedemption(
     ticketId: refs.ticketId ?? null,
     rewardId: plan.rewardId,
     createdById: refs.cashierId ?? null,
+    requireFullAmount: true,
   });
-  return Math.abs(result?.applied ?? 0);
+  if (!result || Math.abs(result.applied) < plan.pointsCost) {
+    throw new Error('BONUS_INSUFFICIENT');
+  }
+  return Math.abs(result.applied);
 }

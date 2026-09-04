@@ -124,9 +124,23 @@ export default function Footer() {
         {/* Bottom */}
         <div className="border-t border-gray-800 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-gray-400 text-sm">
-              © {currentYear} GoCinema. Բոլոր իրավունքները պաշտպանված են:
-            </p>
+            <div className="text-center md:text-left space-y-1">
+              <p className="text-gray-400 text-sm">
+                © {currentYear} GoCinema. Բոլոր իրավունքները պաշտպանված են:
+              </p>
+              <p className="text-gray-500 text-sm">
+                Կայքը պատրաստվել է{' '}
+                <a
+                  href="https://torgomyan-studio.am/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 transition-colors hover:text-purple-400"
+                >
+                  Torgomyan Studio
+                </a>
+                -ի կողմից
+              </p>
+            </div>
             <div className="flex gap-6 text-sm flex-wrap">
               {footerLinks.support.map((link) => (
                 <Link

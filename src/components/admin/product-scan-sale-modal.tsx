@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   CupSoda,
+  EyeOff,
   Loader2,
   Minus,
   Plus,
@@ -65,7 +66,11 @@ interface ProductScanSaleModalProps {
   lookupUnit: (qrCode: string) => Promise<LookupResult>;
   onSubmit: (payload: {
     units: string[];
-    popcorn: { productId: number; quantity: number }[];
+    popcorn: {
+      productId: number;
+      quantity: number;
+      excludeFromFiscal?: boolean;
+    }[];
     payment?: { method: PaymentMethod; amountPaid: number };
   }) => void;
   title?: string;
@@ -90,6 +95,11 @@ export default function ProductScanSaleModal({
 
   const [scanned, setScanned] = useState<ScannedUnitLine[]>([]);
   const [popcornCart, setPopcornCart] = useState<Record<number, number>>({});
+  /** Պոպկորն/սառը թեյ՝ ՀԴՄ-ից դուրս (գաղտնի նշում) */
+  const [fiscalExcludedIds, setFiscalExcludedIds] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [secretModifiers, setSecretModifiers] = useState(false);
   const [scanInput, setScanInput] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -187,6 +197,21 @@ export default function ProductScanSaleModal({
     [popcornByCategory, popcornCart]
   );
 
+  useEffect(() => {
+    const syncModifiers = (e: KeyboardEvent | MouseEvent) => {
+      setSecretModifiers(Boolean(e.ctrlKey && e.shiftKey));
+    };
+    const clearModifiers = () => setSecretModifiers(false);
+    window.addEventListener('keydown', syncModifiers);
+    window.addEventListener('keyup', syncModifiers);
+    window.addEventListener('blur', clearModifiers);
+    return () => {
+      window.removeEventListener('keydown', syncModifiers);
+      window.removeEventListener('keyup', syncModifiers);
+      window.removeEventListener('blur', clearModifiers);
+    };
+  }, []);
+
   const focusScanInput = useCallback(() => {
     requestAnimationFrame(() => {
       scanInputRef.current?.focus({ preventScroll: true });
@@ -272,6 +297,23 @@ export default function ProductScanSaleModal({
       else next[productId] = qty;
       return next;
     });
+    if (qty <= 0) {
+      setFiscalExcludedIds((prev) => {
+        if (!prev.has(productId)) return prev;
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+    }
+  };
+
+  const toggleFiscalExclude = (productId: number) => {
+    setFiscalExcludedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
   };
 
   const addOneQuantityProduct = (product: ScanSaleProductItem) => {
@@ -284,6 +326,7 @@ export default function ProductScanSaleModal({
   const clearAll = () => {
     setScanned([]);
     setPopcornCart({});
+    setFiscalExcludedIds(new Set());
     setPickerCategory(null);
     setPickerFlavorKey(null);
     focusScanInput();
@@ -299,10 +342,14 @@ export default function ProductScanSaleModal({
     if (!canSubmit) return;
     onSubmit({
       units: scanned.map((u) => u.qrCode),
-      popcorn: Object.entries(popcornCart).map(([id, qty]) => ({
-        productId: Number(id),
-        quantity: qty,
-      })),
+      popcorn: Object.entries(popcornCart).map(([id, qty]) => {
+        const productId = Number(id);
+        return {
+          productId,
+          quantity: qty,
+          excludeFromFiscal: fiscalExcludedIds.has(productId) || undefined,
+        };
+      }),
       payment: requiresPayment
         ? {
             method,
@@ -709,21 +756,30 @@ export default function ProductScanSaleModal({
                   );
                   if (!product) return null;
                   const isTea = product.category === 'iced_tea';
+                  const excluded = fiscalExcludedIds.has(product.id);
                   return (
                     <div
                       key={`pc-${id}`}
-                      className={`flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 ${
-                        isTea ? 'bg-sky-50/50' : 'bg-amber-50/50'
+                      className={`flex items-center gap-3 rounded-xl border p-2.5 ${
+                        excluded
+                          ? 'border-dashed border-orange-300 bg-orange-50/70'
+                          : isTea
+                            ? 'border-gray-100 bg-sky-50/50'
+                            : 'border-gray-100 bg-amber-50/50'
                       }`}
                     >
                       <div
                         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                          isTea
-                            ? 'bg-sky-100 text-sky-600'
-                            : 'bg-amber-100 text-amber-600'
+                          excluded
+                            ? 'bg-orange-100 text-orange-600'
+                            : isTea
+                              ? 'bg-sky-100 text-sky-600'
+                              : 'bg-amber-100 text-amber-600'
                         }`}
                       >
-                        {isTea ? (
+                        {excluded ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : isTea ? (
                           <CupSoda className="h-4 w-4" />
                         ) : (
                           <Popcorn className="h-4 w-4" />
@@ -738,14 +794,42 @@ export default function ProductScanSaleModal({
                           <span className="font-semibold">{qty}</span> ={' '}
                           <span
                             className={`font-semibold ${
-                              isTea ? 'text-sky-600' : 'text-amber-600'
+                              excluded
+                                ? 'text-orange-600'
+                                : isTea
+                                  ? 'text-sky-600'
+                                  : 'text-amber-600'
                             }`}
                           >
                             {(product.price * qty).toLocaleString()} ֏
                           </span>
+                          {excluded && (
+                            <span className="ml-1 font-semibold text-orange-600">
+                              · ՀԴՄ−
+                            </span>
+                          )}
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
+                        {secretModifiers && (
+                          <button
+                            type="button"
+                            onClick={() => toggleFiscalExclude(product.id)}
+                            disabled={isSubmitting}
+                            title={
+                              excluded
+                                ? 'Վերադարձնել ՀԴՄ չեկ'
+                                : 'Դուրս թողնել ՀԴՄ չեկից'
+                            }
+                            className={`flex h-7 w-7 items-center justify-center rounded-md border transition ${
+                              excluded
+                                ? 'border-orange-400 bg-orange-500 text-white'
+                                : 'border-orange-200 bg-white text-orange-600 hover:bg-orange-50'
+                            }`}
+                          >
+                            <EyeOff className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setPopcornQty(product.id, qty - 1)}

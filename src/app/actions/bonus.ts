@@ -18,7 +18,6 @@ import {
   grantWelcomeBonus,
   recalculateBalance,
   recordBonusMovement,
-  tierForVisits,
   tierMultiplier,
   WALK_IN_PHONE,
 } from '@/lib/bonus';
@@ -650,7 +649,10 @@ export async function getAdminBonusOverview(): Promise<{
           select: { id: true, name: true, price: true },
         }),
         prisma.user.aggregate({
-          where: { bonusPoints: { gt: 0 }, phone: { not: WALK_IN_PHONE } },
+          where: {
+            phone: { not: WALK_IN_PHONE },
+            bonusTransactions: { some: {} },
+          },
           _count: { _all: true },
           _sum: { bonusPoints: true },
         }),
@@ -1079,6 +1081,8 @@ export async function previewBonusEarn(data: {
     productPoints: breakdown.productPoints,
     dayMultiplier: breakdown.dayMultiplier,
     tierMultiplier: breakdown.tierMultiplier,
-    tierAfter: tierForVisits(0, settings),
+    tierAfter: (['silver', 'gold', 'platinum'].includes(data.tier)
+      ? data.tier
+      : 'silver') as 'silver' | 'gold' | 'platinum',
   };
 }

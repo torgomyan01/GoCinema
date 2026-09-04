@@ -22,6 +22,7 @@ import {
 import {
   awardBonusForSale,
   revokeBonusForOrder,
+  revokeBonusForOrderPartial,
   revokeBonusForTicket,
 } from '@/lib/bonus';
 import {
@@ -355,6 +356,8 @@ export async function getBoxOfficeProducts() {
 export interface BoxOfficeProductSelection {
   productId: number;
   quantity: number;
+  /** Պոպկորն/սառը թեյ՝ ՀԴՄ չեկից դուրս (գումարը վերցվում է) */
+  excludeFromFiscal?: boolean;
 }
 
 export type BoxOfficePaymentMethod = 'cash' | 'card';
@@ -648,6 +651,12 @@ export async function createBoxOfficeTicket(data: CreateBoxOfficeTicketData) {
         error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
       };
     }
+    if (error instanceof Error && error.message === 'BONUS_INSUFFICIENT') {
+      return {
+        success: false,
+        error: 'Բոնուսային միավորները բավարար չեն պարգևի համար',
+      };
+    }
     console.error('[Create Box Office Ticket] Error:', error);
     return {
       success: false,
@@ -913,6 +922,12 @@ export async function createBoxOfficeTicketOrder(
       return {
         success: false as const,
         error: 'Որոշ նստատեղեր արդեն զբաղված են, թարմացրեք և կրկին փորձեք',
+      };
+    }
+    if (error instanceof Error && error.message === 'BONUS_INSUFFICIENT') {
+      return {
+        success: false as const,
+        error: 'Բոնուսային միավորները բավարար չեն պարգևի համար',
       };
     }
     console.error('[Create Box Office Ticket Order] Error:', error);
@@ -1276,6 +1291,7 @@ export async function createBoxOfficeProductOrder(
             price: product.price,
             costPrice: product.costPrice ?? 0,
             fulfilledAt: new Date(),
+            excludeFromFiscal: Boolean(sel.excludeFromFiscal),
           },
         });
         await sellQuantityStock(tx, sel.productId, qty);
@@ -1362,6 +1378,12 @@ export async function createBoxOfficeProductOrder(
       return {
         success: false,
         error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
+      };
+    }
+    if (error instanceof Error && error.message === 'BONUS_INSUFFICIENT') {
+      return {
+        success: false,
+        error: 'Բոնուսային միավորները բավարար չեն պարգևի համար',
       };
     }
     console.error('[Create Box Office Product Order] Error:', error);
@@ -1811,9 +1833,15 @@ export async function processBoxOfficeProductReturnExchange(
       returnedProductName = returned.productName;
       originalOrderId = returned.orderId;
 
-      // Վերադարձված ապրանքի համար տրված բոնուսը հետ վերցնել
+      // Վերադարձված ապրանքի համար տրված բոնուսը համամասնորեն հետ վերցնել
       if (originalOrderId) {
-        await revokeBonusForOrder(tx, originalOrderId, Number(staff.id));
+        await revokeBonusForOrderPartial(
+          tx,
+          originalOrderId,
+          refundAmount,
+          returned.orderTotalBefore,
+          Number(staff.id)
+        );
       }
 
       if (data.mode === 'refund') {
@@ -1967,15 +1995,36 @@ export async function processBoxOfficeProductReturnExchange(
             price: product.price,
             costPrice: product.costPrice ?? 0,
             fulfilledAt: new Date(),
+            excludeFromFiscal: Boolean(sel.excludeFromFiscal),
           },
         });
         await sellQuantityStock(tx, sel.productId, qty);
-        exchangeSaleLines.push({
-          name: product.name,
-          price: product.price,
-          qty,
-          eMark: null,
+        if (!sel.excludeFromFiscal) {
+          exchangeSaleLines.push({
+            name: product.name,
+            price: product.price,
+            qty,
+            eMark: null,
+          });
+        }
+      }
+
+      // Փոխանակման նոր վաճառքի բոնուս՝ նախորդ պատվերի earn հաճախորդին
+      if (newTotal > 0 && originalOrderId) {
+        const priorEarn = await tx.bonusTransaction.findFirst({
+          where: { orderId: originalOrderId, type: 'earn' },
+          select: { userId: true },
+          orderBy: { id: 'asc' },
         });
+        if (priorEarn) {
+          await awardBonusForSale(tx, {
+            userId: priorEarn.userId,
+            ticketAmount: 0,
+            productAmount: newTotal,
+            orderId: created.id,
+            source: 'box_office',
+          });
+        }
       }
     });
 
@@ -2096,6 +2145,12 @@ export async function processBoxOfficeProductReturnExchange(
         return {
           success: false,
           error: 'Ապրանքի պաշարը բավարար չէ, թարմացրեք էջը և կրկին փորձեք',
+        };
+      }
+      if (error.message === 'BONUS_INSUFFICIENT') {
+        return {
+          success: false,
+          error: 'Բոնուսային միավորները բավարար չեն պարգևի համար',
         };
       }
     }

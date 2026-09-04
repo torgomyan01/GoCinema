@@ -1105,7 +1105,11 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
 
   const handleSubmitScannerProducts = async (payload: {
     units: string[];
-    popcorn: { productId: number; quantity: number }[];
+    popcorn: {
+      productId: number;
+      quantity: number;
+      excludeFromFiscal?: boolean;
+    }[];
     payment?: { method: PaymentMethod; amountPaid: number };
   }) => {
     if (!productModalTicketId || !activeWindow?.qrCode) return;

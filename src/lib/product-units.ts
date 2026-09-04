@@ -280,6 +280,7 @@ export async function returnSingleProductUnitByQr(tx: Tx, qrCode: string) {
     productName: unit.product.name,
     qrCode: unit.qrCode,
     orderId,
+    orderTotalBefore: unit.orderItem?.order.totalAmount ?? refundAmount,
   };
 }
 

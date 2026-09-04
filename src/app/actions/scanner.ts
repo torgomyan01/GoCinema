@@ -32,6 +32,8 @@ type TxClient = Omit<
 export interface ScannerProductSelection {
   productId: number;
   quantity: number;
+  /** Պոպկորն/սառը թեյ՝ ՀԴՄ չեկից դուրս (գումարը վերցվում է) */
+  excludeFromFiscal?: boolean;
 }
 
 type ScannerPaymentMethod = 'cash' | 'card';
@@ -1667,6 +1669,7 @@ export async function payReservationAtCounter(input: {
       });
     }
     for (const item of chargeableItems) {
+      if (item.excludeFromFiscal) continue;
       const isQtyOnly = isQuantityOnlyProduct(item.product.category);
       if (isQtyOnly) {
         fiscalLines.push({
@@ -1688,6 +1691,11 @@ export async function payReservationAtCounter(input: {
       }
     }
 
+    const fiscalTotal = fiscalLines.reduce(
+      (sum, line) => sum + line.price * line.qty,
+      0
+    );
+
     return {
       success: true,
       total: grandTotal,
@@ -1698,7 +1706,7 @@ export async function payReservationAtCounter(input: {
       fiscal: {
         orderId: order.id,
         paymentMethod: method,
-        total: grandTotal,
+        total: fiscalTotal,
         lines: fiscalLines,
       },
     };
@@ -2132,12 +2140,14 @@ export async function addTicketProducts(data: TicketProductScanInput) {
         };
       }
       productsTotal += product.price * qty;
-      fiscalLines.push({
-        name: product.name,
-        price: product.price,
-        qty,
-        eMark: null,
-      });
+      if (!sel.excludeFromFiscal) {
+        fiscalLines.push({
+          name: product.name,
+          price: product.price,
+          qty,
+          eMark: null,
+        });
+      }
     }
 
     // Ապրանքները միշտ ավելանում են պատվերին (ամրագրում)։
@@ -2233,12 +2243,24 @@ export async function addTicketProducts(data: TicketProductScanInput) {
             price: product.price,
             costPrice: product.costPrice ?? 0,
             fulfilledAt: sellNow ? new Date() : null,
+            excludeFromFiscal: Boolean(sel.excludeFromFiscal),
           },
         });
         // Ամրագրման դեպքում պաշարը չենք հանում մինչև վճարումը
         if (sellNow) {
           await sellQuantityStock(tx, sel.productId, qty);
         }
+      }
+
+      if (sellNow && productsTotal > 0) {
+        await awardBonusForSale(tx, {
+          userId: ticket.userId,
+          ticketAmount: 0,
+          productAmount: productsTotal,
+          orderId,
+          ticketId,
+          source: 'scanner',
+        });
       }
 
       finalOrderId = orderId;
@@ -2278,7 +2300,10 @@ export async function addTicketProducts(data: TicketProductScanInput) {
             orderId: finalOrderId,
             ticketId,
             paymentMethod: (payment?.method ?? 'cash') as 'cash' | 'card',
-            total: productsTotal,
+            total: fiscalLines.reduce(
+              (sum, line) => sum + line.price * line.qty,
+              0
+            ),
             lines: fiscalLines,
           }
         : null,

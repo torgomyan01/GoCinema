@@ -392,6 +392,8 @@ model OrderItem {
   price       Float // Վաճառքի գին պատվերի պահին
   costPrice   Float     @default(0) // Ինքնաարժեք պատվերի պահին (շահույթի հաշվարկ)
   fulfilledAt DateTime? // մուտքի ժամանակ պահեստից հանվել է
+  /// Պոպկորն/սառը թեյ՝ վաճառված է, բայց ՀԴՄ չեկում չի տպվում
+  excludeFromFiscal Boolean @default(false)
 
   order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   ticket  Ticket?       @relation(fields: [ticketId], references: [id], onDelete: Cascade)

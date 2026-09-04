@@ -319,7 +319,11 @@ export default function BoxOfficeClient({
 
   const handleCreateProductOrder = async (payload: {
     units: string[];
-    popcorn: { productId: number; quantity: number }[];
+    popcorn: {
+      productId: number;
+      quantity: number;
+      excludeFromFiscal?: boolean;
+    }[];
     payment?: { method: PaymentMethod; amountPaid: number };
   }) => {
     if (isCreatingOrder) return;
@@ -366,6 +370,7 @@ export default function BoxOfficeClient({
         orderItems?: Array<{
           quantity: number;
           price: number;
+          excludeFromFiscal?: boolean;
           product: { name: string; category: string };
         }>;
       };
@@ -384,7 +389,13 @@ export default function BoxOfficeClient({
           eMark?: string | null;
         }> = [];
 
-        for (const item of order.orderItems) {
+        for (const item of order.orderItems as Array<{
+          quantity: number;
+          price: number;
+          excludeFromFiscal?: boolean;
+          product: { name: string; category: string };
+        }>) {
+          if (item.excludeFromFiscal) continue;
           for (let i = 0; i < item.quantity; i += 1) {
             const needsEmark = !isQuantityOnlyProduct(item.product.category);
             lines.push({
@@ -396,17 +407,24 @@ export default function BoxOfficeClient({
           }
         }
 
-        const notice = await submitSaleFiscal({
-          input: buildProductSaleInput({
-            paymentMethod: payload.payment?.method ?? 'cash',
-            total: result.total ?? 0,
-            lines,
-          }),
-          source: 'box_office',
-          orderId: order.id,
-        });
-        setFiscalNotice(notice);
-        void refreshHdmAgentStatus();
+        const fiscalTotal = lines.reduce(
+          (sum, line) => sum + line.price * line.qty,
+          0
+        );
+
+        if (lines.length > 0 && fiscalTotal > 0) {
+          const notice = await submitSaleFiscal({
+            input: buildProductSaleInput({
+              paymentMethod: payload.payment?.method ?? 'cash',
+              total: fiscalTotal,
+              lines,
+            }),
+            source: 'box_office',
+            orderId: order.id,
+          });
+          setFiscalNotice(notice);
+          void refreshHdmAgentStatus();
+        }
       }
 
       setProductSaleOpen(false);
@@ -424,7 +442,11 @@ export default function BoxOfficeClient({
     returnQrCode: string;
     mode: 'refund' | 'exchange';
     units: string[];
-    popcorn: { productId: number; quantity: number }[];
+    popcorn: {
+      productId: number;
+      quantity: number;
+      excludeFromFiscal?: boolean;
+    }[];
     payment?: { method: PaymentMethod; amountPaid: number };
   }) => {
     if (isProcessingReturn) return;
@@ -510,7 +532,9 @@ export default function BoxOfficeClient({
                       eMark: code as string | null,
                     })
                   ),
-                  ...payload.popcorn.map((p) => {
+                  ...payload.popcorn
+                    .filter((p) => !p.excludeFromFiscal)
+                    .map((p) => {
                     const product = products.find((x) => x.id === p.productId);
                     return {
                       name: product?.name ?? 'Պոպկորն',
@@ -520,16 +544,22 @@ export default function BoxOfficeClient({
                     };
                   }),
                 ];
-          const saleNotice = await submitSaleFiscal({
-            input: buildProductSaleInput({
-              paymentMethod: payload.payment?.method ?? 'cash',
-              total: successResult.newTotal ?? 0,
-              lines: exchangeLines,
-            }),
-            source: 'box_office',
-            orderId: successResult.orderId,
-          });
-          notices.push(saleNotice.message);
+          const fiscalTotal = exchangeLines.reduce(
+            (sum, line) => sum + line.price * line.qty,
+            0
+          );
+          if (exchangeLines.length > 0 && fiscalTotal > 0) {
+            const saleNotice = await submitSaleFiscal({
+              input: buildProductSaleInput({
+                paymentMethod: payload.payment?.method ?? 'cash',
+                total: fiscalTotal,
+                lines: exchangeLines,
+              }),
+              source: 'box_office',
+              orderId: successResult.orderId,
+            });
+            notices.push(saleNotice.message);
+          }
         }
 
         if (notices.length > 0) {

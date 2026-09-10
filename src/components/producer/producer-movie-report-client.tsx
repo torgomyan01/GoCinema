@@ -185,7 +185,7 @@ export default function ProducerMovieReportClient({ movieId }: Props) {
         bg: 'bg-amber-50',
       },
       {
-        label: 'Չեղարկված',
+        label: 'Չեղարկված տեղեր',
         value: totals.cancelled.toLocaleString('hy-AM'),
         icon: XCircle,
         color: 'text-red-600',
@@ -204,7 +204,7 @@ export default function ProducerMovieReportClient({ movieId }: Props) {
       'Ներկա',
       'Չներկայացած',
       'Ամրագրված',
-      'Չեղարկված',
+      'Չեղարկված տեղեր',
       'Հասույթ (֏)',
       'Զբաղվածություն (%)',
     ];
@@ -511,7 +511,7 @@ function ScreeningRow({
                 <MiniStat label="Ներկա" value={s.attended} tone="green" />
                 <MiniStat label="Չներկա" value={s.noShow} tone="orange" />
                 <MiniStat label="Ամր./hold" value={s.reserved} tone="amber" />
-                <MiniStat label="Չեղարկ." value={s.cancelled} tone="red" />
+                <MiniStat label="Չեղարկ. տեղեր" value={s.cancelled} tone="red" />
               </div>
 
               {/* Seat map */}

@@ -21,9 +21,23 @@ const STATUS_PRIORITY = [
 type TicketStatusPriority = (typeof STATUS_PRIORITY)[number];
 
 function pickCurrentTicketBySeat<
-  T extends { seatId: number; status: string },
+  T extends {
+    seatId: number;
+    status: string;
+    updatedAt?: Date | string;
+    createdAt?: Date | string;
+    id?: number;
+  },
 >(tickets: T[]): Map<number, T> {
   const ticketBySeat = new Map<number, T>();
+
+  const tieBreak = (a: T, b: T) => {
+    const aTime = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+    const bTime = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+    if (bTime !== aTime) return bTime - aTime;
+    return (b.id ?? 0) - (a.id ?? 0);
+  };
+
   for (const t of tickets) {
     const existing = ticketBySeat.get(t.seatId);
     if (!existing) {
@@ -35,6 +49,11 @@ function pickCurrentTicketBySeat<
     );
     const nextIdx = STATUS_PRIORITY.indexOf(t.status as TicketStatusPriority);
     if (nextIdx >= 0 && (existingIdx < 0 || nextIdx < existingIdx)) {
+      ticketBySeat.set(t.seatId, t);
+      continue;
+    }
+    // Նույն ստատուս՝ վերցնել ավելի ուշ թարմացվածը (կրկնակի used/paid տողերի դեպքում)
+    if (nextIdx === existingIdx && tieBreak(existing, t) > 0) {
       ticketBySeat.set(t.seatId, t);
     }
   }
@@ -164,7 +183,14 @@ export async function getMyProducedMovies(): Promise<{
             startTime: true,
             tickets: {
               where: { status: { in: [...SOLD_STATUSES] } },
-              select: { seatId: true, price: true, status: true },
+              select: {
+                id: true,
+                seatId: true,
+                price: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true,
+              },
             },
           },
         },
@@ -292,6 +318,7 @@ export async function getProducerMovieReport(params: {
         },
         tickets: {
           select: {
+            id: true,
             seatId: true,
             status: true,
             price: true,
@@ -346,8 +373,13 @@ export async function getProducerMovieReport(params: {
         }
       }
 
-      // Չեղարկումներ՝ բոլոր պատմական cancelled տողերը (ոչ միայն ընթացիկ)
-      cancelled = s.tickets.filter((t) => t.status === 'cancelled').length;
+      // Չեղարկումներ՝ եզակի նստատեղեր, որոնք ունեն cancelled տող
+      // (ոչ բոլոր պատմական տողերը՝ կրկնակի չեղարկումը չի գումարվում)
+      cancelled = new Set(
+        s.tickets
+          .filter((t) => t.status === 'cancelled')
+          .map((t) => t.seatId)
+      ).size;
 
       const hallSeats: ProducerHallSeat[] = seats.map((seat) => {
         const ticket = ticketBySeat.get(seat.id);

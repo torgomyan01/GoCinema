@@ -92,22 +92,29 @@ export default function ProducerMovieReportClient({ movieId }: Props) {
   const [to, setTo] = useState('');
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    const result = await getProducerMovieReport({
-      movieId,
-      from: from || undefined,
-      to: to || undefined,
-    });
-    if (result.success && result.data) {
-      setData(result.data);
-    } else {
-      setError(result.error || 'Հաշվետվությունը բեռնելիս սխալ է տեղի ունեցել');
-      setData(null);
-    }
-    setIsLoading(false);
-  }, [movieId, from, to]);
+  const load = useCallback(
+    async (overrides?: { from?: string; to?: string }) => {
+      setIsLoading(true);
+      setError(null);
+      const fromVal = overrides?.from !== undefined ? overrides.from : from;
+      const toVal = overrides?.to !== undefined ? overrides.to : to;
+      const result = await getProducerMovieReport({
+        movieId,
+        from: fromVal || undefined,
+        to: toVal || undefined,
+      });
+      if (result.success && result.data) {
+        setData(result.data);
+      } else {
+        setError(
+          result.error || 'Հաշվետվությունը բեռնելիս սխալ է տեղի ունեցել'
+        );
+        setData(null);
+      }
+      setIsLoading(false);
+    },
+    [movieId, from, to]
+  );
 
   useEffect(() => {
     void load();
@@ -171,7 +178,7 @@ export default function ProducerMovieReportClient({ movieId }: Props) {
         bg: 'bg-orange-50',
       },
       {
-        label: 'Ամրագրված',
+        label: 'Ամրագրված / hold',
         value: totals.reserved.toLocaleString('hy-AM'),
         icon: Clock,
         color: 'text-amber-600',
@@ -354,7 +361,7 @@ export default function ProducerMovieReportClient({ movieId }: Props) {
                     onClick={() => {
                       setFrom('');
                       setTo('');
-                      setTimeout(() => void load(), 0);
+                      void load({ from: '', to: '' });
                     }}
                     className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
                   >
@@ -503,7 +510,7 @@ function ScreeningRow({
                 <MiniStat label="Վաճառված" value={s.sold} tone="purple" />
                 <MiniStat label="Ներկա" value={s.attended} tone="green" />
                 <MiniStat label="Չներկա" value={s.noShow} tone="orange" />
-                <MiniStat label="Ամրագրված" value={s.reserved} tone="amber" />
+                <MiniStat label="Ամր./hold" value={s.reserved} tone="amber" />
                 <MiniStat label="Չեղարկ." value={s.cancelled} tone="red" />
               </div>
 

@@ -4,9 +4,56 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isAdminRole, isProducerRole } from '@/lib/roles';
-import { isActivePaymentHold } from '@/lib/reservation';
+import { isActivePaymentHold, isPaidTicketStatus } from '@/lib/reservation';
+import { getYerevanDayRange } from '@/lib/format';
 
 const SOLD_STATUSES = ['paid', 'used'] as const;
+
+/** Նույն նստատեղի մի քանի տոմսից ընտրել «ընթացիկ»-ը (օգտագործված > վճարված > ամրագրված > …) */
+const STATUS_PRIORITY = [
+  'used',
+  'paid',
+  'reserved',
+  'awaiting_payment',
+  'cancelled',
+] as const;
+
+type TicketStatusPriority = (typeof STATUS_PRIORITY)[number];
+
+function pickCurrentTicketBySeat<
+  T extends { seatId: number; status: string },
+>(tickets: T[]): Map<number, T> {
+  const ticketBySeat = new Map<number, T>();
+  for (const t of tickets) {
+    const existing = ticketBySeat.get(t.seatId);
+    if (!existing) {
+      ticketBySeat.set(t.seatId, t);
+      continue;
+    }
+    const existingIdx = STATUS_PRIORITY.indexOf(
+      existing.status as TicketStatusPriority
+    );
+    const nextIdx = STATUS_PRIORITY.indexOf(t.status as TicketStatusPriority);
+    if (nextIdx >= 0 && (existingIdx < 0 || nextIdx < existingIdx)) {
+      ticketBySeat.set(t.seatId, t);
+    }
+  }
+  return ticketBySeat;
+}
+
+/** YYYY-MM-DD → Երևանի օրվա սկիզբ / վերջ */
+function parseYerevanDateBound(
+  key: string | undefined,
+  edge: 'start' | 'end'
+): Date | null {
+  if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  if (edge === 'start') {
+    const d = new Date(`${key}T00:00:00+04:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const range = getYerevanDayRange(key, key);
+  return range?.end ?? null;
+}
 
 export interface ProducerMovieListItem {
   id: number;
@@ -117,7 +164,7 @@ export async function getMyProducedMovies(): Promise<{
             startTime: true,
             tickets: {
               where: { status: { in: [...SOLD_STATUSES] } },
-              select: { price: true },
+              select: { seatId: true, price: true, status: true },
             },
           },
         },
@@ -130,7 +177,9 @@ export async function getMyProducedMovies(): Promise<{
       let upcomingCount = 0;
       for (const s of m.screenings) {
         if (new Date(s.startTime) >= now) upcomingCount += 1;
-        for (const t of s.tickets) {
+        // Մեկ նստատեղ = մեկ վաճառք (կրկնակի պատմական տողերը չեն գումարվում)
+        const bySeat = pickCurrentTicketBySeat(s.tickets);
+        for (const t of bySeat.values()) {
           soldTotal += 1;
           revenueTotal += t.price;
         }
@@ -193,28 +242,32 @@ export async function getProducerMovieReport(params: {
       };
     }
 
+    const fromKey = params.from?.trim() || '';
+    const toKey = params.to?.trim() || '';
     let from: Date | null = null;
     let to: Date | null = null;
-    if (params.from) {
-      const d = new Date(params.from);
-      if (!Number.isNaN(d.getTime())) {
-        d.setHours(0, 0, 0, 0);
-        from = d;
+
+    if (fromKey && toKey) {
+      const range = getYerevanDayRange(fromKey, toKey);
+      if (range) {
+        from = range.start;
+        to = range.end;
       }
-    }
-    if (params.to) {
-      const d = new Date(params.to);
-      if (!Number.isNaN(d.getTime())) {
-        d.setHours(23, 59, 59, 999);
-        to = d;
-      }
+    } else {
+      from = parseYerevanDateBound(fromKey || undefined, 'start');
+      to = parseYerevanDateBound(toKey || undefined, 'end');
     }
 
     const screenings = await prisma.screening.findMany({
       where: {
         movieId: movie.id,
         ...(from || to
-          ? { startTime: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
+          ? {
+              startTime: {
+                ...(from ? { gte: from } : {}),
+                ...(to ? { lte: to } : {}),
+              },
+            }
           : {}),
       },
       orderBy: { startTime: 'asc' },
@@ -250,15 +303,13 @@ export async function getProducerMovieReport(params: {
       },
     });
 
-    const STATUS_PRIORITY = [
-      'used',
-      'paid',
-      'reserved',
-      'awaiting_payment',
-      'cancelled',
-    ] as const;
+    const now = new Date();
 
     const rows: ProducerScreeningRow[] = screenings.map((s) => {
+      const seats = s.hall?.seats ?? [];
+      const ticketBySeat = pickCurrentTicketBySeat(s.tickets);
+      const screeningEnded = new Date(s.endTime) < now;
+
       let sold = 0;
       let attended = 0;
       let noShow = 0;
@@ -266,69 +317,73 @@ export async function getProducerMovieReport(params: {
       let cancelled = 0;
       let revenue = 0;
 
-      const ticketBySeat = new Map<number, (typeof s.tickets)[number]>();
-      for (const t of s.tickets) {
-        const existing = ticketBySeat.get(t.seatId);
-        if (!existing) {
-          ticketBySeat.set(t.seatId, t);
+      // Մետրիկաները՝ միայն նստատեղի ընթացիկ տոմսով (համընկնում է սխեմայի հետ)
+      for (const seat of seats) {
+        const ticket = ticketBySeat.get(seat.id);
+        if (!ticket) continue;
+
+        const isExpiredHold =
+          ticket.status === 'awaiting_payment' &&
+          !isActivePaymentHold(ticket.holdUntil, now);
+
+        if (ticket.status === 'cancelled' || isExpiredHold) {
           continue;
         }
-        const existingIdx = STATUS_PRIORITY.indexOf(
-          existing.status as (typeof STATUS_PRIORITY)[number]
-        );
-        const nextIdx = STATUS_PRIORITY.indexOf(
-          t.status as (typeof STATUS_PRIORITY)[number]
-        );
-        if (nextIdx >= 0 && (existingIdx < 0 || nextIdx < existingIdx)) {
-          ticketBySeat.set(t.seatId, t);
+
+        if (isPaidTicketStatus(ticket.status)) {
+          sold += 1;
+          revenue += ticket.price;
+          if (ticket.status === 'used') attended += 1;
+          else if (ticket.status === 'paid' && screeningEnded) noShow += 1;
+          continue;
+        }
+
+        if (
+          ticket.status === 'reserved' ||
+          ticket.status === 'awaiting_payment'
+        ) {
+          reserved += 1;
         }
       }
 
-      const screeningEnded = new Date(s.endTime) < new Date();
-      for (const t of s.tickets) {
-        const isSold = t.status === 'paid' || t.status === 'used';
-        if (isSold) revenue += t.price;
-        if (t.status === 'paid' || t.status === 'used') sold += 1;
-        if (t.status === 'used') attended += 1;
-        if (t.status === 'paid' && screeningEnded) noShow += 1;
-        if (t.status === 'reserved') reserved += 1;
-        if (t.status === 'cancelled') cancelled += 1;
-      }
+      // Չեղարկումներ՝ բոլոր պատմական cancelled տողերը (ոչ միայն ընթացիկ)
+      cancelled = s.tickets.filter((t) => t.status === 'cancelled').length;
 
-      const hallSeats: ProducerHallSeat[] = (s.hall?.seats ?? []).map(
-        (seat) => {
-          const ticket = ticketBySeat.get(seat.id);
-          const isExpiredHold =
-            ticket?.status === 'awaiting_payment' &&
-            !isActivePaymentHold(ticket.holdUntil);
-          if (!ticket || ticket.status === 'cancelled' || isExpiredHold) {
-            return {
-              id: seat.id,
-              row: seat.row,
-              number: seat.number,
-              seatType: seat.seatType,
-              ticket: null,
-            };
-          }
+      const hallSeats: ProducerHallSeat[] = seats.map((seat) => {
+        const ticket = ticketBySeat.get(seat.id);
+        const isExpiredHold =
+          ticket?.status === 'awaiting_payment' &&
+          !isActivePaymentHold(ticket.holdUntil, now);
+        if (!ticket || ticket.status === 'cancelled' || isExpiredHold) {
           return {
             id: seat.id,
             row: seat.row,
             number: seat.number,
             seatType: seat.seatType,
-            ticket: {
-              status: ticket.status as ProducerSeatTicket['status'],
-              price: ticket.price,
-              createdAt: ticket.createdAt.toISOString(),
-              updatedAt: ticket.updatedAt.toISOString(),
-              holdUntil: ticket.holdUntil
-                ? ticket.holdUntil.toISOString()
-                : null,
-            },
+            ticket: null,
           };
         }
-      );
+        return {
+          id: seat.id,
+          row: seat.row,
+          number: seat.number,
+          seatType: seat.seatType,
+          ticket: {
+            status: ticket.status as ProducerSeatTicket['status'],
+            price: ticket.price,
+            createdAt: ticket.createdAt.toISOString(),
+            updatedAt: ticket.updatedAt.toISOString(),
+            holdUntil: ticket.holdUntil
+              ? ticket.holdUntil.toISOString()
+              : null,
+          },
+        };
+      });
 
-      const capacity = s.hall?.capacity ?? 0;
+      // Զբաղվածություն՝ ըստ իրական նստատեղերի քանակի (ոչ հնացած hall.capacity)
+      const capacity =
+        seats.length > 0 ? seats.length : (s.hall?.capacity ?? 0);
+
       return {
         screeningId: s.id,
         startTime: new Date(s.startTime).toISOString(),
@@ -341,7 +396,7 @@ export async function getProducerMovieReport(params: {
         reserved,
         cancelled,
         revenue,
-        occupancy: capacity > 0 ? sold / capacity : 0,
+        occupancy: capacity > 0 ? Math.min(1, sold / capacity) : 0,
         hallSeats,
       };
     });
@@ -370,7 +425,10 @@ export async function getProducerMovieReport(params: {
         occupancy: 0,
       }
     );
-    totals.occupancy = totals.capacity > 0 ? totals.sold / totals.capacity : 0;
+    totals.occupancy =
+      totals.capacity > 0
+        ? Math.min(1, totals.sold / totals.capacity)
+        : 0;
 
     return {
       success: true,

@@ -55,7 +55,14 @@ export async function releaseExpiredReservations(screeningId?: number) {
       for (const orderId of cardOrderIds) {
         try {
           const result = await syncVPostOrderStatus({ orderId });
-          if (!result.success) {
+          // Պաշտպանել՝ եթե sync ձախողվեց, կամ գումարը սառեցված/գանձման ընթացքում է
+          if (
+            !result.success ||
+            ('state' in result &&
+              result.state === 'pending' &&
+              result.canRestart === false) ||
+            ('state' in result && result.state === 'paid')
+          ) {
             expired
               .filter((ticket) => ticket.orderId === orderId)
               .forEach((ticket) => protectTicketIds.add(ticket.id));

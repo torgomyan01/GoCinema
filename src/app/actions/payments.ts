@@ -528,6 +528,38 @@ export async function createVPostOrderForOrder(
       };
     }
 
+    // Եթե արդեն կա vPost փորձ՝ նախ sync, նոր order/new միայն եթե պետք է։
+    // Կանխում է կրկնակի սառեցում/գանձում նույն պատվերի վրա։
+    const existingRefs = parseStoredVPostRefs(order.tickets);
+    if (
+      existingRefs.itfOrderIds.length > 0 ||
+      existingRefs.partnerOrderIds.length > 0
+    ) {
+      const existingSync = await syncVPostOrderStatus({
+        orderId: order.id,
+        userId: data.userId,
+      });
+      if (existingSync.success && 'state' in existingSync) {
+        if (existingSync.state === 'paid') {
+          return {
+            success: false,
+            error: 'Պատվերը արդեն վճարված է',
+          };
+        }
+        if (
+          existingSync.state === 'pending' &&
+          existingSync.canRestart === false
+        ) {
+          return {
+            success: false,
+            error:
+              existingSync.message ||
+              'Վճարումը դեռ գանձվում է։ Խնդրում ենք սպասել, մի սկսեք նոր փորձ։',
+          };
+        }
+      }
+    }
+
     const unpaidTickets = order.tickets.filter((ticket) =>
       isUnpaidHeldStatus(ticket.status)
     );
@@ -767,9 +799,9 @@ export async function syncVPostOrderStatus(data: {
       items: txList.map(summarizeTransactionForLog),
     });
 
-    // Տոմսի օնլայն վճարում — սառեցված գումարը միանգամից գանձել (confirm-payment)։
+    // Մեկ փուլի նպատակ՝ deposited։ Եթե ITF-ը դեռ սառեցնում է (approved) —
+    // անմիջապես confirm-payment։ Տոմսերը paid ենք դարձնում ՄԻԱՅՆ deposited-ից։
     const txNeedingConfirm = txList.find(isVPostPaymentNeedsConfirmation);
-    let captureConfirmed = false;
     let captureUnavailable = false;
     if (txNeedingConfirm) {
       const confirmOrderIds = getVPostConfirmOrderIdCandidates({
@@ -779,6 +811,7 @@ export async function syncVPostOrderStatus(data: {
 
       paymentServerLog('vpost_confirm_attempt', {
         orderId: order.id,
+        reason: 'authorized_not_deposited_force_capture',
         confirmOrderIds,
         customerId: order.userId,
         amount: order.totalAmount,
@@ -794,12 +827,12 @@ export async function syncVPostOrderStatus(data: {
         status: confirmResult.status,
         message: confirmResult.message,
         responseCode: confirmResult.data?.responseCode,
+        duplicate: confirmResult.duplicate,
         itfOrderId: confirmResult.data?.itfOrderId,
         partnerOrderId: confirmResult.data?.partnerOrderId,
       });
 
-      if (confirmResult.status === true || confirmResult.duplicate) {
-        captureConfirmed = true;
+      const refreshTxList = async () => {
         const refreshed = await resolveVPostTransactionsForGoCinemaOrder({
           orderId: order.id,
           knownItfOrderIds: refs.itfOrderIds,
@@ -813,17 +846,32 @@ export async function syncVPostOrderStatus(data: {
           data: { list: refreshed.list },
         };
         txList = refreshed.list;
+      };
+
+      // duplicate ≠ գանձում․ միայն status=true կամ արդեն deposited
+      if (confirmResult.status === true || confirmResult.duplicate) {
+        await refreshTxList();
+        if (!txList.some(isVPostPaymentDeposited)) {
+          await new Promise((r) => setTimeout(r, 1200));
+          await refreshTxList();
+        }
       } else if (isVPostConfirmServiceDisabled(confirmResult)) {
         captureUnavailable = true;
         paymentServerLog('vpost_confirm_service_disabled', {
           orderId: order.id,
           message: confirmResult.message,
         });
+        try {
+          await createNotification({
+            type: 'online_ticket',
+            title: 'vPost confirm անհասանելի է',
+            message: `Պատվեր #${order.id}: գումարը սառեցված է, confirm-payment չի աշխատում (${confirmResult.message || '550'}). Ձեռքով գանձել կամ չեղարկել։`,
+            link: '/admin/payments',
+          });
+        } catch {
+          // ignore notification errors
+        }
       }
-    }
-
-    if (captureConfirmed && txList.length === 0 && txNeedingConfirm) {
-      txList = [txNeedingConfirm];
     }
 
     if (!txResponse.status && txList.length === 0) {
@@ -867,14 +915,9 @@ export async function syncVPostOrderStatus(data: {
       orderInternalStatus: newestTx.order?.status,
     });
 
-    // ՎՃԱՐՎԱԾ՝ գանձված (deposited), կամ confirm-payment-ը հաջող է,
-    // կամ ITF-ը confirm չի աջակցում ու approved-ն արդեն վերջնական է։
-    const paidTx =
-      txList.find(isVPostPaymentDeposited) ||
-      (captureConfirmed
-        ? txList.find(isVPostPaymentCaptured) || txNeedingConfirm
-        : undefined) ||
-      (captureUnavailable ? txList.find(isVPostPaymentCaptured) : undefined);
+    // ՎՃԱՐՎԱԾ = միայն իրական գանձում (payment_deposited)։
+    // approved/550/duplicate-ով տոմս ՉԵՆՔ տալիս։
+    const paidTx = txList.find(isVPostPaymentDeposited);
 
     // Եթե հաստատված գործարք չկա, և ամենանորը դեռ payment_started (0) է
     // (օր. օգտատերը back է արել առանց վճարման) → Չենք մարկում paid։
@@ -892,9 +935,20 @@ export async function syncVPostOrderStatus(data: {
       };
     }
     if (paidTx) {
-      // Գումարի ստուգում — կանխել թերավճարով տոմս ստանալը (fabricated tx-ի դեպքում amount չկա)
+      // Գումարի ստուգում — թերավճար կամ անհայտ գումար → տոմս չենք տալիս
       const paidAmount = getVPostTransactionAmount(paidTx);
-      if (paidAmount != null && paidAmount + 1 < order.totalAmount) {
+      if (paidAmount == null) {
+        paymentServerLog('vpost_amount_missing', {
+          orderId: order.id,
+          expected: order.totalAmount,
+        });
+        return {
+          success: false,
+          error:
+            'Վճարման գումարը չի հաստատվել vPost-ից։ Դիմեք աջակցությանը։',
+        };
+      }
+      if (paidAmount + 1 < order.totalAmount) {
         paymentServerLog('vpost_amount_mismatch', {
           orderId: order.id,
           expected: order.totalAmount,
@@ -963,7 +1017,21 @@ export async function syncVPostOrderStatus(data: {
           .map((c) => `${c.row}${c.number}`)
           .join(', ');
 
-        // Ավտոմատ vPost cancel/refund՝ գումարը չմնա սառեցված/գանձված
+        // Մասնակի կոնֆլիկտ՝ վերադարձնել միայն կոնֆլիկտային տեղերի գումարը
+        const conflictAmount =
+          conflicts.length >= order.tickets.length
+            ? order.totalAmount
+            : order.tickets
+                .filter((t) =>
+                  conflicts.some(
+                    (c) =>
+                      t.seat != null &&
+                      t.seat.row === c.row &&
+                      t.seat.number === c.number
+                  )
+                )
+                .reduce((sum, t) => sum + t.price, 0);
+
         const cancelOrderId =
           getVPostActionOrderId(paidTx) ??
           refs.partnerOrderIds[0] ??
@@ -971,11 +1039,12 @@ export async function syncVPostOrderStatus(data: {
         try {
           const cancelResult = await cancelVPostPayment({
             orderID: cancelOrderId,
-            amount: order.totalAmount,
+            amount: conflictAmount > 0 ? conflictAmount : order.totalAmount,
           });
           paymentServerLog('vpost_auto_refund_on_conflict', {
             orderId: order.id,
             cancelOrderId,
+            conflictAmount,
             status: cancelResult.status,
             message: cancelResult.message,
           });
@@ -990,13 +1059,19 @@ export async function syncVPostOrderStatus(data: {
                 )
               )
               .map((t) => t.id);
-            // Եթե բոլոր տեղերը conflict էին՝ բոլոր payment-ները refunded են արդեն finalize-ում
             if (conflictTicketIds.length > 0) {
               await prisma.payment.updateMany({
                 where: { ticketId: { in: conflictTicketIds } },
                 data: { status: 'refunded' },
               });
             }
+          } else {
+            await createNotification({
+              type: 'online_ticket',
+              title: 'vPost վերադարձը ձախողվեց',
+              message: `Պատվեր #${order.id}: կոնֆլիկտ (${seatLabels}), վերադարձ ${formatAmd(conflictAmount)}՝ ${cancelResult.message || 'սխալ'}`,
+              link: '/admin/payments',
+            });
           }
         } catch (refundErr) {
           paymentServerLog('vpost_auto_refund_failed', {
@@ -1024,18 +1099,32 @@ export async function syncVPostOrderStatus(data: {
       };
     }
 
-    // Սառեցված է, confirm-payment-ը դեռ չի գանձել — կրկին փորձել backlink/cron-ով։
-    if (!paidTx && txList.some(isVPostPaymentNeedsConfirmation) && !captureUnavailable) {
+    // Սառեցված է, confirm դեռ չի գանձել — տոմս ՉԵՆՔ տալիս։
+    if (
+      !paidTx &&
+      (txList.some(isVPostPaymentNeedsConfirmation) || captureUnavailable)
+    ) {
       paymentServerLog('vpost_sync_decision', {
         orderId: order.id,
         decision: 'pending',
-        reason: 'authorized_not_captured',
+        reason: captureUnavailable
+          ? 'confirm_service_disabled_keep_pending'
+          : 'authorized_not_captured',
+      });
+      await prisma.ticket.updateMany({
+        where: {
+          orderId: order.id,
+          status: AWAITING_PAYMENT_STATUS,
+        },
+        data: { holdUntil: paymentGatewayHoldUntil() },
       });
       return {
         success: true,
         state: 'pending' as const,
         canRestart: false,
-        message: 'Վճարումը գանձվում է, խնդրում ենք սպասել…',
+        message: captureUnavailable
+          ? 'Վճարումը սառեցված է։ Գանձումը ժամանակավորապես անհասանելի է, խնդրում ենք սպասել կամ դիմել աջակցությանը։'
+          : 'Վճարումը գանձվում է, խնդրում ենք սպասել…',
       };
     }
 

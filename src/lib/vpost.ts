@@ -437,16 +437,26 @@ export function hasVPostConfig() {
 }
 
 /**
- * Գանձման ռեժիմ.
- * ITF մերչանտը հաճախ սառեցնում է գումարը (`payment_approved`)։
- * Օնլայն տոմսի վճարման ժամանակ մենք ավտոմատ կանչում ենք confirm-payment,
- * որ գումարը միանգամից գանձվի (`payment_deposited`), ոչ թե մնա hold-ում։
+ * Վճարման ռեժիմ (ITF մերչանտի կարգավորում).
  *
- * `PAYMENT_TWO_PHASE` այլևս չի կառավարում այդ ավտոգանձումը։
+ * Դոկումենտացիա՝ https://itfllc.am/hy/documentation/vpost
+ * - Մեկ փուլով՝ գումարը միանգամից ելքագրվում է (`payment_deposited`) — սառեցում չի լինում։
+ * - Երկու փուլով՝ սկզբում սառեցում (`payment_approved`), հետո Confirmation։
+ *
+ * `/order/new` API-ում փուլ ընտրելու պարամետր չկա — ռեժիմը միացնում է ITF-ը մերչանտի վրա։
+ * Մեր կողմից լռելյայն նպատակը՝ **մեկ փուլ** (`PAYMENT_TWO_PHASE` չկա / false)։
+ *
+ * Եթե ITF-ը դեռ երկու փուլ է թողել, sync-ը ավտոմատ կանչում է confirm-payment,
+ * որ գումարը չմնա hold-ում (մինչև ITF-ը միացնի իսկական մեկ փուլը)։
  */
 export function isVPostTwoPhaseEnabled(): boolean {
   const value = (process.env.PAYMENT_TWO_PHASE || '').trim().toLowerCase();
   return value === 'true' || value === '1' || value === 'yes';
+}
+
+/** Լռելյայն / նպատակային ռեժիմ՝ մեկ փուլով գանձում առանց սառեցման։ */
+export function isVPostOnePhaseMode(): boolean {
+  return !isVPostTwoPhaseEnabled();
 }
 
 export function isVPostConfirmServiceDisabled(result: {
@@ -1292,9 +1302,8 @@ export function isVPostPaymentStarted(tx?: VPostTransactionListItem): boolean {
 }
 
 /**
- * Տոմսը «վճարված» դարձնելու միակ թույլատրելի վիճակները.
- * - single-phase՝ approved / autoauthorized / deposited
- * - երկու-փուլ՝ միայն deposited (կանչողը պետք է ֆիլտրի)
+ * Տոմսը «վճարված» դարձնելու թույլատրելի վիճակներ (fallback / captureUnavailable).
+ * Վերջնական ճշգրիտ վիճակը՝ `isVPostPaymentDeposited` (`payment_deposited`)։
  * Կարևոր՝ `started` (0) և `unknown` ԵՐԲԵՔ չեն համարվում վճարված։
  */
 export function isVPostPaymentCaptured(tx?: VPostTransactionListItem): boolean {

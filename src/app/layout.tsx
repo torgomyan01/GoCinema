@@ -8,10 +8,12 @@ import 'swiper/css/pagination';
 import './tailwind.css';
 
 import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import NextTopLoader from 'nextjs-toploader';
 import { Noto_Sans_Armenian, Roboto } from 'next/font/google';
 
 import { Providers } from '@/app/providers';
+import GoogleAnalytics from '@/components/google-analytics';
 
 const roboto = Roboto({
   weight: ['100', '300', '400', '500', '700', '900'],
@@ -53,6 +55,9 @@ export default async function RootLayout({
       className={`${roboto.variable} ${notoSansArmenian.variable} font-sans light`}
     >
       <body className="text-foreground bg-background antialiased">
+        <Suspense fallback={null}>
+          <GoogleAnalytics />
+        </Suspense>
         <NextTopLoader />
         <Providers>{children}</Providers>
       </body>

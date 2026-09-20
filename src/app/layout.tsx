@@ -32,7 +32,6 @@ const notoSansArmenian = Noto_Sans_Armenian({
 export const metadata: Metadata = {
   verification: {
     google: 'sIKtSAxr0Ad13m2js8Xwbj0KEGe4DDesqocS3NjrKPo',
-    yandex: 'fd366c106ad19775',
   },
 };
 

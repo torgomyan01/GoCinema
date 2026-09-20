@@ -60,7 +60,6 @@
     "react-dom": "^19.2.1",
     "react-photo-view": "^1.2.7",
     "react-redux": "^9.2.0",
-    "react-yandex-metrika": "^2.6.0",
     "swiper": "^11.2.8",
     "tailwindcss": "^4.1.11",
     "xlsx": "^0.18.5"

@@ -47,6 +47,13 @@ interface TicketCardProps {
   removingOrderItemId?: number | null;
   onCancelTicket?: (ticketId: number) => Promise<boolean> | boolean;
   isCancelling?: boolean;
+  /** Պատվերի ռեժիմում ապրանքները ցույց են տրվում մեկ ընդհանուր բլոկում */
+  hideProducts?: boolean;
+  /** Կարճ քարտ՝ grid-ում (աթոռը գլխավոր) */
+  compact?: boolean;
+  /** Ապրանքների QR չսկանավորված է՝ մուտքն արգելված է */
+  entryLocked?: boolean;
+  onEntryLockedClick?: () => void;
 }
 
 export default function TicketCard({
@@ -65,6 +72,10 @@ export default function TicketCard({
   removingOrderItemId = null,
   onCancelTicket,
   isCancelling = false,
+  hideProducts = false,
+  compact = false,
+  entryLocked = false,
+  onEntryLockedClick,
 }: TicketCardProps) {
   const statusBadge = getStatusBadge(ticket.status);
   const isUsed = ticket.status === 'used';
@@ -121,9 +132,14 @@ export default function TicketCard({
   const handleCheckboxChange = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
+    const checked = e.target.checked;
+    if (checked && entryLocked) {
+      e.preventDefault();
+      onEntryLockedClick?.();
+      return;
+    }
     if (checkboxDisabled || !onCheckedChange) return;
 
-    const checked = e.target.checked;
     setIsPending(true);
     try {
       await onCheckedChange(ticket.id, checked);
@@ -150,6 +166,113 @@ export default function TicketCard({
     }
   };
 
+  const seatLabel = `${ticket.seat?.row ?? ''}${ticket.seat?.number ?? ''}`;
+
+  if (compact) {
+    return (
+      <div
+        className={`flex h-full flex-col rounded-xl border p-3 transition-colors ${
+          isCancelled
+            ? 'border-red-200 bg-red-50/40 opacity-80'
+            : isUsed
+              ? 'border-green-300 bg-green-50/50'
+              : 'border-gray-200 bg-white hover:border-purple-300'
+        }`}
+      >
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+              Տեղ
+            </p>
+            <p className="text-3xl font-bold leading-none tracking-tight text-gray-900">
+              {seatLabel || '—'}
+            </p>
+            {ticket.seat?.seatType && ticket.seat.seatType !== 'standard' && (
+              <p className="mt-1 text-[11px] font-medium text-purple-600">
+                {getSeatTypeLabel(ticket.seat.seatType)}
+              </p>
+            )}
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusBadge.color}`}
+          >
+            {statusBadge.label}
+          </span>
+        </div>
+
+        <div className="mb-2 space-y-0.5 text-xs text-gray-500">
+          <p className="truncate">{ticket.screening?.hall?.name}</p>
+          <p className="font-medium text-gray-800">
+            {formatPrice(ticket.price ?? 0)} ֏
+          </p>
+          {ticket.status === 'awaiting_payment' && holdLabel != null && (
+            <p className="font-medium text-amber-700 tabular-nums">
+              Մնացել է {holdLabel}
+            </p>
+          )}
+        </div>
+
+        {!isCancelled && (
+          <div className="mt-auto space-y-1.5 border-t border-gray-100 pt-2">
+            <label
+              className="flex cursor-pointer items-center"
+              onClick={(e) => {
+                if (entryLocked && !isUsed) {
+                  e.preventDefault();
+                  onEntryLockedClick?.();
+                }
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isUsed || isChecked}
+                onChange={handleCheckboxChange}
+                disabled={checkboxDisabled || (entryLocked && !isUsed)}
+                className="h-5 w-5 cursor-pointer rounded border-gray-300 text-purple-600 focus:ring-2 focus:ring-purple-500 disabled:cursor-not-allowed disabled:opacity-70"
+              />
+              <span className="ml-2 text-xs font-medium text-gray-700">
+                {isUsed
+                  ? 'Մուտք է գործել'
+                  : isPending || isMarking
+                    ? 'Նշվում է...'
+                    : entryLocked
+                      ? 'Նախ սկան'
+                      : 'Մուտք'}
+              </span>
+            </label>
+            {entryLocked && !isUsed && canToggleEntry && (
+              <button
+                type="button"
+                onClick={() => onEntryLockedClick?.()}
+                className="w-full text-left text-[11px] font-semibold text-amber-700 underline"
+              >
+                Սկանավորել ապրանքները
+              </button>
+            )}
+          </div>
+        )}
+
+        {canCancel && (
+          <button
+            type="button"
+            onClick={() => void handleCancel()}
+            disabled={isCancelPending || isCancelling}
+            className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+          >
+            {isCancelPending || isCancelling ? (
+              'Չեղարկվում է...'
+            ) : (
+              <>
+                <Ban className="h-3 w-3" />
+                Չեղարկել
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`rounded-lg border p-4 transition-colors ${
@@ -161,13 +284,25 @@ export default function TicketCard({
       <div className="mb-3 flex items-start justify-between">
         <div className="flex-1">
           {!isCancelled && (
-            <div className="mb-2 flex items-center gap-3">
-              <label className="flex cursor-pointer items-center">
+            <div className="mb-2 space-y-1.5">
+              <label
+                className={`flex items-center ${
+                  entryLocked && !isUsed
+                    ? 'cursor-pointer'
+                    : 'cursor-pointer'
+                }`}
+                onClick={(e) => {
+                  if (entryLocked && !isUsed) {
+                    e.preventDefault();
+                    onEntryLockedClick?.();
+                  }
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={isUsed || isChecked}
                   onChange={handleCheckboxChange}
-                  disabled={checkboxDisabled}
+                  disabled={checkboxDisabled || (entryLocked && !isUsed)}
                   className="h-5 w-5 cursor-pointer rounded border-gray-300 text-purple-600 focus:ring-2 focus:ring-purple-500 disabled:cursor-not-allowed disabled:opacity-70"
                 />
                 <span className="ml-2 text-sm text-gray-600">
@@ -175,9 +310,20 @@ export default function TicketCard({
                     ? 'Մուտք է գործել'
                     : isPending || isMarking
                       ? 'Նշվում է...'
-                      : 'Չի մուտք գործել'}
+                      : entryLocked
+                        ? 'Նախ սկանավորեք ապրանքները'
+                        : 'Չի մուտք գործել'}
                 </span>
               </label>
+              {entryLocked && !isUsed && canToggleEntry && (
+                <button
+                  type="button"
+                  onClick={() => onEntryLockedClick?.()}
+                  className="ml-7 text-left text-xs font-semibold text-amber-700 underline decoration-amber-300 hover:text-amber-800"
+                >
+                  Բացել ապրանքների սկանը
+                </button>
+              )}
             </div>
           )}
           <div className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
@@ -236,7 +382,7 @@ export default function TicketCard({
         </div>
       </div>
 
-      {(ticket.orderItems?.length > 0 || canAddProducts) && (
+      {!hideProducts && (ticket.orderItems?.length > 0 || canAddProducts) && (
         <div className="mt-3 border-t border-gray-200 pt-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1 text-xs font-medium text-gray-700">

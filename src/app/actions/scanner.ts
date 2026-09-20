@@ -751,6 +751,121 @@ export async function lookupPreOrderProductQrForTicket(
   }
 }
 
+/** Պատվերի բոլոր տոմսերի ապրանքներից գտնել համապատասխան տողը */
+export async function lookupPreOrderProductQrForOrder(
+  orderId: number,
+  qrCode: string
+) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const id = Number(orderId);
+  const code = (qrCode ?? '').trim();
+  if (!Number.isFinite(id) || id <= 0) {
+    return { success: false, error: 'Անվավեր պատվեր' };
+  }
+  if (!code) {
+    return { success: false, error: 'QR կոդը դատարկ է' };
+  }
+
+  try {
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        orderId: id,
+        status: { in: ['paid', 'reserved', 'awaiting_payment'] },
+      },
+      include: {
+        orderItems: {
+          where: { fulfilledAt: null },
+          include: {
+            product: { select: { name: true, category: true } },
+            units: { select: { qrCode: true, status: true } },
+          },
+        },
+      },
+    });
+
+    if (tickets.length === 0) {
+      return { success: false, error: 'Պատվերը չի գտնվել' };
+    }
+
+    const unit = await prisma.productUnit.findUnique({
+      where: { qrCode: code },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            category: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!unit) {
+      return { success: false, error: 'QR կոդը բազայում չի գտնվել' };
+    }
+    if (isQuantityOnlyProduct(unit.product.category)) {
+      return { success: false, error: 'Պոպկոռնը QR-ով չի վաճառվում' };
+    }
+    if (!unit.product.isActive) {
+      return { success: false, error: `«${unit.product.name}» ապրանքն ակտիվ չէ` };
+    }
+    if (unit.status !== 'in_stock') {
+      return { success: false, error: 'Այս միավորն արդեն վաճառված է' };
+    }
+
+    const pendingLines = tickets.flatMap((ticket) =>
+      ticket.orderItems
+        .filter((item) => !isQuantityOnlyProduct(item.product.category))
+        .map((item) => ({ ...item, ticketId: ticket.id }))
+    );
+
+    const target = pendingLines.find((item) => {
+      if (item.product.category !== unit.product.category) return false;
+      const attached =
+        item.units?.filter(
+          (u) => u.status === 'in_stock' || u.status === 'sold'
+        ).length ?? 0;
+      return attached < item.quantity;
+    });
+
+    if (!target) {
+      const hasCategory = pendingLines.some(
+        (item) => item.product.category === unit.product.category
+      );
+      return {
+        success: false,
+        error: hasCategory
+          ? `«${unit.product.name}»-ի բոլոր QR-ները արդեն սկանավորված են`
+          : `Այս պատվերին "${unit.product.category}" կատեգորիայի ապրանք չի ամրագրվել`,
+      };
+    }
+
+    return {
+      success: true,
+      unit: {
+        id: unit.id,
+        qrCode: unit.qrCode,
+        productId: unit.product.id,
+        name: unit.product.name,
+        price: unit.product.price,
+        category: unit.product.category,
+      },
+      orderItemId: target.id,
+      orderItemName: target.product.name,
+      ticketId: target.ticketId,
+    };
+  } catch (error) {
+    console.error('[Lookup PreOrder QR For Order] Error:', error);
+    return { success: false, error: 'QR-ը ստուգելիս սխալ է տեղի ունեցել' };
+  }
+}
+
 /** QR-ները կցել + մուտք գործարկել + ֆիսկալ տվյալներ մեկ քայլով */
 export async function completeTicketEntry(input: {
   ticketId: number;
@@ -980,6 +1095,105 @@ export async function attachTicketPreOrderQrs(input: {
   }
 }
 
+/**
+ * Պատվերի բոլոր տոմսերի ապրանքներին QR կցել մեկ քայլով (առանց մուտքի)։
+ * Վճարված տոմսերի մուտքը շարունակվում է տոմսերի նշումով։
+ */
+export async function attachOrderPreOrderQrs(input: {
+  orderId: number;
+  items: Array<{ orderItemId: number; qrCodes: string[]; quantity: number }>;
+}) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const orderId = Number(input.orderId);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    return { success: false, error: 'Անվավեր պատվեր' };
+  }
+
+  try {
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        orderId,
+        status: { in: ['paid', 'reserved', 'awaiting_payment'] },
+      },
+      include: {
+        orderItems: {
+          where: { fulfilledAt: null },
+          include: {
+            product: { select: { name: true, category: true } },
+            units: { select: { qrCode: true, status: true } },
+          },
+        },
+      },
+    });
+
+    if (tickets.length === 0) {
+      return { success: false, error: 'Պատվերը չի գտնվել' };
+    }
+
+    const qrLines = tickets.flatMap((ticket) =>
+      ticket.orderItems.filter(
+        (item) => !isQuantityOnlyProduct(item.product.category)
+      )
+    );
+
+    for (const line of qrLines) {
+      const payload = input.items.find((i) => i.orderItemId === line.id);
+      const qrCodes = Array.from(
+        new Set((payload?.qrCodes ?? []).map((c) => c.trim()).filter(Boolean))
+      );
+      const quantity = Math.floor(Number(payload?.quantity ?? line.quantity));
+      if (qrCodes.length !== quantity) {
+        return {
+          success: false,
+          error: `«${line.product.name}»-ի համար սկանավորեք ${line.quantity} QR`,
+        };
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const line of qrLines) {
+        const payload = input.items.find((i) => i.orderItemId === line.id)!;
+        const qrCodes = Array.from(
+          new Set(payload.qrCodes.map((c) => c.trim()).filter(Boolean))
+        );
+        await attachPreOrderProductQrsInTx(
+          tx,
+          line.id,
+          qrCodes,
+          payload.quantity
+        );
+      }
+    });
+
+    revalidatePath('/admin/scanner');
+    revalidatePath('/admin/tickets');
+    revalidatePath('/admin/product-units');
+
+    return {
+      success: true,
+      message: 'Պատվերի ապրանքների QR-ները կցվեցին',
+    };
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.startsWith('CATEGORY_MISMATCH:')) {
+      const name = error.message.slice('CATEGORY_MISMATCH:'.length);
+      return {
+        success: false,
+        error: `QR-ի կատեգորիան չի համապատասխանում «${name}»-ին`,
+      };
+    }
+    const stockError = mapStockError(error);
+    if (stockError) {
+      return { success: false, error: stockError };
+    }
+    console.error('[Attach Order PreOrder Qrs] Error:', error);
+    return { success: false, error: 'QR-ները կցելիս սխալ է տեղի ունեցել' };
+  }
+}
+
 function mapStockError(error: unknown): string | null {
   const preOrderError = mapPreOrderQrError(error);
   if (preOrderError) return preOrderError;
@@ -1114,6 +1328,30 @@ export async function markTicketAsUsed(ticketId: number) {
         success: false,
         error: 'Տոմսը պետք է լինի վճարված',
       };
+    }
+
+    // Պարտադիր՝ նախ սկանավորված QR ապրանքներ
+    const pendingQrItems = await prisma.orderItem.findMany({
+      where: {
+        ticketId,
+        fulfilledAt: null,
+        product: { category: { notIn: [...QUANTITY_ONLY_CATEGORIES] } },
+      },
+      include: {
+        product: { select: { name: true, category: true } },
+        units: { select: { status: true } },
+      },
+    });
+    for (const item of pendingQrItems) {
+      const attached = item.units.filter(
+        (u) => u.status === 'in_stock' || u.status === 'sold'
+      ).length;
+      if (attached < item.quantity) {
+        return {
+          success: false,
+          error: `Նախ սկանավորեք «${item.product.name}» ապրանքի QR-ները (${attached}/${item.quantity})`,
+        };
+      }
     }
 
     // ՀԴՄ-ին ուղարկում ենք ՄԻԱՅՆ ապրանքները (QR/eMark)։ Վճարված տոմսը
@@ -1281,6 +1519,30 @@ export async function markAllTicketsInOrderAsUsed(orderId: number) {
         success: false,
         error: 'Պատվերում վճարված տոմսեր չկան',
       };
+    }
+
+    // Պարտադիր՝ նախ սկանավորված QR ապրանքներ ամբողջ պատվերի համար
+    const pendingQrItems = await prisma.orderItem.findMany({
+      where: {
+        ticketId: { in: paidTickets.map((t) => t.id) },
+        fulfilledAt: null,
+        product: { category: { notIn: [...QUANTITY_ONLY_CATEGORIES] } },
+      },
+      include: {
+        product: { select: { name: true } },
+        units: { select: { status: true } },
+      },
+    });
+    for (const item of pendingQrItems) {
+      const attached = item.units.filter(
+        (u) => u.status === 'in_stock' || u.status === 'sold'
+      ).length;
+      if (attached < item.quantity) {
+        return {
+          success: false,
+          error: `Նախ սկանավորեք պատվերի ապրանքների QR-ները («${item.product.name}»՝ ${attached}/${item.quantity})`,
+        };
+      }
     }
 
     // ՀԴՄ-ին ուղարկում ենք ՄԻԱՅՆ ապրանքները (QR/eMark)։ Վճարված տոմսերը

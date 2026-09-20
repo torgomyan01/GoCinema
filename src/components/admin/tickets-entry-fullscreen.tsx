@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import {
   isTicketQrReady,
+  orderNeedsQrScan,
+  orderQrScanProgress,
   ticketNeedsQrScan,
   ticketQrScanProgress,
 } from '@/lib/preorder-entry';
@@ -26,7 +28,8 @@ interface TicketsEntryFullscreenProps {
   getStatusBadge: (status: string) => { label: string; color: string };
   getSeatTypeLabel: (seatType: string) => string;
   onEntryChange: (ticketId: number, checked: boolean) => Promise<boolean> | boolean;
-  onScanPreOrderProducts?: (ticket: any) => void;
+  /** Պատվերի բոլոր ապրանքների սկան՝ մեկ տեղում */
+  onScanOrderProducts?: () => void;
 }
 
 export default function TicketsEntryFullscreen({
@@ -37,7 +40,7 @@ export default function TicketsEntryFullscreen({
   getStatusBadge,
   getSeatTypeLabel,
   onEntryChange,
-  onScanPreOrderProducts,
+  onScanOrderProducts,
 }: TicketsEntryFullscreenProps) {
   const [mounted, setMounted] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
@@ -67,6 +70,12 @@ export default function TicketsEntryFullscreen({
         ticket.status === 'paid' || ticket.status === 'used';
       if (!canToggle || pendingIds.has(id)) return;
 
+      // Մուտք միայն եթե ապրանքների QR-ն արդեն պատրաստ է
+      if (ticket.status === 'paid' && orderNeedsQrScan(tickets)) {
+        onScanOrderProducts?.();
+        return;
+      }
+
       const nextChecked = ticket.status !== 'used';
       setPendingIds((prev) => new Set(prev).add(id));
       try {
@@ -79,7 +88,7 @@ export default function TicketsEntryFullscreen({
         });
       }
     },
-    [onEntryChange, pendingIds]
+    [onEntryChange, onScanOrderProducts, pendingIds, tickets]
   );
 
   if (!mounted || !open) return null;
@@ -89,6 +98,8 @@ export default function TicketsEntryFullscreen({
     tickets[0]?.screening?.movie?.title || 'Տոմսեր';
   const hallName = tickets[0]?.screening?.hall?.name;
   const startTime = tickets[0]?.screening?.startTime;
+  const needsOrderQr = orderNeedsQrScan(tickets);
+  const orderQrProgress = orderQrScanProgress(tickets);
 
   return createPortal(
     <div
@@ -135,6 +146,27 @@ export default function TicketsEntryFullscreen({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+        {needsOrderQr && onScanOrderProducts && (
+          <div className="mx-auto mb-4 flex max-w-6xl flex-col gap-2 rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-900">
+                Պարտադիր՝ նախ սկանավորեք ապրանքների QR-ները
+              </p>
+              <p className="text-xs text-amber-800">
+                Տոմսերի մուտքը կողպված է · {orderQrProgress.done}/
+                {orderQrProgress.total}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onScanOrderProducts}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-purple-600 px-4 text-sm font-semibold text-white hover:bg-purple-700"
+            >
+              <ScanLine className="h-4 w-4" />
+              Սկանավորել ապրանքները
+            </button>
+          </div>
+        )}
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {tickets.map((ticket) => {
             const id = Number(ticket.id);
@@ -201,18 +233,21 @@ export default function TicketsEntryFullscreen({
                   )}
                 </div>
 
-                {needsQr && onScanPreOrderProducts && (
-                  <button
-                    type="button"
-                    onClick={() => onScanPreOrderProducts(ticket)}
-                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 py-2.5 text-sm font-semibold text-purple-700 hover:bg-purple-100"
-                  >
-                    <ScanLine className="h-4 w-4" />
-                    Սկանավորել QR
-                  </button>
-                )}
-
                 {canToggle ? (
+                  needsOrderQr && !isUsed ? (
+                    <button
+                      type="button"
+                      onClick={() => onScanOrderProducts?.()}
+                      className="mt-auto flex w-full flex-col items-center gap-1 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3.5 text-center"
+                    >
+                      <span className="text-base font-bold text-amber-900">
+                        Մուտքը կողպված է
+                      </span>
+                      <span className="text-xs text-amber-800">
+                        Նախ սկանավորեք ապրանքների QR-ները
+                      </span>
+                    </button>
+                  ) : (
                   <label
                     className={`mt-auto flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3.5 transition ${
                       isUsed
@@ -250,6 +285,7 @@ export default function TicketsEntryFullscreen({
                       </span>
                     </span>
                   </label>
+                  )
                 ) : (
                   <div className="mt-auto rounded-xl bg-gray-100 py-3 text-center text-sm font-medium text-gray-500">
                     Մուտք հնարավոր չէ ({statusBadge.label})

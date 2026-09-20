@@ -25,6 +25,7 @@ import {
   Info,
   ScanLine,
   Trash2,
+  ChevronDown,
 } from 'lucide-react';
 import { Search, Banknote } from 'lucide-react';
 import QRScanner from './qr-scanner';
@@ -50,6 +51,8 @@ import {
   confirmOrderEntryFulfillment,
   getCustomerTicketsForScanner,
   mergeReservedTicketsIntoOrder,
+  lookupPreOrderProductQrForOrder,
+  attachOrderPreOrderQrs,
   type CustomerScannerTicketRow,
 } from '@/app/actions/scanner';
 import { cancelBoxOfficeTicket } from '@/app/actions/box-office';
@@ -60,7 +63,16 @@ import {
   submitSaleFiscal,
   type FiscalNotice,
 } from '@/lib/fiscal-flow';
-import { ticketNeedsQrScan, ticketQrScanProgress } from '@/lib/preorder-entry';
+import {
+  buildOrderScanAggregate,
+  collectOrderProductLines,
+  orderNeedsQrScan,
+  orderQrScanProgress,
+  ticketNeedsQrScan,
+  ticketQrScanProgress,
+} from '@/lib/preorder-entry';
+import { isQuantityOnlyProduct } from '@/lib/product-units';
+import { formatPrice } from '@/lib/format';
 import Image from 'next/image';
 
 interface ScannerFiscalData {
@@ -206,6 +218,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const [cancellingTicketId, setCancellingTicketId] = useState<number | null>(
     null
   );
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const resultPanelRef = useRef<HTMLDivElement>(null);
 
   // Load windows from localStorage on mount
@@ -264,7 +277,14 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     setPayMethod('cash');
     setPayCash('');
     setPayError(null);
+    setDetailsExpanded(false);
   }, [activeWindowId]);
+
+  // Նոր սկանից հետո մանրամասները նորից փակել
+  const activeQrCode = windows.find((w) => w.id === activeWindowId)?.qrCode;
+  useEffect(() => {
+    setDetailsExpanded(false);
+  }, [activeQrCode]);
 
   useEffect(() => {
     void (async () => {
@@ -533,6 +553,46 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     setScanModalTicket(ticket);
   };
 
+  const openOrderProductsScan = () => {
+    if (!activeWindow?.scannedData || activeWindow.scannedData.type !== 'order') {
+      return;
+    }
+    const order = activeWindow.scannedData.data;
+    const tickets = order.tickets ?? [];
+    if (!orderNeedsQrScan(tickets)) return;
+    const aggregate = buildOrderScanAggregate(Number(order.id), tickets);
+    if (!aggregate.orderItems?.length) return;
+    openScanModal(aggregate);
+  };
+
+  const requireProductsScannedOrPrompt = (
+    scannedData: ScannerWindow['scannedData'] = activeWindow?.scannedData ?? null
+  ): boolean => {
+    if (!scannedData) return true;
+    if (scannedData.type === 'order') {
+      const tickets = scannedData.data.tickets ?? [];
+      if (!orderNeedsQrScan(tickets)) return true;
+      const progress = orderQrScanProgress(tickets);
+      alert(
+        `Նախ պետք է սկանավորել ապրանքների QR-ները (${progress.done}/${progress.total})։ Միայն դրանից հետո կարելի է անցկացնել տոմսերը։`
+      );
+      const aggregate = buildOrderScanAggregate(
+        Number(scannedData.data.id),
+        tickets
+      );
+      if (aggregate.orderItems?.length) openScanModal(aggregate);
+      return false;
+    }
+    const ticket = scannedData.data;
+    if (!ticketNeedsQrScan(ticket)) return true;
+    const progress = ticketQrScanProgress(ticket);
+    alert(
+      `Նախ պետք է սկանավորել ապրանքների QR-ները (${progress.done}/${progress.total})։ Միայն դրանից հետո կարելի է անցկացնել տոմսը։`
+    );
+    openScanModal(ticket);
+    return false;
+  };
+
   const closeScanModal = () => {
     setScanModalTicket(null);
     setEntryError(null);
@@ -607,10 +667,13 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
     setIsCompletingEntry(true);
     setEntryError(null);
     try {
-      const result = await attachTicketPreOrderQrs({
-        ticketId: Number(scanModalTicket.id),
-        items,
-      });
+      const orderId = Number(scanModalTicket._orderId);
+      const result = scanModalTicket._orderScan && Number.isFinite(orderId)
+        ? await attachOrderPreOrderQrs({ orderId, items })
+        : await attachTicketPreOrderQrs({
+            ticketId: Number(scanModalTicket.id),
+            items,
+          });
 
       if (result.success) {
         closeScanModal();
@@ -630,6 +693,11 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const handleScanModalComplete = (
     items: Array<{ orderItemId: number; qrCodes: string[]; quantity: number }>
   ) => {
+    // Պատվերի ագրեգացված սկան՝ միշտ միայն QR կցում (մուտքը՝ տոմսերի նշումով)
+    if (scanModalTicket?._orderScan) {
+      void handleAttachReservedQrs(items);
+      return;
+    }
     if (
       scanModalTicket?.status === 'reserved' ||
       scanModalTicket?.status === 'awaiting_payment'
@@ -696,9 +764,8 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       return false;
     }
 
-    // Եթե կան չսկանավորված QR ապրանքներ՝ բացում ենք սկան-մոդալը (մուտքն այնտեղ է հաստատվում)
-    if (ticketNeedsQrScan(ticket)) {
-      openScanModal(ticket);
+    // Եթե կան չսկանավորված QR ապրանքներ՝ պարտադիր սկան նախ
+    if (!requireProductsScannedOrPrompt(win.scannedData)) {
       return false;
     }
 
@@ -810,23 +877,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
 
     const isOrder = window.scannedData.type === 'order';
 
-    if (!isOrder) {
-      const ticket = window.scannedData.data;
-      if (ticketNeedsQrScan(ticket)) {
-        openScanModal(ticket);
-        return;
-      }
-    } else {
-      const pending = (window.scannedData.data.tickets ?? []).filter(
-        (t: any) => t.status === 'paid' && ticketNeedsQrScan(t)
-      );
-      if (pending.length > 0) {
-        updateWindow(windowId, {
-          error: `Նախ սկանավորեք ապրանքների QR-ները (${pending.length} տոմս)`,
-        });
-        return;
-      }
-    }
+    if (!requireProductsScannedOrPrompt(window.scannedData)) return;
 
     updateWindow(windowId, { isMarking: true, error: null });
 
@@ -1428,129 +1479,292 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
               </div>
             ) : activeWindow.scannedData.type === 'order' ? (
               <div className="space-y-4">
-                {/* Order Info */}
-                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900 text-lg">
-                      Պատվեր #{activeWindow.scannedData.data.id}
-                    </h3>
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(activeWindow.scannedData.data.status).color}`}
-                    >
-                      {
-                        getStatusBadge(activeWindow.scannedData.data.status)
-                          .label
-                      }
-                    </span>
-                  </div>
-
-                  {/* User Info */}
-                  <div className="mb-3 pb-3 border-b border-purple-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <User className="w-4 h-4 text-purple-600" />
-                      <span className="font-medium text-gray-900">
-                        {activeWindow.scannedData.data.user?.name ||
-                          `Օգտատեր #${activeWindow.scannedData.data.user?.id}`}
-                      </span>
-                    </div>
-                    {activeWindow.scannedData.data.user?.phone && (
-                      <a
-                        href={`tel:${activeWindow.scannedData.data.user.phone}`}
-                        className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-purple-700 hover:underline"
-                      >
-                        <Phone className="h-4 w-4" />
-                        {formatPhone(activeWindow.scannedData.data.user.phone)}
-                      </a>
-                    )}
-                    {activeWindow.scannedData.data.user?.email && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Mail className="w-4 h-4" />
-                        {activeWindow.scannedData.data.user.email}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Order Summary */}
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-gray-500" />
-                      <span className="text-gray-600">
-                        Ստեղծվել է:{' '}
-                        {formatDate(activeWindow.scannedData.data.createdAt)}{' '}
-                        {formatTime(activeWindow.scannedData.data.createdAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between border-t border-purple-200 pt-2">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="h-4 w-4 text-green-600" />
-                        <span className="font-medium text-gray-900">
-                          Ընդհանուր գումար:
+                {/* Order Info — փակովի */}
+                <div className="overflow-hidden rounded-lg border border-purple-200 bg-purple-50">
+                  <button
+                    type="button"
+                    onClick={() => setDetailsExpanded((v) => !v)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-purple-100/60"
+                    aria-expanded={detailsExpanded}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-gray-900">
+                          Պատվեր #{activeWindow.scannedData.data.id}
+                        </h3>
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${getStatusBadge(activeWindow.scannedData.data.status).color}`}
+                        >
+                          {
+                            getStatusBadge(activeWindow.scannedData.data.status)
+                              .label
+                          }
                         </span>
                       </div>
-                      <span className="text-lg font-bold text-green-600">
-                        {(
-                          activeWindow.scannedData.data.tickets?.reduce(
-                            (sum: number, t: any) => {
-                              if (t.status === 'cancelled') return sum;
-                              const products =
-                                t.orderItems?.reduce(
-                                  (s: number, item: any) =>
-                                    s + item.price * item.quantity,
-                                  0
-                                ) || 0;
-                              return sum + (t.price || 0) + products;
-                            },
-                            0
-                          ) ?? 0
-                        ).toLocaleString('hy-AM')}{' '}
-                        ֏
-                      </span>
+                      <p className="mt-0.5 truncate text-xs text-gray-600">
+                        {activeWindow.scannedData.data.user?.name ||
+                          `Օգտատեր #${activeWindow.scannedData.data.user?.id}`}
+                        {activeWindow.scannedData.data.user?.phone
+                          ? ` · ${formatPhone(activeWindow.scannedData.data.user.phone)}`
+                          : ''}
+                      </p>
                     </div>
+                    <ChevronDown
+                      className={`h-5 w-5 shrink-0 text-purple-600 transition-transform ${
+                        detailsExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-                    {/* Calculate totals */}
-                    {(() => {
-                      const activeTickets =
-                        activeWindow.scannedData.data.tickets?.filter(
-                          (t: any) => t.status !== 'cancelled'
-                        ) ?? [];
-                      const ticketsTotal = activeTickets.reduce(
-                        (sum: number, t: any) => sum + (t.price || 0),
-                        0
-                      );
-                      const productsTotal = activeTickets.reduce(
-                        (sum: number, t: any) => {
-                          const ticketProducts =
-                            t.orderItems?.reduce(
-                              (itemSum: number, item: any) =>
-                                itemSum + item.price * item.quantity,
-                              0
-                            ) || 0;
-                          return sum + ticketProducts;
-                        },
-                        0
-                      );
+                  {detailsExpanded && (
+                    <div className="space-y-3 border-t border-purple-200 px-4 pb-4 pt-3">
+                      <div className="pb-3 border-b border-purple-200">
+                        <div className="mb-2 flex items-center gap-2">
+                          <User className="h-4 w-4 text-purple-600" />
+                          <span className="font-medium text-gray-900">
+                            {activeWindow.scannedData.data.user?.name ||
+                              `Օգտատեր #${activeWindow.scannedData.data.user?.id}`}
+                          </span>
+                        </div>
+                        {activeWindow.scannedData.data.user?.phone && (
+                          <a
+                            href={`tel:${activeWindow.scannedData.data.user.phone}`}
+                            className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-purple-700 hover:underline"
+                          >
+                            <Phone className="h-4 w-4" />
+                            {formatPhone(
+                              activeWindow.scannedData.data.user.phone
+                            )}
+                          </a>
+                        )}
+                        {activeWindow.scannedData.data.user?.email && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Mail className="h-4 w-4" />
+                            {activeWindow.scannedData.data.user.email}
+                          </div>
+                        )}
+                      </div>
 
-                      return (
-                        <div className="space-y-1 border-t border-purple-200 pt-2 text-xs text-gray-500">
-                          <div className="flex justify-between">
-                            <span>Տոմսեր ({activeTickets.length}):</span>
-                            <span>
-                              {ticketsTotal.toLocaleString('hy-AM')} ֏
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-gray-500" />
+                          <span className="text-gray-600">
+                            Ստեղծվել է:{' '}
+                            {formatDate(
+                              activeWindow.scannedData.data.createdAt
+                            )}{' '}
+                            {formatTime(
+                              activeWindow.scannedData.data.createdAt
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-purple-200 pt-2">
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="h-4 w-4 text-green-600" />
+                            <span className="font-medium text-gray-900">
+                              Ընդհանուր գումար:
                             </span>
                           </div>
-                          {productsTotal > 0 && (
-                            <div className="flex justify-between">
-                              <span>Արտադրանքներ:</span>
-                              <span>
-                                {productsTotal.toLocaleString('hy-AM')} ֏
-                              </span>
+                          <span className="text-lg font-bold text-green-600">
+                            {(
+                              activeWindow.scannedData.data.tickets?.reduce(
+                                (sum: number, t: any) => {
+                                  if (t.status === 'cancelled') return sum;
+                                  const products =
+                                    t.orderItems?.reduce(
+                                      (s: number, item: any) =>
+                                        s + item.price * item.quantity,
+                                      0
+                                    ) || 0;
+                                  return sum + (t.price || 0) + products;
+                                },
+                                0
+                              ) ?? 0
+                            ).toLocaleString('hy-AM')}{' '}
+                            ֏
+                          </span>
+                        </div>
+
+                        {(() => {
+                          const activeTickets =
+                            activeWindow.scannedData.data.tickets?.filter(
+                              (t: any) => t.status !== 'cancelled'
+                            ) ?? [];
+                          const ticketsTotal = activeTickets.reduce(
+                            (sum: number, t: any) => sum + (t.price || 0),
+                            0
+                          );
+                          const productsTotal = activeTickets.reduce(
+                            (sum: number, t: any) => {
+                              const ticketProducts =
+                                t.orderItems?.reduce(
+                                  (itemSum: number, item: any) =>
+                                    itemSum + item.price * item.quantity,
+                                  0
+                                ) || 0;
+                              return sum + ticketProducts;
+                            },
+                            0
+                          );
+
+                          return (
+                            <div className="space-y-1 border-t border-purple-200 pt-2 text-xs text-gray-500">
+                              <div className="flex justify-between">
+                                <span>Տոմսեր ({activeTickets.length}):</span>
+                                <span>
+                                  {ticketsTotal.toLocaleString('hy-AM')} ֏
+                                </span>
+                              </div>
+                              {productsTotal > 0 && (
+                                <div className="flex justify-between">
+                                  <span>Արտադրանքներ:</span>
+                                  <span>
+                                    {productsTotal.toLocaleString('hy-AM')} ֏
+                                  </span>
+                                </div>
+                              )}
                             </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Պատվերի բոլոր ապրանքները՝ մեկ տեղում */}
+                {(() => {
+                  const tickets = activeWindow.scannedData.data.tickets ?? [];
+                  const productLines = collectOrderProductLines(tickets);
+                  const needsScan = orderNeedsQrScan(tickets);
+                  const progress = orderQrScanProgress(tickets);
+                  const addTarget = tickets.find(
+                    (t: any) =>
+                      t.status === 'paid' ||
+                      t.status === 'reserved' ||
+                      t.status === 'awaiting_payment'
+                  );
+
+                  if (productLines.length === 0 && !addTarget) return null;
+
+                  return (
+                    <div className="rounded-xl border-2 border-amber-300 bg-amber-50/70 p-4 shadow-sm">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h4 className="flex items-center gap-2 font-semibold text-gray-900">
+                            <ShoppingCart className="h-5 w-5 text-purple-600" />
+                            Պատվերի ապրանքներ
+                            {productLines.length > 0 && (
+                              <span className="text-sm font-normal text-gray-500">
+                                ({productLines.length})
+                              </span>
+                            )}
+                          </h4>
+                          {needsScan && (
+                            <p className="mt-1 text-xs font-semibold text-amber-800">
+                              Պարտադիր՝ նախ սկանավորեք QR-ները, հետո անցկացրեք
+                              տոմսերը
+                            </p>
                           )}
                         </div>
-                      );
-                    })()}
-                  </div>
-                </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {needsScan && (
+                            <button
+                              type="button"
+                              onClick={openOrderProductsScan}
+                              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-700"
+                            >
+                              <ScanLine className="h-4 w-4" />
+                              Սկանավորել ({progress.done}/{progress.total})
+                            </button>
+                          )}
+                          {!needsScan && progress.total > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600">
+                              <Check className="h-3.5 w-3.5" />
+                              QR պատրաստ · կարող եք անցկացնել
+                            </span>
+                          )}
+                          {addTarget && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openProductModal(
+                                  Number(addTarget.id),
+                                  addTarget.status
+                                )
+                              }
+                              className="inline-flex min-h-10 items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Ավելացնել
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {productLines.length > 0 ? (
+                        <div className="max-h-72 space-y-2 overflow-y-auto">
+                          {productLines.map((item) => {
+                            const canRemove =
+                              item.ticketStatus === 'reserved' ||
+                              item.ticketStatus === 'awaiting_payment';
+                            return (
+                              <div
+                                key={item.id}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2.5 text-sm"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium text-gray-900">
+                                    {item.product.name} x{item.quantity}
+                                    {isQuantityOnlyProduct(
+                                      item.product?.category ?? ''
+                                    ) && (
+                                      <span className="ml-1 text-[10px] text-gray-400">
+                                        (առանց QR)
+                                      </span>
+                                    )}
+                                  </p>
+                                  {item.seatLabel && (
+                                    <p className="text-xs text-gray-500">
+                                      Աթոռ {item.seatLabel}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {canRemove && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRemoveOrderItem(
+                                          item,
+                                          item.ticketId
+                                        )
+                                      }
+                                      disabled={
+                                        removingOrderItemId === item.id
+                                      }
+                                      className="rounded-md p-1 text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                                      title="Հեռացնել պատվերից"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  <span className="font-medium text-gray-700">
+                                    {formatPrice(
+                                      (item.price ?? 0) * item.quantity
+                                    )}{' '}
+                                    ֏
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400">Ապրանքներ չկան</p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Tickets */}
                 <div>
@@ -1599,7 +1813,15 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                       )}
                     </div>
                   </div>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {orderNeedsQrScan(
+                    activeWindow.scannedData.data.tickets ?? []
+                  ) && (
+                    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                      Տոմսերի մուտքը կողպված է, մինչև ապրանքների QR-ները
+                      սկանավորվեն։
+                    </div>
+                  )}
+                  <div className="grid max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
                     {activeWindow.scannedData.data.tickets.map(
                       (ticket: any) => (
                         <TicketCard
@@ -1613,13 +1835,21 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                             handleTicketEntryChange(Number(ticketId), checked)
                           }
                           isChecked={ticket.status === 'used'}
-                          onAddProducts={openProductModal}
                           entryMode
-                          onScanPreOrderProducts={openScanModal}
-                          onRemoveOrderItem={handleRemoveOrderItem}
-                          removingOrderItemId={removingOrderItemId}
+                          hideProducts
+                          compact
+                          entryLocked={orderNeedsQrScan(
+                            activeWindow.scannedData.data.tickets ?? []
+                          )}
+                          onEntryLockedClick={() => {
+                            void requireProductsScannedOrPrompt(
+                              activeWindow.scannedData
+                            );
+                          }}
                           onCancelTicket={handleCancelTicket}
-                          isCancelling={cancellingTicketId === Number(ticket.id)}
+                          isCancelling={
+                            cancellingTicketId === Number(ticket.id)
+                          }
                         />
                       )
                     )}
@@ -1706,70 +1936,102 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
             ) : (
               <div className="space-y-4">
                 {/* Ticket Info */}
-                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900 text-lg">
-                      Տոմս #{activeWindow.scannedData.data.id}
-                    </h3>
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(activeWindow.scannedData.data.status).color}`}
-                    >
-                      {
-                        getStatusBadge(activeWindow.scannedData.data.status)
-                          .label
-                      }
-                    </span>
-                  </div>
-
-                  {/* User Info */}
-                  <div className="mb-3 pb-3 border-b border-purple-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <User className="w-4 h-4 text-purple-600" />
-                      <span className="font-medium text-gray-900">
+                {/* Ticket Info — փակովի */}
+                <div className="overflow-hidden rounded-lg border border-purple-200 bg-purple-50">
+                  <button
+                    type="button"
+                    onClick={() => setDetailsExpanded((v) => !v)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-purple-100/60"
+                    aria-expanded={detailsExpanded}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-gray-900">
+                          Տոմս #{activeWindow.scannedData.data.id}
+                        </h3>
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${getStatusBadge(activeWindow.scannedData.data.status).color}`}
+                        >
+                          {
+                            getStatusBadge(activeWindow.scannedData.data.status)
+                              .label
+                          }
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-gray-600">
                         {activeWindow.scannedData.data.user?.name ||
                           `Օգտատեր #${activeWindow.scannedData.data.user?.id}`}
-                      </span>
+                        {activeWindow.scannedData.data.price != null
+                          ? ` · ${Number(activeWindow.scannedData.data.price).toLocaleString('hy-AM')} ֏`
+                          : ''}
+                      </p>
                     </div>
-                    {activeWindow.scannedData.data.user?.phone && (
-                      <a
-                        href={`tel:${activeWindow.scannedData.data.user.phone}`}
-                        className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-purple-700 hover:underline"
-                      >
-                        <Phone className="h-4 w-4" />
-                        {formatPhone(activeWindow.scannedData.data.user.phone)}
-                      </a>
-                    )}
-                    {activeWindow.scannedData.data.user?.email && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Mail className="w-4 h-4" />
-                        {activeWindow.scannedData.data.user.email}
-                      </div>
-                    )}
-                  </div>
+                    <ChevronDown
+                      className={`h-5 w-5 shrink-0 text-purple-600 transition-transform ${
+                        detailsExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-                  {/* Ticket Details */}
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-gray-500" />
-                      <span className="text-gray-600">
-                        Ստեղծվել է:{' '}
-                        {formatDate(activeWindow.scannedData.data.createdAt)}{' '}
-                        {formatTime(activeWindow.scannedData.data.createdAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-purple-200">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-green-600" />
-                        <span className="font-medium text-gray-900">Գին:</span>
+                  {detailsExpanded && (
+                    <div className="space-y-3 border-t border-purple-200 px-4 pb-4 pt-3">
+                      <div className="border-b border-purple-200 pb-3">
+                        <div className="mb-2 flex items-center gap-2">
+                          <User className="h-4 w-4 text-purple-600" />
+                          <span className="font-medium text-gray-900">
+                            {activeWindow.scannedData.data.user?.name ||
+                              `Օգտատեր #${activeWindow.scannedData.data.user?.id}`}
+                          </span>
+                        </div>
+                        {activeWindow.scannedData.data.user?.phone && (
+                          <a
+                            href={`tel:${activeWindow.scannedData.data.user.phone}`}
+                            className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-purple-700 hover:underline"
+                          >
+                            <Phone className="h-4 w-4" />
+                            {formatPhone(
+                              activeWindow.scannedData.data.user.phone
+                            )}
+                          </a>
+                        )}
+                        {activeWindow.scannedData.data.user?.email && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Mail className="h-4 w-4" />
+                            {activeWindow.scannedData.data.user.email}
+                          </div>
+                        )}
                       </div>
-                      <span className="font-bold text-lg text-green-600">
-                        {activeWindow.scannedData.data.price?.toLocaleString(
-                          'hy-AM'
-                        )}{' '}
-                        ֏
-                      </span>
+
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-gray-500" />
+                          <span className="text-gray-600">
+                            Ստեղծվել է:{' '}
+                            {formatDate(
+                              activeWindow.scannedData.data.createdAt
+                            )}{' '}
+                            {formatTime(
+                              activeWindow.scannedData.data.createdAt
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-purple-200 pt-2">
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="h-4 w-4 text-green-600" />
+                            <span className="font-medium text-gray-900">
+                              Գին:
+                            </span>
+                          </div>
+                          <span className="text-lg font-bold text-green-600">
+                            {activeWindow.scannedData.data.price?.toLocaleString(
+                              'hy-AM'
+                            )}{' '}
+                            ֏
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Movie Info */}
@@ -2059,6 +2321,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           isSubmitting={isCompletingEntry}
           error={entryError}
           mode={
+            scanModalTicket._orderScan ||
             scanModalTicket.status === 'reserved' ||
             scanModalTicket.status === 'awaiting_payment'
               ? 'attach'
@@ -2066,7 +2329,15 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           }
           onClose={closeScanModal}
           lookupScan={(qrCode) =>
-            lookupPreOrderProductQrForTicket(Number(scanModalTicket.id), qrCode)
+            scanModalTicket._orderScan && scanModalTicket._orderId
+              ? lookupPreOrderProductQrForOrder(
+                  Number(scanModalTicket._orderId),
+                  qrCode
+                )
+              : lookupPreOrderProductQrForTicket(
+                  Number(scanModalTicket.id),
+                  qrCode
+                )
           }
           onComplete={handleScanModalComplete}
         />
@@ -2083,7 +2354,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
             getStatusBadge={getStatusBadge}
             getSeatTypeLabel={getSeatTypeLabel}
             onEntryChange={handleTicketEntryChange}
-            onScanPreOrderProducts={openScanModal}
+            onScanOrderProducts={openOrderProductsScan}
           />
         )}
 

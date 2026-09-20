@@ -152,10 +152,14 @@ export default function TicketPreOrderScanModal({
       <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Ապրանքների QR</h3>
+            <h3 className="text-lg font-bold text-gray-900">
+              {(ticket as { _orderScan?: boolean })._orderScan
+                ? 'Պատվերի ապրանքների QR'
+                : 'Ապրանքների QR'}
+            </h3>
             <p className="text-sm text-gray-500">
               {isAttachMode
-                ? `Կցեք ապրանքների QR · վճարումը՝ դրամարկղում · ${totalScanned}/${totalNeeded}`
+                ? `Կցեք ապրանքների QR · ${totalScanned}/${totalNeeded}`
                 : `Սկանավորեք ամրագրված ապրանքները · ${totalScanned}/${totalNeeded}`}
             </p>
           </div>

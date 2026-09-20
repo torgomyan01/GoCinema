@@ -199,13 +199,15 @@ export default function NotificationBell() {
     <>
       <div className="relative" ref={containerRef}>
         <button
+          type="button"
           onClick={() => setIsOpen((v) => !v)}
-          className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-gray-100 active:bg-gray-200"
           title="Ծանուցումներ"
+          aria-label="Ծանուցումներ"
         >
-          <Bell className="w-6 h-6 text-gray-600" />
+          <Bell className="h-6 w-6 text-gray-600" />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
@@ -218,7 +220,7 @@ export default function NotificationBell() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.98 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 mt-2 w-80 sm:w-96 max-h-[70vh] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl z-50 flex flex-col"
+              className="fixed inset-x-3 top-[calc(3.5rem+env(safe-area-inset-top))] z-50 flex max-h-[min(70vh,32rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96"
             >
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                 <h3 className="flex items-center gap-2 font-semibold text-gray-900">
@@ -303,7 +305,7 @@ export default function NotificationBell() {
       </div>
 
       {/* Toast-եր նոր ծանուցումների համար */}
-      <div className="fixed right-4 top-20 z-60 flex w-80 flex-col gap-2">
+      <div className="fixed inset-x-3 top-[calc(4.5rem+env(safe-area-inset-top))] z-60 flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:w-80">
         <AnimatePresence>
           {toasts.map((item) => {
             const style = getTypeStyle(item.type);

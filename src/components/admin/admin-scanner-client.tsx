@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   QrCode,
   CheckCircle,
@@ -206,6 +206,7 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   const [cancellingTicketId, setCancellingTicketId] = useState<number | null>(
     null
   );
+  const resultPanelRef = useRef<HTMLDivElement>(null);
 
   // Load windows from localStorage on mount
   useEffect(() => {
@@ -501,6 +502,14 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
               ? restoredCheckedTickets
               : previousCheckedTickets,
           qrCheckedTickets: currentWindow?.qrCheckedTickets || {},
+        });
+
+        // Մոբայլում սկանից հետո ցույց տալ սպասարկման բլոկը
+        requestAnimationFrame(() => {
+          resultPanelRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
         });
       } else {
         updateWindow(windowId, {
@@ -1141,58 +1150,60 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3 mb-2">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <QrCode className="w-6 h-6 text-purple-600" />
+      <div className="mb-4 flex items-start justify-between gap-3 sm:mb-6">
+        <div className="min-w-0">
+          <h1 className="mb-1 flex items-center gap-2 text-xl font-bold text-gray-900 sm:mb-2 sm:gap-3 sm:text-3xl">
+            <div className="rounded-lg bg-purple-100 p-2">
+              <QrCode className="h-5 w-5 text-purple-600 sm:h-6 sm:w-6" />
             </div>
-            Հաճախորդի մուտք
+            <span className="truncate">Հաճախորդի մուտք</span>
           </h1>
-          <p className="text-gray-600">
-            Սկանավորեք հաճախորդի QR կոդը տոմսը ստուգելու և փակելու համար
+          <p className="text-sm text-gray-600 sm:text-base">
+            Սկանավորեք QR-ը հեռախոսով կամ մուտքագրեք՝ հաճախորդին սպասարկելու համար
           </p>
         </div>
         <button
+          type="button"
           onClick={createNewWindow}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg"
+          className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-2 text-sm font-semibold text-white shadow-lg transition-all hover:from-purple-700 hover:to-pink-700 sm:px-4"
         >
-          <Plus className="w-5 h-5" />
-          Նոր Պատուհան
+          <Plus className="h-5 w-5" />
+          <span className="hidden sm:inline">Նոր Պատուհան</span>
         </button>
       </div>
 
       {/* Windows Tabs */}
       {windows.length > 1 && (
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+        <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-2">
           {windows.map((window) => (
             <div
               key={window.id}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-all ${
+              className={`flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-xl px-4 py-2 transition-all ${
                 activeWindowId === window.id
                   ? 'bg-purple-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
               onClick={() => setActiveWindowId(window.id)}
             >
-              <QrCode className="w-4 h-4" />
+              <QrCode className="h-4 w-4" />
               <span className="text-sm font-medium">
                 Պատուհան {windows.indexOf(window) + 1}
               </span>
               {window.scannedData && (
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <div className="h-2 w-2 rounded-full bg-green-400"></div>
               )}
               {windows.length > 1 && (
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     closeWindow(window.id);
                   }}
-                  className="ml-1 hover:bg-white/20 rounded p-0.5"
+                  className="ml-1 rounded p-1 hover:bg-white/20"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
@@ -1201,13 +1212,13 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
       )}
 
       {activeWindow ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
           {/* Scanner */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
+          <div className="rounded-xl bg-white p-4 shadow-lg sm:p-6">
+            <h2 className="mb-3 text-lg font-bold text-gray-900 sm:mb-4 sm:text-xl">
               QR Կոդ Սկանավորում
               {windows.length > 1 && (
-                <span className="text-sm text-gray-500 font-normal ml-2">
+                <span className="ml-2 text-sm font-normal text-gray-500">
                   (Պատուհան {windows.indexOf(activeWindow) + 1})
                 </span>
               )}
@@ -1221,13 +1232,13 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
             />
 
             {/* Պատվերների որոնում (առանց QR-ի) */}
-            <div className="mt-5 pt-5 border-t border-gray-100">
-              <p className="text-sm font-semibold text-gray-700 mb-2">
+            <div className="mt-5 border-t border-gray-100 pt-5">
+              <p className="mb-2 text-sm font-semibold text-gray-700">
                 Պատվերների որոնում (առանց QR)
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
                     inputMode="tel"
@@ -1238,13 +1249,14 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                       if (e.key === 'Enter') handleSearch();
                     }}
                     placeholder="0XX XXX XXX, անուն կամ #պատվեր"
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-gray-300 py-3 pl-9 pr-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
                 <button
+                  type="button"
                   onClick={handleSearch}
                   disabled={isSearching || !searchQuery.trim()}
-                  className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-medium text-sm hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl bg-purple-600 px-5 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:py-2.5"
                 >
                   {isSearching ? '...' : 'Որոնել'}
                 </button>
@@ -1389,19 +1401,23 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
           </div>
 
           {/* Scanned Data */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
+          <div
+            ref={resultPanelRef}
+            className="scroll-mt-20 rounded-xl bg-white p-4 shadow-lg sm:p-6 lg:scroll-mt-4"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-gray-900 sm:text-xl">
                 Տոմսի/Պատվերի Տեղեկություն
               </h2>
               {customerPayContext && (
                 <button
                   type="button"
                   onClick={() => void openCustomerTicketsModal()}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors shrink-0"
+                  className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100"
                 >
-                  <Ticket className="w-4 h-4" />
-                  Հաճախորդի տոմսեր
+                  <Ticket className="h-4 w-4" />
+                  <span className="hidden sm:inline">Հաճախորդի տոմսեր</span>
+                  <span className="sm:hidden">Տոմսեր</span>
                 </button>
               )}
             </div>
@@ -1438,10 +1454,13 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                       </span>
                     </div>
                     {activeWindow.scannedData.data.user?.phone && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Phone className="w-4 h-4" />
+                      <a
+                        href={`tel:${activeWindow.scannedData.data.user.phone}`}
+                        className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-purple-700 hover:underline"
+                      >
+                        <Phone className="h-4 w-4" />
                         {formatPhone(activeWindow.scannedData.data.user.phone)}
-                      </div>
+                      </a>
                     )}
                     {activeWindow.scannedData.data.user?.email && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -1712,10 +1731,13 @@ export default function AdminScannerClient({ user }: AdminScannerClientProps) {
                       </span>
                     </div>
                     {activeWindow.scannedData.data.user?.phone && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Phone className="w-4 h-4" />
+                      <a
+                        href={`tel:${activeWindow.scannedData.data.user.phone}`}
+                        className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-purple-700 hover:underline"
+                      >
+                        <Phone className="h-4 w-4" />
                         {formatPhone(activeWindow.scannedData.data.user.phone)}
-                      </div>
+                      </a>
                     )}
                     {activeWindow.scannedData.data.user?.email && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">

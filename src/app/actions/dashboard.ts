@@ -1,6 +1,151 @@
 'use server';
 
+import { getServerSession } from 'next-auth';
+import { revalidatePath } from 'next/cache';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { isStaffRole } from '@/lib/roles';
+import { WALK_IN_PHONE } from '@/lib/bonus';
+
+const BIRTHDAY_WINDOW_DAYS = 15;
+
+async function requireStaff() {
+  const session = await getServerSession(authOptions);
+  const user = session?.user as { id?: string; role?: string } | undefined;
+  if (!user?.id || !isStaffRole(user.role)) return null;
+  return user;
+}
+
+/** Հաջորդ ծնունդը և օրերի քանակը (տարեվերջ/տարեսկիզբ ներառյալ) */
+function getNextBirthdayMeta(
+  birthDate: Date,
+  now: Date = new Date()
+): { daysUntil: number; birthdayYear: number; nextBirthday: Date } {
+  const month = birthDate.getUTCMonth();
+  const day = birthDate.getUTCDate();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  let year = today.getFullYear();
+  let next = new Date(year, month, day);
+  if (next < today) {
+    year += 1;
+    next = new Date(year, month, day);
+  }
+
+  const daysUntil = Math.round(
+    (next.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
+  );
+  return { daysUntil, birthdayYear: year, nextBirthday: next };
+}
+
+export type UpcomingBirthdayUser = {
+  id: number;
+  name: string | null;
+  phone: string;
+  birthDate: string;
+  nextBirthday: string;
+  daysUntil: number;
+  birthdayYear: number;
+  called: boolean;
+};
+
+export async function getUpcomingBirthdays(withinDays = BIRTHDAY_WINDOW_DAYS) {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false as const, error: 'Մուտքն արգելված է', users: [] as UpcomingBirthdayUser[] };
+  }
+
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        birthDate: { not: null },
+        phone: { not: WALK_IN_PHONE },
+        isBlocked: false,
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        birthDate: true,
+        birthdayPromoCalledYear: true,
+      },
+    });
+
+    const now = new Date();
+    const upcoming: UpcomingBirthdayUser[] = [];
+
+    for (const user of users) {
+      if (!user.birthDate) continue;
+      const meta = getNextBirthdayMeta(new Date(user.birthDate), now);
+      if (meta.daysUntil < 0 || meta.daysUntil > withinDays) continue;
+      upcoming.push({
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        birthDate: user.birthDate.toISOString().slice(0, 10),
+        nextBirthday: meta.nextBirthday.toISOString().slice(0, 10),
+        daysUntil: meta.daysUntil,
+        birthdayYear: meta.birthdayYear,
+        called: user.birthdayPromoCalledYear === meta.birthdayYear,
+      });
+    }
+
+    upcoming.sort((a, b) => {
+      if (a.daysUntil !== b.daysUntil) return a.daysUntil - b.daysUntil;
+      if (a.called !== b.called) return a.called ? 1 : -1;
+      return (a.name || a.phone).localeCompare(b.name || b.phone, 'hy');
+    });
+
+    return { success: true as const, error: null, users: upcoming };
+  } catch (error) {
+    console.error('[getUpcomingBirthdays]', error);
+    return {
+      success: false as const,
+      error: 'Ծննդյան ցանկը բեռնելիս սխալ է տեղի ունեցել',
+      users: [] as UpcomingBirthdayUser[],
+    };
+  }
+}
+
+/** Նշել / հանել ծննդյան ակցիայի զանգի կարգավիճակը */
+export async function setBirthdayPromoCalled(
+  userId: number,
+  called: boolean
+): Promise<{ success: boolean; error?: string; called?: boolean }> {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const id = Math.trunc(Number(userId));
+  if (!Number.isFinite(id) || id <= 0) {
+    return { success: false, error: 'Անվավեր օգտատեր' };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, birthDate: true },
+    });
+    if (!user?.birthDate) {
+      return { success: false, error: 'Օգտատերը կամ ծննդյան ամսաթիվը չի գտնվել' };
+    }
+
+    const { birthdayYear } = getNextBirthdayMeta(new Date(user.birthDate));
+    await prisma.user.update({
+      where: { id },
+      data: {
+        birthdayPromoCalledYear: called ? birthdayYear : null,
+      },
+    });
+
+    revalidatePath('/admin');
+    return { success: true, called };
+  } catch (error) {
+    console.error('[setBirthdayPromoCalled]', error);
+    return { success: false, error: 'Չհաջողվեց պահպանել' };
+  }
+}
 
 export async function getDashboardStats() {
   try {

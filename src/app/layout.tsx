@@ -7,7 +7,7 @@ import 'swiper/css/pagination';
 
 import './tailwind.css';
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import NextTopLoader from 'nextjs-toploader';
 import { Noto_Sans_Armenian, Roboto } from 'next/font/google';
 
@@ -32,6 +32,13 @@ export const metadata: Metadata = {
     google: 'sIKtSAxr0Ad13m2js8Xwbj0KEGe4DDesqocS3NjrKPo',
     yandex: 'fd366c106ad19775',
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#ffffff',
 };
 
 export default async function RootLayout({

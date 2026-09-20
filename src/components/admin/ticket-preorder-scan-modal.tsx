@@ -7,6 +7,7 @@ import {
   type PreOrderLine,
   type TicketWithPreOrder,
 } from '@/lib/preorder-entry';
+import CameraQrReader, { prefersMobileCamera } from './camera-qr-reader';
 
 interface LookupResult {
   success: boolean;
@@ -61,12 +62,17 @@ export default function TicketPreOrderScanModal({
   const [scanInput, setScanInput] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
   const scanInputRef = useRef<HTMLInputElement>(null);
 
   const focusScanInput = useCallback(() => {
     requestAnimationFrame(() => {
       scanInputRef.current?.focus({ preventScroll: true });
     });
+  }, []);
+
+  useEffect(() => {
+    setShowCamera(prefersMobileCamera());
   }, []);
 
   useEffect(() => {
@@ -162,12 +168,22 @@ export default function TicketPreOrderScanModal({
           </button>
         </div>
 
-        <div className="space-y-4 p-5">
+        <div className="max-h-[70vh] space-y-4 overflow-y-auto p-5">
           <div>
             <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
               <ScanLine className="h-4 w-4" />
               Սկանավորել ապրանքի QR
             </label>
+            {showCamera && !allReady && (
+              <div className="mb-3">
+                <CameraQrReader
+                  enabled={!scanBusy && !allReady}
+                  continuous
+                  onScan={(code) => void handleScan(code)}
+                  hint="Սկանավորեք ապրանքի QR-ը տեսախցիկով"
+                />
+              </div>
+            )}
             <input
               ref={scanInputRef}
               type="text"

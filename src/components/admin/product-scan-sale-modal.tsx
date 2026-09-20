@@ -18,6 +18,9 @@ import {
 import PaymentPanel, {
   type PaymentMethod,
 } from '@/components/admin/box-office-payment-panel';
+import CameraQrReader, {
+  prefersMobileCamera,
+} from '@/components/admin/camera-qr-reader';
 import {
   isQuantityOnlyProduct,
   parseQuantityProductName,
@@ -103,6 +106,7 @@ export default function ProductScanSaleModal({
   const [scanInput, setScanInput] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [cashReceived, setCashReceived] = useState<number | ''>('');
   /** null = երկու բլոկ, category = համերի ցանկ, flavor = չափի ընտրություն */
@@ -112,6 +116,10 @@ export default function ProductScanSaleModal({
   const [pickerFlavorKey, setPickerFlavorKey] = useState<string | null>(null);
 
   const scanInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setShowCamera(prefersMobileCamera());
+  }, []);
 
   const popcornProducts = useMemo(
     () => products.filter((p) => isQuantityOnlyProduct(p.category)),
@@ -413,6 +421,14 @@ export default function ProductScanSaleModal({
             <label className="block text-sm font-semibold text-gray-700">
               Սկանավորեք ապրանքի QR կոդը
             </label>
+            {showCamera && (
+              <CameraQrReader
+                enabled={!scanBusy}
+                continuous
+                onScan={(code) => void handleScan(code)}
+                hint="Սկանավորեք ապրանքի QR-ը տեսախցիկով"
+              />
+            )}
             <div className="relative">
               <ScanLine className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
               <input
@@ -453,8 +469,8 @@ export default function ProductScanSaleModal({
               </p>
             )}
             <p className="text-xs text-gray-500">
-              Ապարատային սկաները ավտոմատ ավելացնում է կոդը (Enter)։ Ամեն
-              սկանավորում՝ մեկ միավոր։
+              Հեռախոսով՝ տեսախցիկով սկան, համակարգչով՝ USB սկաներ կամ ձեռքով
+              մուտքագրում։
             </p>
           </div>
 

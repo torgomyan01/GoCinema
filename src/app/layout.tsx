@@ -14,6 +14,7 @@ import { Noto_Sans_Armenian, Roboto } from 'next/font/google';
 
 import { Providers } from '@/app/providers';
 import GoogleAnalytics from '@/components/google-analytics';
+import { auth } from '@/auth';
 
 const roboto = Roboto({
   weight: ['100', '300', '400', '500', '700', '900'],
@@ -48,6 +49,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Seed SessionProvider from the same server session Header uses,
+  // so navbar and /account never disagree after hydration.
+  const session = await auth();
+
   return (
     <html
       lang="hy"
@@ -59,7 +64,7 @@ export default async function RootLayout({
           <GoogleAnalytics />
         </Suspense>
         <NextTopLoader />
-        <Providers>{children}</Providers>
+        <Providers session={session}>{children}</Providers>
       </body>
     </html>
   );

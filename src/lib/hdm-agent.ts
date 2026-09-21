@@ -71,9 +71,10 @@ export function getHdmAgentUrl(): string {
   );
 }
 
-function getHdmAgentKey(): string {
+export function getHdmAgentKey(): string {
   // Prefer server-only secret when running on the server.
   // NEXT_PUBLIC_ remains for box-office browser → localhost agent calls.
+  // Must stay in sync with agent AGENT_API_KEY on the cash-register PC.
   if (typeof window === 'undefined') {
     return (
       process.env.HDM_AGENT_KEY?.trim() ||
@@ -83,9 +84,6 @@ function getHdmAgentKey(): string {
   }
   return process.env.NEXT_PUBLIC_HDM_AGENT_KEY?.trim() || '';
 }
-
-const AGENT_URL = getHdmAgentUrl();
-const AGENT_KEY = getHdmAgentKey();
 
 export function isHdmAgentEnabled(): boolean {
   const flag = process.env.NEXT_PUBLIC_HDM_AGENT_ENABLED;
@@ -97,16 +95,18 @@ async function agentFetch<T>(
   path: string,
   init?: RequestInit
 ): Promise<HdmAgentResponse<T>> {
+  const agentUrl = getHdmAgentUrl();
+  const agentKey = getHdmAgentKey();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string> | undefined),
   };
-  if (AGENT_KEY) {
-    headers.Authorization = `Bearer ${AGENT_KEY}`;
+  if (agentKey) {
+    headers.Authorization = `Bearer ${agentKey}`;
   }
 
   try {
-    const res = await fetch(`${AGENT_URL}${path}`, {
+    const res = await fetch(`${agentUrl}${path}`, {
       ...init,
       headers,
     });
@@ -134,7 +134,7 @@ async function agentFetch<T>(
 /** GET /health — առանց API key */
 export async function checkHdmAgentHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${AGENT_URL}/health`, { method: 'GET' });
+    const res = await fetch(`${getHdmAgentUrl()}/health`, { method: 'GET' });
     if (!res.ok) return false;
     const data = (await res.json()) as { ok?: boolean };
     return Boolean(data.ok);

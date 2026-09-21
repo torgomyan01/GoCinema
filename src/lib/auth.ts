@@ -15,6 +15,18 @@ const ROLE_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
 const LOGIN_MAX_ATTEMPTS = 8;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
+/** Session lifetime — 15 days (user request) */
+const SESSION_MAX_AGE_SEC = 15 * 24 * 60 * 60;
+
+const isProd = process.env.NODE_ENV === 'production';
+/**
+ * Jino terminates TLS and forwards HTTP to the VPS, but the browser always
+ * talks HTTPS. Cookies must be Secure so they persist on https://gocinema.am.
+ * sameSite=lax keeps first-party login sessions reliable; bank return pages
+ * that need cross-site cookies use dedicated flows (vpost-return).
+ */
+const useSecureCookies = isProd;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -87,7 +99,9 @@ export const authOptions: NextAuthOptions = {
       }
 
       const userId = token.id ? Number(token.id) : NaN;
-      const lastCheck = Number((token as { lastRoleCheck?: number }).lastRoleCheck || 0);
+      const lastCheck = Number(
+        (token as { lastRoleCheck?: number }).lastRoleCheck || 0
+      );
       const needsRefresh =
         Number.isFinite(userId) &&
         (!lastCheck || Date.now() - lastCheck > ROLE_REFRESH_MS);
@@ -139,35 +153,50 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: SESSION_MAX_AGE_SEC,
+    // Refresh session cookie expiry while user is active
+    updateAge: 24 * 60 * 60, // 1 day
+  },
+  jwt: {
+    maxAge: SESSION_MAX_AGE_SEC,
   },
   cookies: {
     sessionToken: {
-      name: `next-auth.session-token`,
+      // Use __Secure- prefix in production (required best-practice with Secure)
+      name: useSecureCookies
+        ? '__Secure-next-auth.session-token'
+        : 'next-auth.session-token',
       options: {
         httpOnly: true,
-        // none+secure՝ բանկի cross-site POST backURL-ին cookie-ն չի կորչում
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite: 'lax',
         path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        secure: useSecureCookies,
+        maxAge: SESSION_MAX_AGE_SEC,
       },
     },
     callbackUrl: {
-      name: `next-auth.callback-url`,
+      name: useSecureCookies
+        ? '__Secure-next-auth.callback-url'
+        : 'next-auth.callback-url',
       options: {
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite: 'lax',
         path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        secure: useSecureCookies,
+        maxAge: SESSION_MAX_AGE_SEC,
       },
     },
     csrfToken: {
-      name: `next-auth.csrf-token`,
+      name: useSecureCookies
+        ? '__Host-next-auth.csrf-token'
+        : 'next-auth.csrf-token',
       options: {
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite: 'lax',
         path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        secure: useSecureCookies,
+        // CSRF can be shorter-lived; keep aligned with session for simplicity
+        maxAge: SESSION_MAX_AGE_SEC,
       },
     },
   },

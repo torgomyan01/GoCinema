@@ -102,6 +102,13 @@ export async function getProductById(id: number) {
 
 export async function createProduct(data: CreateProductData) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     if (!data.name || !data.price || !data.category) {
       return {
         success: false,
@@ -145,6 +152,13 @@ export async function createProduct(data: CreateProductData) {
 
 export async function updateProduct(data: UpdateProductData) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     if (!data.id) {
       return {
         success: false,
@@ -206,6 +220,13 @@ export async function updateProduct(data: UpdateProductData) {
  */
 export async function restockProductQuantity(id: number, amount: number) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     if (!id) {
       return { success: false, error: 'Ապրանքի ID-ն պարտադիր է' };
     }
@@ -1052,6 +1073,13 @@ export async function deleteProductUnit(unitId: number) {
 
 export async function deleteProduct(id: number) {
   try {
+    if (!(await requireStaff())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+      };
+    }
+
     const product = await prisma.product.findUnique({
       where: { id },
       include: {

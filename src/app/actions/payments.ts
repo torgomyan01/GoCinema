@@ -1202,6 +1202,27 @@ export async function completeVPostReturn(orderId: number) {
 
 /** Փակված backlink էջի դեպքում՝ սպասող քարտային պատվերները հաստատել vPost-ից։ */
 export async function reconcilePendingVPostPayments(limit = 25) {
+  // Callable as a server action — require cron secret or admin session
+  const { getServerSession } = await import('next-auth');
+  const { authOptions } = await import('@/lib/auth');
+  const { isAdminRole } = await import('@/lib/roles');
+  const session = await getServerSession(authOptions);
+  const isAdmin = isAdminRole(
+    (session?.user as { role?: string } | undefined)?.role
+  );
+  // When invoked from the cron route, the route already checked Bearer secret.
+  // Direct client calls must be admin. We detect cron via env presence + no session
+  // is insufficient — require Headers via AsyncLocalStorage is hard, so:
+  // only allow if admin OR if CRON_INTERNAL=1 set by the route.
+  if (!isAdmin && process.env.CRON_INTERNAL !== '1') {
+    return {
+      success: false,
+      error: 'Unauthorized',
+      checked: 0,
+      results: [] as Array<{ orderId: number; state?: string; ok: boolean }>,
+    };
+  }
+
   const tickets = await prisma.ticket.findMany({
     where: {
       status: AWAITING_PAYMENT_STATUS,

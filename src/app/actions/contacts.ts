@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { createNotification } from '@/lib/notifications';
+import { requireStaff } from '@/lib/require-auth';
 
 export interface CreateContactData {
   name: string;
@@ -55,6 +56,10 @@ export async function createContact(data: CreateContactData) {
 
 export async function getNewContactsCount() {
   try {
+    if (!(await requireStaff())) {
+      return { success: false, count: 0 };
+    }
+
     const count = await prisma.contact.count({
       where: { status: 'new' },
     });
@@ -68,6 +73,13 @@ export async function getNewContactsCount() {
 
 export async function getAllContacts(status?: string) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const where: any = {};
     if (status) {
       where.status = status;
@@ -101,6 +113,13 @@ export async function getAllContacts(status?: string) {
 
 export async function getContactById(id: number) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const contact = await prisma.contact.findUnique({
       where: { id },
       include: {
@@ -136,6 +155,13 @@ export async function getContactById(id: number) {
 
 export async function updateContactStatus(data: UpdateContactData) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const contact = await prisma.contact.update({
       where: { id: data.id },
       data: {
@@ -158,6 +184,13 @@ export async function updateContactStatus(data: UpdateContactData) {
 
 export async function deleteContact(id: number) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     await prisma.contact.delete({
       where: { id },
     });

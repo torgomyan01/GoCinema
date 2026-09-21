@@ -28,6 +28,7 @@ import { signIn, signOut, useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SITE_URL } from '@/utils/consts';
 import { hasRole } from '@/lib/roles';
+import { safeCallbackPath } from '@/lib/safe-url';
 import { formatDateHy, formatTimeHy } from '@/lib/format';
 import { getUserTickets } from '@/app/actions/tickets';
 import { getMyBonus, type MyBonusData } from '@/app/actions/bonus';
@@ -192,8 +193,11 @@ export default function LoginPageClient() {
 
           if (freshSession?.user) {
             const user = freshSession.user as { role?: string };
-            if (callbackUrl && callbackUrl !== '/account') {
-              window.location.href = decodeURIComponent(callbackUrl);
+            const safeCallback = safeCallbackPath(
+              callbackUrl ? decodeURIComponent(callbackUrl) : null
+            );
+            if (safeCallback && safeCallback !== '/account') {
+              window.location.href = safeCallback;
             } else if (hasRole(user.role, ['admin'])) {
               window.location.href = '/admin';
             } else {

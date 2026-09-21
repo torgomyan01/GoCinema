@@ -8,6 +8,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isStaffRole } from '@/lib/roles';
 import { createNotification } from '@/lib/notifications';
+import { requireStaff, getSessionUser } from '@/lib/require-auth';
 
 const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -308,6 +309,10 @@ export async function createSupportRequest(formData: FormData) {
 /** Չատեր, որտեղ վերջին հաղորդագրությունը հաճախորդից է — staff-ը դեռ չի պատասխանել */
 export async function getPendingSupportReplyCount() {
   try {
+    if (!(await requireStaff())) {
+      return { success: false, count: 0 };
+    }
+
     const session = await getServerSession(authOptions);
     const sessionUser = session?.user as { id?: string; role?: string } | undefined;
     if (!sessionUser?.id || !isStaffRole(sessionUser.role)) {
@@ -338,6 +343,13 @@ export async function getPendingSupportReplyCount() {
 
 export async function getAllSupportRequests(status?: string) {
   try {
+    if (!(await requireStaff())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const requests = await prisma.supportRequest.findMany({
       where: status && status !== 'all' ? { status } : undefined,
       include: {
@@ -382,6 +394,16 @@ export async function getSupportRequestById(id: number) {
       return { success: false, error: 'Հարցումը չի գտնվել', request: null };
     }
 
+    const sessionUser = await getSessionUser();
+    const isOwner =
+      sessionUser &&
+      request.userId != null &&
+      sessionUser.id === request.userId;
+    const isStaff = sessionUser && isStaffRole(sessionUser.role);
+    if (!isOwner && !isStaff) {
+      return { success: false, error: 'Մուտքն արգելված է', request: null };
+    }
+
     return { success: true, request };
   } catch (error) {
     console.error('[Get Support Request] Error:', error);
@@ -396,6 +418,24 @@ export async function getSupportRequestById(id: number) {
 /** Թեթև endpoint չատի incremental թարմացման համար */
 export async function getSupportMessages(requestId: number, afterId = 0) {
   try {
+    const request = await prisma.supportRequest.findUnique({
+      where: { id: requestId },
+      select: { status: true, userId: true },
+    });
+    if (!request) {
+      return { success: false, messages: [], status: null };
+    }
+
+    const sessionUser = await getSessionUser();
+    const isOwner =
+      sessionUser &&
+      request.userId != null &&
+      sessionUser.id === request.userId;
+    const isStaff = sessionUser && isStaffRole(sessionUser.role);
+    if (!isOwner && !isStaff) {
+      return { success: false, messages: [], status: null };
+    }
+
     const messages = await prisma.supportMessage.findMany({
       where: {
         requestId,
@@ -411,15 +451,10 @@ export async function getSupportMessages(requestId: number, afterId = 0) {
       },
     });
 
-    const request = await prisma.supportRequest.findUnique({
-      where: { id: requestId },
-      select: { status: true },
-    });
-
     return {
       success: true,
       messages,
-      status: request?.status ?? null,
+      status: request.status ?? null,
     };
   } catch (error) {
     console.error('[Get Support Messages] Error:', error);
@@ -447,16 +482,21 @@ export async function addSupportMessage(formData: FormData) {
       return { success: false, error: 'Չատը չի գտնվել' };
     }
 
-    if (sessionUser?.id) {
-      const userId = Number(sessionUser.id);
-      if (request.userId && request.userId !== userId) {
-        return { success: false, error: 'Մուտքն արգելված է' };
-      }
+    // Require authenticated owner (or staff) — no anonymous posts into others' chats
+    if (!sessionUser?.id) {
+      return { success: false, error: 'Մուտք գործեք' };
+    }
+    const userId = Number(sessionUser.id);
+    if (
+      !isStaffRole(sessionUser.role) &&
+      request.userId != null &&
+      request.userId !== userId
+    ) {
+      return { success: false, error: 'Մուտքն արգելված է' };
     }
 
     let senderName = request.name;
     if (sessionUser?.id) {
-      const userId = Number(sessionUser.id);
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { name: true, phone: true },
@@ -551,6 +591,13 @@ export async function updateSupportRequest(data: {
   adminNote?: string | null;
 }) {
   try {
+    if (!(await requireStaff())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+      };
+    }
+
     const request = await prisma.supportRequest.update({
       where: { id: data.id },
       data: {

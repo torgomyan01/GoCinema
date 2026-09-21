@@ -72,11 +72,16 @@ export function getHdmAgentUrl(): string {
 }
 
 function getHdmAgentKey(): string {
-  return (
-    (typeof process !== 'undefined' &&
-      process.env.NEXT_PUBLIC_HDM_AGENT_KEY?.trim()) ||
-    ''
-  );
+  // Prefer server-only secret when running on the server.
+  // NEXT_PUBLIC_ remains for box-office browser → localhost agent calls.
+  if (typeof window === 'undefined') {
+    return (
+      process.env.HDM_AGENT_KEY?.trim() ||
+      process.env.NEXT_PUBLIC_HDM_AGENT_KEY?.trim() ||
+      ''
+    );
+  }
+  return process.env.NEXT_PUBLIC_HDM_AGENT_KEY?.trim() || '';
 }
 
 const AGENT_URL = getHdmAgentUrl();

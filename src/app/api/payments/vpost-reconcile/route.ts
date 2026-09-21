@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 function isAuthorized(request: Request): boolean {
-  if (request.headers.get('x-vercel-cron') === '1') return true;
+  // Never trust x-vercel-cron on self-hosted VPS — spoofable by any client.
   const secret = (process.env.CRON_SECRET || '').trim();
   if (!secret) return false;
   const auth = request.headers.get('authorization') || '';
@@ -13,8 +13,13 @@ function isAuthorized(request: Request): boolean {
 }
 
 async function runReconcile() {
-  const result = await reconcilePendingVPostPayments(25);
-  return NextResponse.json(result);
+  process.env.CRON_INTERNAL = '1';
+  try {
+    const result = await reconcilePendingVPostPayments(25);
+    return NextResponse.json(result);
+  } finally {
+    delete process.env.CRON_INTERNAL;
+  }
 }
 
 export async function GET(request: Request) {

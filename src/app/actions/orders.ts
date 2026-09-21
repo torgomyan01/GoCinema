@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { createMultipleTickets } from './tickets';
 import { AWAITING_PAYMENT_STATUS } from '@/lib/reservation';
+import { getSessionUser, requireStaff } from '@/lib/require-auth';
+import { isStaffRole } from '@/lib/roles';
 
 export interface CreateOrderData {
   userId: number;
@@ -18,7 +20,20 @@ export interface CreateOrderData {
 
 export async function createOrder(data: CreateOrderData) {
   try {
-    if (!data.userId || !data.screeningId || !data.seatIds.length) {
+    const sessionUser = await getSessionUser();
+    if (!sessionUser) {
+      return {
+        success: false,
+        error: 'Մուտք գործեք պատվեր ստեղծելու համար',
+      };
+    }
+
+    // Client-supplied userId is ignored unless staff creates for someone else
+    const userId = isStaffRole(sessionUser.role)
+      ? data.userId || sessionUser.id
+      : sessionUser.id;
+
+    if (!userId || !data.screeningId || !data.seatIds.length) {
       return {
         success: false,
         error: 'Բոլոր պարտադիր դաշտերը պետք է լրացված լինեն',
@@ -67,7 +82,7 @@ export async function createOrder(data: CreateOrderData) {
 
     // Create tickets first to get ticketIds
     const ticketsResult = await createMultipleTickets({
-      userId: data.userId,
+      userId: userId,
       screeningId: data.screeningId,
       seats: data.seatIds.map((seatId) => ({
         seatId,
@@ -82,7 +97,7 @@ export async function createOrder(data: CreateOrderData) {
     // Get created tickets and create seatId -> ticketId map
     const createdTickets = await prisma.ticket.findMany({
       where: {
-        userId: data.userId,
+        userId: userId,
         screeningId: data.screeningId,
         seatId: { in: data.seatIds },
         status: AWAITING_PAYMENT_STATUS,
@@ -109,7 +124,7 @@ export async function createOrder(data: CreateOrderData) {
     // Create order with orderItems (including ticketId if seatId is provided)
     const order = await prisma.order.create({
       data: {
-        userId: data.userId,
+        userId: userId,
         totalAmount,
         status: 'pending',
         orderItems: {
@@ -377,6 +392,17 @@ export async function getOrderById(
       return {
         success: false,
         error: 'Պատվերը չի գտնվել',
+      };
+    }
+
+    const sessionUser = await getSessionUser();
+    if (
+      !sessionUser ||
+      (sessionUser.id !== order.userId && !isStaffRole(sessionUser.role))
+    ) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
       };
     }
 

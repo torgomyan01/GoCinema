@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { occupiedTicketWhere } from '@/lib/reservation';
+import { requireAdmin } from '@/lib/require-auth';
 
 export interface CreateMovieData {
   title: string;
@@ -71,6 +72,13 @@ export async function getMovieCompanies() {
 }
 export async function getProducerUsers() {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const users = await prisma.user.findMany({
       where: { role: { contains: 'producer' } },
       select: { id: true, name: true, phone: true, email: true },
@@ -189,6 +197,13 @@ export async function getMovieBySlug(slug: string) {
 
 export async function createMovie(data: CreateMovieData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     // Validation
     if (!data.title || !data.duration || !data.genre || !data.releaseDate) {
       return {
@@ -266,6 +281,13 @@ export async function createMovie(data: CreateMovieData) {
 
 export async function updateMovie(data: UpdateMovieData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const { id, producerIds, companyIds, ...updateData } = data;
 
     // Validation
@@ -349,6 +371,13 @@ export async function updateMovie(data: UpdateMovieData) {
 
 export async function archiveMovie(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const movie = await prisma.movie.findUnique({
       where: { id },
       select: { id: true, isActive: true },
@@ -387,6 +416,13 @@ export async function archiveMovie(id: number) {
 
 export async function restoreMovie(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const movie = await prisma.movie.findUnique({
       where: { id },
       select: { id: true, isActive: true },
@@ -420,5 +456,12 @@ export async function restoreMovie(id: number) {
 
 /** @deprecated Օգտագործեք archiveMovie — ֆիլմերը չեն ջնջվում, միայն արխիվացվում */
 export async function deleteMovie(id: number) {
+  if (!(await requireAdmin())) {
+    return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+  }
+
   return archiveMovie(id);
 }

@@ -4,12 +4,14 @@ import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { sendVerificationSms } from '@/lib/sms';
+import { generateSecureOtp, rateLimitConsume } from '@/lib/rate-limit';
 
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_ATTEMPTS_PER_HOUR = 5;
+const MAX_VERIFY_ATTEMPTS = 5;
 
 function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return generateSecureOtp(6);
 }
 
 function generateSessionToken(): string {
@@ -90,6 +92,18 @@ export async function verifyResetOtp(
 ): Promise<{ success: boolean; resetToken?: string; error?: string }> {
   try {
     const cleanPhone = phone.replace(/\s/g, '');
+
+    const verifyLimit = rateLimitConsume(
+      `reset-otp-verify:${cleanPhone}`,
+      MAX_VERIFY_ATTEMPTS,
+      15 * 60 * 1000
+    );
+    if (!verifyLimit.ok) {
+      return {
+        success: false,
+        error: 'Չափազանց շատ փորձ: Խնդրեք նոր կոդ:',
+      };
+    }
 
     const user = await prisma.user.findUnique({
       where: { phone: cleanPhone },

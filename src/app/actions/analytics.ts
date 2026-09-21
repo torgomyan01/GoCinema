@@ -1,9 +1,18 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { requireStaff } from '@/lib/require-auth';
 
 export async function getAnalytics() {
   try {
+    if (!(await requireStaff())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+        analytics: null,
+      };
+    }
+
     // Get all statistics in parallel
     const [
       totalUsers,

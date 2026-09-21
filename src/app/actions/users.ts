@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { parseRoles, serializeRoles } from '@/lib/roles';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { requireAdmin } from '@/lib/require-auth';
 
 export interface UpdateUserData {
   id: number;
@@ -24,6 +25,14 @@ export interface ChangePasswordData {
 
 export async function getAllUsers() {
   try {
+    if (!(await requireAdmin())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+        users: [],
+      };
+    }
+
     const users = await prisma.user.findMany({
       select: {
         id: true,
@@ -67,6 +76,14 @@ export async function getAllUsers() {
 
 export async function getUserById(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+        user: null,
+      };
+    }
+
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -119,6 +136,14 @@ export async function getUserById(id: number) {
 /** Ադմինի դետալային տեսք՝ տոմսեր, բոնուս, պատվերներ, ծախս։ */
 export async function getUserDetails(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+        details: null,
+      };
+    }
+
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -313,6 +338,14 @@ export async function getUserDetails(id: number) {
 
 export async function updateUser(data: UpdateUserData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+        user: null,
+      };
+    }
+
     const { id, name, email, phone, role, phoneVerified, emailVerified } = data;
 
     // Build a Prisma-compatible update object (no null for optional string fields)
@@ -412,6 +445,13 @@ export async function updateUser(data: UpdateUserData) {
 
 export async function changeUserPassword(data: ChangePasswordData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+      };
+    }
+
     if (!data.newPassword || data.newPassword.length < 6) {
       return {
         success: false,
@@ -440,6 +480,13 @@ export async function changeUserPassword(data: ChangePasswordData) {
 
 export async function deleteUser(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+      };
+    }
+
     await prisma.user.delete({
       where: { id },
     });
@@ -459,6 +506,10 @@ export async function deleteUser(id: number) {
 /** Արգելափակում/ապաարգելափակում է օգտատիրոջը անվճար ամրագրումից։ */
 export async function setUserBlocked(id: number, blocked: boolean) {
   try {
+    if (!(await requireAdmin())) {
+      return { success: false, error: 'Մուտքն արգելված է' };
+    }
+
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -573,6 +624,10 @@ async function notifyUserReservationBlocked(user: {
  */
 export async function getNoShowReport() {
   try {
+    if (!(await requireAdmin())) {
+      return { success: false, error: 'Մուտքն արգելված է', users: [] };
+    }
+
     const grouped = await prisma.ticket.groupBy({
       by: ['userId'],
       where: { noShow: true },

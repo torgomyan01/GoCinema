@@ -2,6 +2,7 @@ import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
+import { rateLimitConsume } from './rate-limit';
 
 // Validate required environment variables
 if (!process.env.NEXTAUTH_SECRET && process.env.NODE_ENV === 'production') {
@@ -9,6 +10,10 @@ if (!process.env.NEXTAUTH_SECRET && process.env.NODE_ENV === 'production') {
     'NEXTAUTH_SECRET is not set. Please set it in your environment variables.'
   );
 }
+
+const ROLE_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+const LOGIN_MAX_ATTEMPTS = 8;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -25,6 +30,14 @@ export const authOptions: NextAuthOptions = {
           }
 
           const cleanPhone = credentials.phone.replace(/\s/g, '');
+          const limit = rateLimitConsume(
+            `login:${cleanPhone}`,
+            LOGIN_MAX_ATTEMPTS,
+            LOGIN_WINDOW_MS
+          );
+          if (!limit.ok) {
+            return null;
+          }
 
           const user = await prisma.user.findUnique({
             where: {
@@ -33,6 +46,10 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (!user) {
+            return null;
+          }
+
+          if ((user as { isBlocked?: boolean }).isBlocked) {
             return null;
           }
 
@@ -65,10 +82,35 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = (user as any).role || 'user';
         token.phone = (user as any).phone;
+        token.lastRoleCheck = Date.now();
+        delete (token as { error?: string }).error;
       }
 
-      // Ensure role is always set (don't fetch from DB in edge runtime)
-      // Role should be set during initial sign-in
+      const userId = token.id ? Number(token.id) : NaN;
+      const lastCheck = Number((token as { lastRoleCheck?: number }).lastRoleCheck || 0);
+      const needsRefresh =
+        Number.isFinite(userId) &&
+        (!lastCheck || Date.now() - lastCheck > ROLE_REFRESH_MS);
+
+      if (needsRefresh) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { role: true, isBlocked: true },
+          });
+          if (!dbUser || dbUser.isBlocked) {
+            (token as { error?: string }).error = 'blocked';
+            token.role = 'user';
+          } else {
+            token.role = dbUser.role || 'user';
+            delete (token as { error?: string }).error;
+          }
+          (token as { lastRoleCheck?: number }).lastRoleCheck = Date.now();
+        } catch {
+          // Keep existing token role on transient DB errors
+        }
+      }
+
       if (!token.role) {
         token.role = 'user';
       }
@@ -76,6 +118,14 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      if ((token as { error?: string }).error === 'blocked') {
+        // Force client to treat session as invalid
+        return {
+          ...session,
+          user: undefined as unknown as typeof session.user,
+          expires: new Date(0).toISOString(),
+        };
+      }
       if (session.user && token) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role || 'user';

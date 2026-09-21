@@ -111,6 +111,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false }, { status: 404 });
     }
 
+    const paidSum = Number(String(sum).replace(',', '.'));
+    const expectedSum = Number(order.totalAmount);
+    if (
+      !Number.isFinite(paidSum) ||
+      !Number.isFinite(expectedSum) ||
+      Math.abs(paidSum - expectedSum) > 0.01
+    ) {
+      telcellCallbackLog('sum_mismatch', {
+        orderId,
+        sum: paidSum,
+        expected: expectedSum,
+      });
+      console.error('[Telcell Callback] Sum mismatch', {
+        orderId,
+        sum: paidSum,
+        expected: expectedSum,
+      });
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
+
     if (status === 'PAID') {
       telcellCallbackLog('status_paid', {
         orderId,

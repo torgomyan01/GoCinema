@@ -8,6 +8,7 @@ import { releaseExpiredReservations } from '@/app/actions/tickets';
 import { findPackageBookingConflictForScreening } from '@/app/actions/package-bookings';
 import { returnOrderItemStock } from '@/lib/product-units';
 import { recalculateBalance } from '@/lib/bonus';
+import { requireAdmin } from '@/lib/require-auth';
 
 const screeningListInclude = {
   movie: {
@@ -172,6 +173,13 @@ export async function getScreeningById(id: number) {
 
 export async function createScreening(data: CreateScreeningData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     // Validation
     if (!data.movieId || !data.startTime || !data.endTime) {
       return {
@@ -291,6 +299,13 @@ export async function createScreening(data: CreateScreeningData) {
 
 export async function updateScreening(data: UpdateScreeningData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const { id, ...updateData } = data;
 
     if (!id) {
@@ -416,6 +431,13 @@ export async function updateScreening(data: UpdateScreeningData) {
 
 export async function deleteScreening(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const screening = await prisma.screening.findUnique({
       where: { id },
       select: { id: true },

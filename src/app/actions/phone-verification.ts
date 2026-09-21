@@ -2,13 +2,14 @@
 
 import { prisma } from '@/lib/prisma';
 import { sendVerificationSms } from '@/lib/sms';
+import { generateSecureOtp } from '@/lib/rate-limit';
 
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_SEND_PER_HOUR = 5;
 const MAX_VERIFY_ATTEMPTS = 5;
 
 function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return generateSecureOtp(6);
 }
 
 function isValidArmenianPhone(phone: string): boolean {

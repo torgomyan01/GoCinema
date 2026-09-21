@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFile, unlink } from 'fs/promises';
 import { join, extname } from 'path';
 import { existsSync } from 'fs';
+import { requireStaff } from '@/lib/require-auth';
 
 const MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -16,7 +17,12 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 function guardFilename(filename: string): boolean {
-  return !filename || filename.includes('..') || filename.includes('/') || filename.includes('\\');
+  return (
+    !filename ||
+    filename.includes('..') ||
+    filename.includes('/') ||
+    filename.includes('\\')
+  );
 }
 
 export async function GET(
@@ -27,7 +33,10 @@ export async function GET(
     const { filename } = await params;
 
     if (guardFilename(filename)) {
-      return NextResponse.json({ error: 'Անվավեր ֆայլի անուն' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Անվավեր ֆայլի անուն' },
+        { status: 400 }
+      );
     }
 
     const filePath = join(process.cwd(), 'uploads', filename);
@@ -54,7 +63,10 @@ export async function GET(
     });
   } catch (error: any) {
     console.error('[Files API GET] Error:', error);
-    return NextResponse.json({ error: 'Ֆայլի կարդումը ձախողվեց' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Ֆայլի կարդումը ձախողվեց' },
+      { status: 500 }
+    );
   }
 }
 
@@ -63,10 +75,17 @@ export async function DELETE(
   { params }: { params: Promise<{ filename: string }> }
 ) {
   try {
+    if (!(await requireStaff())) {
+      return NextResponse.json({ error: 'Մուտքն արգելված է' }, { status: 401 });
+    }
+
     const { filename } = await params;
 
     if (guardFilename(filename)) {
-      return NextResponse.json({ error: 'Անվավեր ֆայլի անուն' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Անվավեր ֆայլի անուն' },
+        { status: 400 }
+      );
     }
 
     const filePath = join(process.cwd(), 'uploads', filename);
@@ -80,6 +99,9 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('[Files API DELETE] Error:', error);
-    return NextResponse.json({ error: 'Ֆայլի ջնջումը ձախողվեց' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Ֆայլի ջնջումը ձախողվեց' },
+      { status: 500 }
+    );
   }
 }

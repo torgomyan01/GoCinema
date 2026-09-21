@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { requireAdmin } from '@/lib/require-auth';
 
 export interface CreatePremiereData {
   movieId: number;
@@ -42,6 +43,13 @@ export async function getPremieres() {
 
 export async function getAllPremieres() {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const premieres = await prisma.premiere.findMany({
       include: {
         movie: true,
@@ -90,6 +98,13 @@ export async function getPremiereById(id: number) {
 
 export async function createPremiere(data: CreatePremiereData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     // Check if movie exists
     const movie = await prisma.movie.findUnique({
       where: { id: data.movieId },
@@ -131,6 +146,13 @@ export async function createPremiere(data: CreatePremiereData) {
 
 export async function updatePremiere(data: UpdatePremiereData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const { id, ...updateData } = data;
 
     const premiere = await prisma.premiere.update({
@@ -157,6 +179,13 @@ export async function updatePremiere(data: UpdatePremiereData) {
 
 export async function deletePremiere(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     await prisma.premiere.delete({
       where: { id },
     });

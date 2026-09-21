@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { requireAdmin } from '@/lib/require-auth';
 
 export interface CreateFAQData {
   question: string;
@@ -36,6 +37,13 @@ export async function getFAQs() {
 
 export async function getAllFAQs() {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const faqs = await prisma.fAQ.findMany({
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     });
@@ -78,6 +86,13 @@ export async function getFAQById(id: number) {
 
 export async function createFAQ(data: CreateFAQData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     // Get max order value
     const maxOrder = await prisma.fAQ.findFirst({
       orderBy: { order: 'desc' },
@@ -111,6 +126,13 @@ export async function createFAQ(data: CreateFAQData) {
 
 export async function updateFAQ(data: UpdateFAQData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const { id, ...updateData } = data;
 
     const faq = await prisma.fAQ.update({
@@ -134,6 +156,13 @@ export async function updateFAQ(data: UpdateFAQData) {
 
 export async function deleteFAQ(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     await prisma.fAQ.delete({
       where: { id },
     });

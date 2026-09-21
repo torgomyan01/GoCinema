@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { occupiedTicketWhere } from '@/lib/reservation';
 import { revalidatePath } from 'next/cache';
+import { requireAdmin } from '@/lib/require-auth';
 
 export interface CreateSeatData {
   hallId: number;
@@ -101,6 +102,13 @@ export async function getSeatById(id: number) {
 
 export async function createSeat(data: CreateSeatData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     // Validation
     if (!data.hallId || !data.row || !data.number) {
       return {
@@ -176,6 +184,13 @@ export async function createSeat(data: CreateSeatData) {
 
 export async function bulkCreateSeats(data: BulkCreateSeatsData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const hallId = data.hallId || (await getDefaultHall());
 
     const seatsToCreate = [];
@@ -242,6 +257,13 @@ export async function bulkCreateSeats(data: BulkCreateSeatsData) {
 
 export async function updateSeat(data: UpdateSeatData) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     if (!data.id) {
       return {
         success: false,
@@ -320,6 +342,13 @@ export async function updateSeat(data: UpdateSeatData) {
 
 export async function deleteSeat(id: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const seat = await prisma.seat.findUnique({
       where: { id },
       include: {
@@ -379,6 +408,13 @@ export async function deleteSeat(id: number) {
 
 export async function deleteAllSeats(hallId?: number) {
   try {
+    if (!(await requireAdmin())) {
+      return {
+      success: false,
+      error: 'Մուտքն արգելված է',
+    };
+    }
+
     const targetHallId = hallId || (await getDefaultHall());
 
     // Check if there are any active tickets

@@ -11,6 +11,8 @@ import {
   expiredAwaitingPaymentWhere,
   AWAITING_PAYMENT_STATUS,
 } from '@/lib/reservation';
+import { getSessionUser, requireStaff } from '@/lib/require-auth';
+import { isStaffRole } from '@/lib/roles';
 
 /**
  * Չեղարկում է լրացած օնլայն վճարման hold-ները (`awaiting_payment` + holdUntil <= now)։
@@ -176,6 +178,14 @@ export interface CreateMultipleTicketsData {
 
 export async function getAllTicketsForAdmin() {
   try {
+    if (!(await requireStaff())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+        tickets: [],
+      };
+    }
+
     const tickets = await prisma.ticket.findMany({
       include: {
         user: {
@@ -232,6 +242,18 @@ export async function getUserTickets(userId: number) {
       return {
         success: false,
         error: 'Օգտատիրոջ ID-ն վավեր չէ',
+        tickets: [],
+      };
+    }
+
+    const sessionUser = await getSessionUser();
+    if (
+      !sessionUser ||
+      (sessionUser.id !== Number(userId) && !isStaffRole(sessionUser.role))
+    ) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
         tickets: [],
       };
     }
@@ -350,6 +372,17 @@ export async function getTicketById(id: number) {
       return {
         success: false,
         error: 'Տոմսը չի գտնվել',
+      };
+    }
+
+    const sessionUser = await getSessionUser();
+    if (
+      !sessionUser ||
+      (sessionUser.id !== ticket.userId && !isStaffRole(sessionUser.role))
+    ) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
       };
     }
 
@@ -634,6 +667,13 @@ export async function updateTicketStatus(
   status: 'reserved' | 'awaiting_payment' | 'paid' | 'used' | 'cancelled'
 ) {
   try {
+    if (!(await requireStaff())) {
+      return {
+        success: false,
+        error: 'Մուտքն արգելված է',
+      };
+    }
+
     const ticket = await prisma.ticket.update({
       where: { id },
       data: { status },

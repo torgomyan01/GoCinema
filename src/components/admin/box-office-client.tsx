@@ -41,7 +41,7 @@ import { lookupSaleProductByQr } from '@/app/actions/products';
 import { isQuantityOnlyProduct } from '@/lib/product-units';
 import {
   buildProductSaleInput,
-  checkHdmAgentHealth,
+  probeHdmAgentHealth,
   isHdmAgentEnabled,
 } from '@/lib/hdm-agent';
 import { submitReturnFiscal, submitSaleFiscal } from '@/lib/fiscal-flow';
@@ -193,6 +193,7 @@ export default function BoxOfficeClient({
     message: string;
   } | null>(null);
   const [hdmAgentOnline, setHdmAgentOnline] = useState<boolean | null>(null);
+  const [hdmAgentHint, setHdmAgentHint] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   // Բոնուսային հաճախորդ՝ վաճառքի միավորները և պարգևը
@@ -256,10 +257,12 @@ export default function BoxOfficeClient({
   const refreshHdmAgentStatus = async () => {
     if (!isHdmAgentEnabled()) {
       setHdmAgentOnline(null);
+      setHdmAgentHint(null);
       return;
     }
-    const online = await checkHdmAgentHealth();
-    setHdmAgentOnline(online);
+    const result = await probeHdmAgentHealth();
+    setHdmAgentOnline(result.ok);
+    setHdmAgentHint(result.ok ? null : `${result.url} — ${result.error ?? 'offline'}`);
   };
 
   const loadScreenings = async () => {
@@ -985,6 +988,7 @@ export default function BoxOfficeClient({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {isHdmAgentEnabled() && (
             <div
+              title={hdmAgentHint ?? undefined}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
                 hdmAgentOnline
                   ? 'bg-emerald-50 text-emerald-700'

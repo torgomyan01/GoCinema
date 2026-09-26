@@ -37,7 +37,8 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 function corsHeaders(
   origin: string | undefined,
   allowOrigins: string[],
-  req?: http.IncomingMessage
+  req?: http.IncomingMessage,
+  options?: { allowAnyOrigin?: boolean }
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -54,10 +55,20 @@ function corsHeaders(
     headers['Access-Control-Allow-Private-Network'] = 'true';
   }
 
+  if (options?.allowAnyOrigin) {
+    headers['Access-Control-Allow-Origin'] = origin || '*';
+    headers['Vary'] = 'Origin, Access-Control-Request-Private-Network';
+    return headers;
+  }
+
   if (!origin) return headers;
   if (allowOrigins.includes('*') || allowOrigins.includes(origin)) {
     headers['Access-Control-Allow-Origin'] = origin;
     headers['Vary'] = 'Origin, Access-Control-Request-Private-Network';
+  } else {
+    console.warn(
+      `[gocinema-hdm-agent] CORS rejected origin: ${origin}. Allowed: ${allowOrigins.join(', ')}`
+    );
   }
   return headers;
 }
@@ -75,15 +86,21 @@ export function createServer(config: AgentConfig): http.Server {
 
   return http.createServer(async (req, res) => {
     const origin = req.headers.origin;
-    const cors = corsHeaders(origin, config.allowOrigins, req);
+    const pathname = (req.url ?? '/').split('?')[0];
+    // /health — բաց CORS, որ online ստուգումը չձախողվի origin mismatch-ից
+    const cors = corsHeaders(origin, config.allowOrigins, req, {
+      allowAnyOrigin: pathname === '/health',
+    });
 
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, cors);
+      // Preflight for /v1/* still needs correct Allow-Origin
+      const preflightCors = corsHeaders(origin, config.allowOrigins, req, {
+        allowAnyOrigin: pathname === '/health',
+      });
+      res.writeHead(204, preflightCors);
       res.end();
       return;
     }
-
-    const pathname = (req.url ?? '/').split('?')[0];
 
     try {
       if (req.method === 'GET' && pathname === '/health') {

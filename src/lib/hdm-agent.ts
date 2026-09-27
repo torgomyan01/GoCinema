@@ -131,15 +131,40 @@ async function agentFetch<T>(
   }
 }
 
-/** GET /health — առանց API key */
+/** GET /health — առանց API key։ Վերադարձնում է պատճառը՝ UI ախտորոշման համար։ */
 export async function checkHdmAgentHealth(): Promise<boolean> {
+  const result = await probeHdmAgentHealth();
+  return result.ok;
+}
+
+export async function probeHdmAgentHealth(): Promise<{
+  ok: boolean;
+  url: string;
+  error?: string;
+}> {
+  const url = `${getHdmAgentUrl()}/health`;
   try {
-    const res = await fetch(`${getHdmAgentUrl()}/health`, { method: 'GET' });
-    if (!res.ok) return false;
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      mode: 'cors',
+    });
+    if (!res.ok) {
+      return { ok: false, url, error: `HTTP ${res.status}` };
+    }
     const data = (await res.json()) as { ok?: boolean };
-    return Boolean(data.ok);
-  } catch {
-    return false;
+    if (!data.ok) {
+      return { ok: false, url, error: 'Agent health ok=false' };
+    }
+    return { ok: true, url };
+  } catch (err) {
+    const message =
+      err instanceof TypeError
+        ? `Կապ չկա ${url}-ի հետ։ Բացեք կայքը ՀԴՄ agent-ի նույն PC-ից (ոչ այլ համակարգչից)։ Ստուգեք CORS / Chrome Private Network Access։`
+        : err instanceof Error
+          ? err.message
+          : 'HDM agent health check failed';
+    return { ok: false, url, error: message };
   }
 }
 

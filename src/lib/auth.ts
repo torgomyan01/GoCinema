@@ -132,8 +132,8 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      // Blocked / deleted users: empty session (same for Header + useSession)
       if ((token as { error?: string }).error === 'blocked') {
-        // Force client to treat session as invalid
         return {
           ...session,
           user: undefined as unknown as typeof session.user,

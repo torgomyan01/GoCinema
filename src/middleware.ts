@@ -2,56 +2,56 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { isStaffRole } from '@/lib/roles';
 
+const SESSION_COOKIE =
+  process.env.NODE_ENV === 'production'
+    ? '__Secure-next-auth.session-token'
+    : 'next-auth.session-token';
+
+async function readAuthToken(request: NextRequest) {
+  const named = request.cookies.get(SESSION_COOKIE);
+  const legacy = request.cookies.get('next-auth.session-token');
+  const secure = request.cookies.get('__Secure-next-auth.session-token');
+  const sessionCookie = named || secure || legacy;
+
+  if (!sessionCookie?.value) {
+    return null;
+  }
+
+  return getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+    cookieName: sessionCookie.name,
+  });
+}
+
 export default async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Allow /account page
+  // Allow /account page (login + profile live here)
   if (pathname === '/account') {
     return NextResponse.next();
   }
 
-  // For admin routes, check token manually
+  // Admin routes — staff only
   if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
     try {
-      // Get session cookie
-      const sessionCookie =
-        request.cookies.get('next-auth.session-token') ||
-        request.cookies.get('__Secure-next-auth.session-token');
+      const token = await readAuthToken(request);
 
-      if (!sessionCookie?.value) {
-        const signInUrl = new URL('/account', request.url);
-        signInUrl.searchParams.set('callbackUrl', pathname);
-        return NextResponse.redirect(signInUrl);
-      }
-
-      // Decode token manually
-      const cookieName = sessionCookie.name || 'next-auth.session-token';
-
-      const token = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET,
-        cookieName: cookieName,
-      });
-
-      if (token && isStaffRole((token as any)?.role)) {
+      if (token && isStaffRole((token as { role?: string }).role)) {
         return NextResponse.next();
       }
 
       const signInUrl = new URL('/account', request.url);
       signInUrl.searchParams.set('callbackUrl', pathname);
       return NextResponse.redirect(signInUrl);
-    } catch (error) {
+    } catch {
       const signInUrl = new URL('/account', request.url);
       signInUrl.searchParams.set('callbackUrl', pathname);
       return NextResponse.redirect(signInUrl);
     }
   }
 
-  // For other protected routes, check if token exists
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  const token = await readAuthToken(request);
 
   if (!token) {
     const signInUrl = new URL('/account', request.url);

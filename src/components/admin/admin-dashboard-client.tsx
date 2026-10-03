@@ -16,6 +16,9 @@ import {
   Check,
   PhoneCall,
   PhoneOff,
+  MessageSquare,
+  Loader2,
+  X,
 } from 'lucide-react';
 import AdminLayout from './admin-layout';
 import ProductDemandSection from './product-demand-section';
@@ -24,8 +27,11 @@ import {
   getRecentActivity,
   getUpcomingBirthdays,
   setBirthdayPromoCalled,
+  sendBirthdayPromoSms,
+  sendBirthdayPromoTestSms,
   type UpcomingBirthdayUser,
 } from '@/app/actions/dashboard';
+import { buildBirthdayPromoSmsText } from '@/lib/birthday-promo-sms';
 
 interface AdminDashboardClientProps {
   user: {
@@ -77,6 +83,21 @@ export default function AdminDashboardClient({
   const [isLoading, setIsLoading] = useState(true);
   const [birthdayLoading, setBirthdayLoading] = useState(true);
   const [callingId, setCallingId] = useState<number | null>(null);
+  const [smsSendingId, setSmsSendingId] = useState<number | null>(null);
+  const [smsFeedback, setSmsFeedback] = useState<{
+    id: number;
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const [testModalOpen, setTestModalOpen] = useState(false);
+  const [testPhone, setTestPhone] = useState(user.phone || '');
+  const [testSending, setTestSending] = useState(false);
+  const [testFeedback, setTestFeedback] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+
+  const smsPreviewText = buildBirthdayPromoSmsText('Անուն');
 
   const loadBirthdays = useCallback(async () => {
     setBirthdayLoading(true);
@@ -139,6 +160,63 @@ export default function AdminDashboardClient({
       );
     } finally {
       setCallingId(null);
+    }
+  };
+
+  const handleSendSms = async (row: UpcomingBirthdayUser) => {
+    if (smsSendingId || row.smsSent) return;
+    setSmsSendingId(row.id);
+    setSmsFeedback(null);
+    try {
+      const res = await sendBirthdayPromoSms(row.id);
+      if (res.success || res.smsSent) {
+        setBirthdays((prev) =>
+          prev.map((u) => (u.id === row.id ? { ...u, smsSent: true } : u))
+        );
+        setSmsFeedback({
+          id: row.id,
+          ok: true,
+          message: res.success
+            ? 'SMS-ը ուղարկվեց'
+            : res.error || 'SMS-ն արդեն ուղարկված է',
+        });
+      } else {
+        setSmsFeedback({
+          id: row.id,
+          ok: false,
+          message: res.error || 'SMS ուղարկելը ձախողվեց',
+        });
+      }
+    } catch {
+      setSmsFeedback({
+        id: row.id,
+        ok: false,
+        message: 'SMS ուղարկելիս սխալ է տեղի ունեցել',
+      });
+    } finally {
+      setSmsSendingId(null);
+    }
+  };
+
+  const handleSendTestSms = async () => {
+    if (testSending) return;
+    setTestSending(true);
+    setTestFeedback(null);
+    try {
+      const res = await sendBirthdayPromoTestSms(testPhone);
+      setTestFeedback({
+        ok: !!res.success,
+        message: res.success
+          ? 'Թեստային SMS-ը ուղարկվեց։ Ստուգեք հեռախոսը։'
+          : res.error || 'Թեստային SMS ուղարկելը ձախողվեց',
+      });
+    } catch {
+      setTestFeedback({
+        ok: false,
+        message: 'Թեստային SMS ուղարկելիս սխալ է տեղի ունեցել',
+      });
+    } finally {
+      setTestSending(false);
     }
   };
 
@@ -323,13 +401,24 @@ export default function AdminDashboardClient({
                     Մոտակա ծնունդներ (15 օր)
                   </h2>
                   <p className="text-xs text-gray-500">
-                    Ակցիայի համար զանգելու ցանկ
+                    Զանգ կամ SMS՝ ծննդյան դահլիճի վարձակալության մասին
                     {!birthdayLoading && birthdays.length > 0
                       ? ` · ${uncalledCount} չզանգված / ${birthdays.length}`
                       : ''}
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTestFeedback(null);
+                  setTestModalOpen(true);
+                }}
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Ուղարկել թեստային
+              </button>
             </div>
 
             <div className="p-3 sm:p-5">
@@ -377,6 +466,12 @@ export default function AdminDashboardClient({
                               Զանգել ենք
                             </span>
                           )}
+                          {row.smsSent && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                              <MessageSquare className="h-3 w-3" />
+                              SMS ուղարկված
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                           <a
@@ -388,9 +483,18 @@ export default function AdminDashboardClient({
                           </a>
                           <span>{formatBirthDay(row.nextBirthday)}</span>
                         </div>
+                        {smsFeedback?.id === row.id && (
+                          <p
+                            className={`mt-1 text-xs font-medium ${
+                              smsFeedback.ok ? 'text-emerald-600' : 'text-red-600'
+                            }`}
+                          >
+                            {smsFeedback.message}
+                          </p>
+                        )}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:grid-cols-none">
+                      <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap sm:justify-end">
                         <a
                           href={`tel:${row.phone}`}
                           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 sm:hidden"
@@ -400,9 +504,36 @@ export default function AdminDashboardClient({
                         </a>
                         <button
                           type="button"
+                          disabled={
+                            smsSendingId === row.id ||
+                            row.smsSent ||
+                            !row.phone
+                          }
+                          onClick={() => void handleSendSms(row)}
+                          title="Ուղարկել ծննդյան դահլիճի ակցիայի SMS"
+                          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:opacity-50 sm:px-4 ${
+                            row.smsSent
+                              ? 'border border-sky-200 bg-sky-50 text-sky-700'
+                              : 'border border-sky-200 bg-sky-600 text-white shadow-sm hover:bg-sky-500'
+                          }`}
+                        >
+                          {smsSendingId === row.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <MessageSquare className="h-4 w-4" />
+                          )}
+                          <span className="sm:hidden">
+                            {row.smsSent ? 'Ուղարկված' : 'SMS'}
+                          </span>
+                          <span className="hidden sm:inline">
+                            {row.smsSent ? 'SMS ուղարկված' : 'Ուղարկել SMS'}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
                           disabled={callingId === row.id}
                           onClick={() => void handleToggleCalled(row)}
-                          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:opacity-50 sm:px-4 ${
+                          className={`col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:opacity-50 sm:col-span-1 sm:px-4 ${
                             row.called
                               ? 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                               : 'bg-pink-600 text-white shadow-sm hover:bg-pink-500'
@@ -430,6 +561,107 @@ export default function AdminDashboardClient({
               )}
             </div>
           </motion.div>
+
+          {testModalOpen && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              onClick={() => {
+                if (!testSending) setTestModalOpen(false);
+              }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="birthday-test-sms-title"
+                className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 sm:px-5">
+                  <h3
+                    id="birthday-test-sms-title"
+                    className="text-base font-bold text-gray-900"
+                  >
+                    Թեստային SMS
+                  </h3>
+                  <button
+                    type="button"
+                    disabled={testSending}
+                    onClick={() => setTestModalOpen(false)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                    aria-label="Փակել"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 px-4 py-4 sm:px-5">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500">
+                      Ուղարկվող տեքստ
+                    </p>
+                    <pre className="mt-1.5 whitespace-pre-wrap rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm leading-relaxed text-gray-800">
+                      {smsPreviewText}
+                    </pre>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      «Անուն»-ի փոխարեն գնում է հաճախորդի անունը
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="birthday-test-phone"
+                      className="text-xs font-semibold text-gray-500"
+                    >
+                      Հեռախոսահամար
+                    </label>
+                    <input
+                      id="birthday-test-phone"
+                      type="tel"
+                      inputMode="tel"
+                      value={testPhone}
+                      onChange={(e) => setTestPhone(e.target.value)}
+                      placeholder="0XX XXX XXX"
+                      className="mt-1.5 min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none ring-sky-300 placeholder:text-gray-400 focus:ring-2"
+                    />
+                  </div>
+
+                  {testFeedback && (
+                    <p
+                      className={`text-xs font-medium ${
+                        testFeedback.ok ? 'text-emerald-600' : 'text-red-600'
+                      }`}
+                    >
+                      {testFeedback.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+                  <button
+                    type="button"
+                    disabled={testSending}
+                    onClick={() => setTestModalOpen(false)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Փակել
+                  </button>
+                  <button
+                    type="button"
+                    disabled={testSending || !testPhone.trim()}
+                    onClick={() => void handleSendTestSms()}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-sky-500 disabled:opacity-50"
+                  >
+                    {testSending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <MessageSquare className="h-4 w-4" />
+                    )}
+                    Ուղարկել թեստային
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <ProductDemandSection />
 

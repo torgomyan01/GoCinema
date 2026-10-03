@@ -50,6 +50,8 @@ type VPostTransactionListItem = {
     date?: string;
     description?: string;
     cardID?: number;
+    /** "1"՝ երկփուլ (hold) ռեժիմ — պետք է confirm-payment */
+    freezing?: string | number;
   };
   /** ITF docs — PascalCase */
   response?: Record<string, unknown>;
@@ -98,6 +100,7 @@ function coerceOrder(
   const statusRaw = o.status ?? o.Status;
   const dateRaw = o.date ?? o.Date;
   const descRaw = o.description ?? o.Description;
+  const freezingRaw = o.freezing ?? o.Freezing;
 
   return {
     id: Number.isFinite(idNum) && idNum > 0 ? idNum : undefined,
@@ -137,6 +140,10 @@ function coerceOrder(
         : o.cardId != null
           ? parseInt(String(o.cardId), 10)
           : undefined,
+    freezing:
+      freezingRaw != null && String(freezingRaw).trim() !== ''
+        ? (freezingRaw as string | number)
+        : undefined,
   };
 }
 
@@ -986,8 +993,57 @@ export async function confirmVPostPayment(payload: {
 }
 
 /**
+ * Tend/ITF տրամաբանություն՝ confirm-payment հաջողությունը հիմնականում
+ * `message: "OK"`-ով է (հաճախ `status: false`), ոչ թե envelope.status-ով։
+ * ResponseCode 07 = արդեն գանձված (idempotent success)։
+ */
+export function isVPostCaptureSettled(result: {
+  status?: boolean;
+  message?: string;
+  data?: VPostConfirmPaymentData & {
+    response?: {
+      ResponseCode?: string;
+      ResponseMessage?: string;
+      responseCode?: string;
+      responseMessage?: string;
+    };
+    error?: string;
+  };
+}): boolean {
+  const message = String(result.message ?? '').trim();
+  if (/^ok$/i.test(message)) return true;
+
+  // Երբեմն envelope.status=true էլ է գալիս — պահում ենք որպես հաջող
+  if (result.status === true) return true;
+
+  const data = result.data;
+  const nested = data?.response;
+  const code = String(
+    data?.responseCode ??
+      nested?.ResponseCode ??
+      nested?.responseCode ??
+      ''
+  ).trim();
+  const responseMessage = String(
+    nested?.ResponseMessage ?? nested?.responseMessage ?? data?.error ?? ''
+  );
+
+  if (code === '07') return true;
+  if (/must be in approved state/i.test(responseMessage)) return true;
+  // ITF հայերեն՝ արդեն հաստատված / գանձված
+  if (
+    /արդեն\s+(գանձ|հաստատ)/i.test(responseMessage) ||
+    /already\s+(captured|deposited|confirmed)/i.test(responseMessage)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * confirm-payment՝ նախ partner orderID (order/new), եթե «No such order»՝ ITF id։
- * Հաջողություն՝ միայն envelope `status: true` (ResponseCode 00 ≠ գանձում)։
+ * Հաջողություն՝ Tend-ի նման `message: OK` / ResponseCode 07 (ոչ միայն status:true)։
  */
 export async function confirmVPostPaymentWithFallback(payload: {
   orderIDs: number[];
@@ -1007,6 +1063,7 @@ export async function confirmVPostPaymentWithFallback(payload: {
       data: undefined,
       usedOrderID: undefined as number | undefined,
       duplicate: false,
+      captured: false,
     };
   }
 
@@ -1020,19 +1077,34 @@ export async function confirmVPostPaymentWithFallback(payload: {
     });
     lastResult = result;
 
-    // Միայն envelope.status=true = confirm-payment հաջող
-    // ResponseCode "00" կարող է լինել պարզապես նախնական ավտորիզացիա
-    if (result.status === true) {
-      return { ...result, usedOrderID: orderID, duplicate: false };
+    // Հիմնվել message/07-ի վրա (ITF հաճախ տալիս է status:false + message:OK)
+    if (isVPostCaptureSettled(result)) {
+      return {
+        ...result,
+        status: true as const,
+        usedOrderID: orderID,
+        duplicate: false,
+        captured: true,
+      };
     }
 
     if (isVPostDuplicateOrderResponse(result)) {
-      return { ...result, usedOrderID: orderID, duplicate: true };
+      return {
+        ...result,
+        usedOrderID: orderID,
+        duplicate: true,
+        captured: false,
+      };
     }
 
     const hasMore = i < uniqueIds.length - 1;
     if (!hasMore || !isVPostNoSuchOrderResponse(result)) {
-      return { ...result, usedOrderID: orderID, duplicate: false };
+      return {
+        ...result,
+        usedOrderID: orderID,
+        duplicate: false,
+        captured: false,
+      };
     }
   }
 
@@ -1040,6 +1112,7 @@ export async function confirmVPostPaymentWithFallback(payload: {
     ...(lastResult ?? { status: false as const, message: 'confirm failed' }),
     usedOrderID: uniqueIds[uniqueIds.length - 1],
     duplicate: false,
+    captured: false,
   };
 }
 
@@ -1125,12 +1198,22 @@ export function buildVPostProviderInfoFromTransaction(
  * Երկփուլ վճարման դեպքում գումարը սառեցված է (authorized), բայց դեռ չի գանձվել։
  * Այս վիճակում պետք է կանչել `/order/confirm-payment` (Confirmation)՝ գումարը
  * վաճառողի հաշվին փոխանցելու համար։
+ * Tend՝ `order.freezing === "1"` նույնպես նշանակում է capture պարտադիր է։
  */
 export function isVPostPaymentNeedsConfirmation(
   tx?: VPostTransactionListItem
 ): boolean {
   const state = getVPostPaymentState(tx);
-  return state === 'approved' || state === 'autoauthorized';
+  if (
+    state === 'deposited' ||
+    state === 'declined' ||
+    state === 'void' ||
+    state === 'refunded'
+  ) {
+    return false;
+  }
+  if (state === 'approved' || state === 'autoauthorized') return true;
+  return String(tx?.order?.freezing ?? '') === '1';
 }
 
 export function mergeVPostProviderInfo(

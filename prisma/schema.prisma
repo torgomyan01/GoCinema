@@ -38,6 +38,8 @@ model User {
   birthdayBonusYear Int? // ո՞ր տարվա ծննդյան բոնուսն է տրված
   /// Ծննդյան ակցիայի զանգ՝ ո՞ր տարվա ծնունդի համար է արվել
   birthdayPromoCalledYear Int?
+  /// Ծննդյան ակցիայի SMS՝ ո՞ր տարվա ծնունդի համար է ուղարկվել
+  birthdayPromoSmsYear Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

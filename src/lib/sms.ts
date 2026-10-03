@@ -1,17 +1,16 @@
 /**
- * Dexatel SMS Verify API client.
+ * Dexatel SMS client.
  *
- * OTP-ը գեներացվում և ստուգվում է մեր DB-ում։ Dexatel-ը միայն առաքում է SMS։
- * Օգտագործվում է միայն գրանցման վերիֆիկացիայի և «մոռացել եմ գաղտնաբառը» համար։
- * Docs: https://developers.dexatel.com/docs/verify-api-sms
+ * - Verify API՝ գրանցման / գաղտնաբառի OTP
+ * - Messages API՝ ազատ տեքստով SMS (օր. ծննդյան ակցիա)
  *
  * `DEXATEL_SENDER_ID` կարող է լինել sender UUID կամ name/code։
- * API `sender` դաշտին ուղարկում ենք alphanumeric name/code-ը։
  * Phone՝ `374XXXXXXXX` (առանց +)։
  */
 
 const DEXATEL_API_BASE = 'https://api.dexatel.com/v1';
 const DEXATEL_VERIFY_URL = `${DEXATEL_API_BASE}/verifications`;
+const DEXATEL_MESSAGES_URL = `${DEXATEL_API_BASE}/messages`;
 
 /** Cache: configured value → resolved sender name/code */
 const resolvedSenderCache = new Map<string, string>();
@@ -343,3 +342,127 @@ export async function sendVerificationSms(
     return { success: false, error: 'SMS ուղարկելիս սխալ է տեղի ունեցել' };
   }
 }
+
+/**
+ * Ազատ տեքստով SMS՝ Dexatel Messages API (`POST /v1/messages`).
+ */
+export async function sendPlainSms(
+  phone: string,
+  text: string
+): Promise<SendSmsResult> {
+  const apiKey = env('DEXATEL_API_KEY');
+  const configuredSender = env('DEXATEL_SENDER_ID');
+  const message = text.trim();
+
+  if (!apiKey || !configuredSender) {
+    console.error('[SMS] Dexatel API key / Sender ID բացակայում են');
+    return { success: false, error: 'SMS ծառայությունը կարգավորված չէ' };
+  }
+  if (!message) {
+    return { success: false, error: 'Հաղորդագրության տեքստը դատարկ է' };
+  }
+  if (message.length > 1000) {
+    return { success: false, error: 'Հաղորդագրությունը չափազանց երկար է' };
+  }
+
+  const sender = await resolveSenderName(apiKey, configuredSender);
+  if (!sender) {
+    return {
+      success: false,
+      error: 'SMS ուղարկողի անունը (Sender ID) սխալ է կարգավորված',
+      code: '1504',
+    };
+  }
+
+  const dexatelPhone = toDexatelPhone(phone);
+
+  try {
+    const res = await fetch(DEXATEL_MESSAGES_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Dexatel-Key': apiKey,
+      },
+      body: JSON.stringify({
+        data: {
+          channel: 'SMS',
+          from: sender,
+          to: [dexatelPhone],
+          text: message,
+        },
+      }),
+    });
+
+    let body: Record<string, unknown> | null = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+
+    if (res.status === 201 || res.ok) {
+      const data = body?.data;
+      const first = Array.isArray(data)
+        ? (data[0] as Record<string, unknown> | undefined)
+        : (data as Record<string, unknown> | undefined);
+      const messageId =
+        (first?.id as string | undefined) ||
+        (body?.id as string | undefined);
+
+      if (messageId) {
+        const delivery = await confirmMessageAccepted(apiKey, messageId);
+        if (!delivery.ok) {
+          console.error(
+            '[SMS] Plain delivery failed:',
+            delivery.status,
+            delivery.details,
+            `| to=${dexatelPhone} sender=${sender}`
+          );
+          return {
+            success: false,
+            error: mapDexatelError('delivery_failed', delivery.details || ''),
+            code: 'delivery_failed',
+          };
+        }
+      }
+
+      return { success: true };
+    }
+
+    const firstErr = (
+      body?.errors as
+        | Array<{ message?: string; code?: string | number }>
+        | undefined
+    )?.[0];
+    const apiMessage =
+      firstErr?.message ||
+      (body?.message as string | undefined) ||
+      (body?.error as string | undefined) ||
+      `Dexatel error ${res.status}`;
+    const apiCode =
+      firstErr?.code != null
+        ? String(firstErr.code)
+        : body?.code != null
+          ? String(body.code)
+          : undefined;
+
+    console.error(
+      '[SMS] Plain send failed:',
+      res.status,
+      apiCode ?? '-',
+      apiMessage,
+      `| to=${dexatelPhone} sender=${sender}`
+    );
+
+    return {
+      success: false,
+      error: mapDexatelError(apiCode, apiMessage),
+      code: apiCode,
+    };
+  } catch (err) {
+    console.error('[SMS] Plain request error:', err);
+    return { success: false, error: 'SMS ուղարկելիս սխալ է տեղի ունեցել' };
+  }
+}
+
+export { buildBirthdayPromoSmsText } from '@/lib/birthday-promo-sms';

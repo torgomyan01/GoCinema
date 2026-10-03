@@ -17,6 +17,7 @@ import {
   cancelVPostPayment,
   getNormalizedTransactionsFromVPostEnvelope,
   hasVPostConfig,
+  isVPostCaptureSettled,
   isVPostPaymentDeposited,
   isVPostPaymentDeclined,
   isVPostPaymentNeedsConfirmation,
@@ -821,6 +822,10 @@ export async function syncVPostOrderStatus(data: {
         customerID: String(order.userId),
         amount: order.totalAmount,
       });
+      const captureSettled =
+        confirmResult.captured === true ||
+        isVPostCaptureSettled(confirmResult);
+
       paymentServerLog('vpost_confirm_result', {
         orderId: order.id,
         usedOrderID: confirmResult.usedOrderID,
@@ -828,6 +833,8 @@ export async function syncVPostOrderStatus(data: {
         message: confirmResult.message,
         responseCode: confirmResult.data?.responseCode,
         duplicate: confirmResult.duplicate,
+        captured: confirmResult.captured === true,
+        captureSettled,
         itfOrderId: confirmResult.data?.itfOrderId,
         partnerOrderId: confirmResult.data?.partnerOrderId,
       });
@@ -848,10 +855,14 @@ export async function syncVPostOrderStatus(data: {
         txList = refreshed.list;
       };
 
-      // duplicate ≠ գանձում․ միայն status=true կամ արդեն deposited
-      if (confirmResult.status === true || confirmResult.duplicate) {
+      // Tend՝ message OK / 07 = capture հաջող → list refresh (status-ը անվստահելի է)
+      if (captureSettled || confirmResult.duplicate) {
         await refreshTxList();
-        if (!txList.some(isVPostPaymentDeposited)) {
+        for (
+          let attempt = 0;
+          attempt < 3 && !txList.some(isVPostPaymentDeposited);
+          attempt += 1
+        ) {
           await new Promise((r) => setTimeout(r, 1200));
           await refreshTxList();
         }
@@ -1927,12 +1938,17 @@ export async function confirmVPostPaymentForOrder(params: {
       amount,
     });
 
+    const captureSettled =
+      confirmResult.captured === true || isVPostCaptureSettled(confirmResult);
+
     paymentServerLog('vpost_admin_confirm_result', {
       usedOrderID: confirmResult.usedOrderID,
       status: confirmResult.status,
       message: confirmResult.message,
       responseCode: confirmResult.data?.responseCode,
       duplicate: confirmResult.duplicate,
+      captured: confirmResult.captured === true,
+      captureSettled,
       data: confirmResult.data ?? null,
     });
 
@@ -1958,9 +1974,11 @@ export async function confirmVPostPaymentForOrder(params: {
 
     // Կարճ poll — ITF-ը երբեմն ուշ է թարմացնում list-ը
     let depositedHit = await findDeposited();
-    if (!depositedHit && confirmResult.status === true) {
-      await new Promise((r) => setTimeout(r, 1200));
-      depositedHit = await findDeposited();
+    if (!depositedHit && (captureSettled || confirmResult.duplicate)) {
+      for (let attempt = 0; attempt < 3 && !depositedHit; attempt += 1) {
+        await new Promise((r) => setTimeout(r, 1200));
+        depositedHit = await findDeposited();
+      }
     }
 
     if (depositedHit) {
@@ -1968,14 +1986,13 @@ export async function confirmVPostPaymentForOrder(params: {
       const provider = mergeVPostProviderInfo(txInfo, confirmResult.data);
       return {
         success: true,
-        message:
-          confirmResult.status === true
-            ? 'Գումարը հաջողությամբ գանձվել է'
-            : 'Գումարն արդեն գանձված է',
+        message: captureSettled
+          ? 'Գումարը հաջողությամբ գանձվել է'
+          : 'Գումարն արդեն գանձված է',
         provider,
         confirmResponse: confirmResult.data,
         usedOrderID: depositedHit.checkId,
-        alreadyCaptured: confirmResult.status !== true,
+        alreadyCaptured: !captureSettled,
       };
     }
 
@@ -1995,6 +2012,20 @@ export async function confirmVPostPaymentForOrder(params: {
       currentTx?.needsConfirmation ||
       currentTx?.paymentState === 'payment_approved'
     ) {
+      // Tend: message OK means capture accepted; list may lag
+      if (captureSettled) {
+        return {
+          success: true,
+          message:
+            'Confirm ընդունված է (message OK)։ List-ում deposited դեռ չի երևում — մի քանի վայրկյանից կրկին ստուգեք կամ սպասեք sync-ին։',
+          provider: currentTx,
+          confirmResponse: confirmResult.data,
+          usedOrderID,
+          alreadyCaptured: false,
+          pendingListRefresh: true,
+        };
+      }
+
       const providerMsg =
         (confirmResult.data as { error?: string } | undefined)?.error ||
         confirmResult.message ||

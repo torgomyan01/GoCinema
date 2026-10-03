@@ -6,6 +6,8 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isStaffRole } from '@/lib/roles';
 import { WALK_IN_PHONE } from '@/lib/bonus';
+import { buildBirthdayPromoSmsText } from '@/lib/birthday-promo-sms';
+import { sendPlainSms } from '@/lib/sms';
 
 const BIRTHDAY_WINDOW_DAYS = 15;
 
@@ -47,6 +49,7 @@ export type UpcomingBirthdayUser = {
   daysUntil: number;
   birthdayYear: number;
   called: boolean;
+  smsSent: boolean;
 };
 
 export async function getUpcomingBirthdays(withinDays = BIRTHDAY_WINDOW_DAYS) {
@@ -68,6 +71,7 @@ export async function getUpcomingBirthdays(withinDays = BIRTHDAY_WINDOW_DAYS) {
         phone: true,
         birthDate: true,
         birthdayPromoCalledYear: true,
+        birthdayPromoSmsYear: true,
       },
     });
 
@@ -87,6 +91,7 @@ export async function getUpcomingBirthdays(withinDays = BIRTHDAY_WINDOW_DAYS) {
         daysUntil: meta.daysUntil,
         birthdayYear: meta.birthdayYear,
         called: user.birthdayPromoCalledYear === meta.birthdayYear,
+        smsSent: user.birthdayPromoSmsYear === meta.birthdayYear,
       });
     }
 
@@ -145,6 +150,116 @@ export async function setBirthdayPromoCalled(
     console.error('[setBirthdayPromoCalled]', error);
     return { success: false, error: 'Չհաջողվեց պահպանել' };
   }
+}
+
+/** Ծննդյան 50% ակցիայի SMS՝ Dexatel-ով */
+export async function sendBirthdayPromoSms(userId: number): Promise<{
+  success: boolean;
+  error?: string;
+  smsSent?: boolean;
+}> {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const id = Math.trunc(Number(userId));
+  if (!Number.isFinite(id) || id <= 0) {
+    return { success: false, error: 'Անվավեր օգտատեր' };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        birthDate: true,
+        isBlocked: true,
+        birthdayPromoSmsYear: true,
+      },
+    });
+
+    if (!user?.birthDate) {
+      return { success: false, error: 'Օգտատերը կամ ծննդյան ամսաթիվը չի գտնվել' };
+    }
+    if (user.isBlocked) {
+      return { success: false, error: 'Օգտատերը արգելափակված է' };
+    }
+    if (!user.phone || user.phone === WALK_IN_PHONE) {
+      return { success: false, error: 'Հեռախոսահամարը բացակայում է' };
+    }
+
+    const { birthdayYear } = getNextBirthdayMeta(new Date(user.birthDate));
+    if (user.birthdayPromoSmsYear === birthdayYear) {
+      return {
+        success: false,
+        error: 'Այս տարվա ծննդյան SMS-ն արդեն ուղարկված է',
+        smsSent: true,
+      };
+    }
+
+    const text = buildBirthdayPromoSmsText(user.name);
+    const sent = await sendPlainSms(user.phone, text);
+    if (!sent.success) {
+      return {
+        success: false,
+        error: sent.error || 'SMS ուղարկելը ձախողվեց',
+      };
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: { birthdayPromoSmsYear: birthdayYear },
+    });
+
+    revalidatePath('/admin');
+    return { success: true, smsSent: true };
+  } catch (error) {
+    console.error('[sendBirthdayPromoSms]', error);
+    return { success: false, error: 'SMS ուղարկելիս սխալ է տեղի ունեցել' };
+  }
+}
+
+/**
+ * Թեստային ծննդյան SMS՝ ցանկացած համարի։
+ * Չի նշում օգտատիրոջ smsSent կարգավիճակը։
+ */
+export async function sendBirthdayPromoTestSms(phoneRaw: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const staff = await requireStaff();
+  if (!staff) {
+    return { success: false, error: 'Մուտքն արգելված է' };
+  }
+
+  const digits = String(phoneRaw || '').replace(/\D/g, '');
+  let phone = digits;
+  if (digits.startsWith('374') && digits.length === 11) {
+    phone = `0${digits.slice(3)}`;
+  } else if (digits.length === 8) {
+    phone = `0${digits}`;
+  }
+
+  if (!/^0\d{8}$/.test(phone)) {
+    return {
+      success: false,
+      error: 'Մուտքագրեք վավեր հայկական համար (օր. 091123456)',
+    };
+  }
+
+  const text = buildBirthdayPromoSmsText('Թեստ');
+  const sent = await sendPlainSms(phone, text);
+  if (!sent.success) {
+    return {
+      success: false,
+      error: sent.error || 'Թեստային SMS ուղարկելը ձախողվեց',
+    };
+  }
+
+  return { success: true };
 }
 
 export async function getDashboardStats() {

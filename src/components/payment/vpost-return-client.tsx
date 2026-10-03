@@ -12,20 +12,24 @@ interface VpostReturnClientProps {
   orderId: string;
 }
 
-const MAX_ATTEMPTS = 20;
-const RETRY_MS = 2500;
+/** Tend-style continuous poll until paid/failed */
+const POLL_MS = 4000;
+const MAX_ATTEMPTS = 45; // ~3 minutes
 
 /**
- * vPost backURL սպասման էջ։ Login չի պահանջում և /account չի տանում,
- * որ բանկից վերադարձին session-ը չկորչի։ Տոմսը paid է դառնում միայն
- * vPost-ի հաջող պատասխանից հետո։
+ * vPost backURL wait page. No login required so bank return does not lose session.
+ * Tickets become paid only after a successful vPost settle.
  */
 export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const syncStartedRef = useRef(false);
+  const [pendingHint, setPendingHint] = useState(false);
+  const [pollKey, setPollKey] = useState(0);
+  const inFlightRef = useRef(false);
+  const stoppedRef = useRef(false);
+  const attemptRef = useRef(0);
 
   const redirectIfPaid = useCallback(
     async (idNum: number) => {
@@ -44,78 +48,106 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
     [router]
   );
 
-  const runSync = useCallback(async () => {
+  const confirmOnce = useCallback(async (): Promise<'done' | 'pending'> => {
     const idNum = parseInt(orderId, 10);
     if (!Number.isFinite(idNum)) {
       setError('Անվավեր պատվեր');
-      return;
+      return 'done';
     }
 
+    if (inFlightRef.current || stoppedRef.current) return 'pending';
+    inFlightRef.current = true;
     setIsSyncing(true);
-    setError(null);
 
     try {
-      if (await redirectIfPaid(idNum)) return;
-
-      for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
-        setAttempt(i + 1);
-
-        const syncResult = await completeVPostReturn(idNum);
-
-        if (!syncResult.success) {
-          setError(
-            syncResult.error || 'Վճարման կարգավիճակը ստուգելիս սխալ եղավ'
-          );
-          return;
-        }
-
-        if (syncResult.state === 'paid') {
-          if (await redirectIfPaid(idNum)) return;
-          setError(
-            'Վճարումը դեռ հաստատված չէ բազայում։ Սեղմեք «Կրկին ստուգել»։'
-          );
-          return;
-        }
-
-        if (syncResult.state === 'failed') {
-          setError(syncResult.message || 'Վճարումը մերժվել է');
-          return;
-        }
-
-        if (syncResult.state === 'seat_taken') {
-          setError(
-            syncResult.message ||
-              'Ընտրված տեղն այլևս հասանելի չէ։ Խնդրում ենք ընտրել այլ տեղ։'
-          );
-          return;
-        }
-
-        if (await redirectIfPaid(idNum)) return;
-
-        if (i < MAX_ATTEMPTS - 1) {
-          await new Promise((r) => setTimeout(r, RETRY_MS));
-        }
+      if (await redirectIfPaid(idNum)) {
+        stoppedRef.current = true;
+        return 'done';
       }
 
-      setError(
-        'Վճարումը դեռ չի հաստատվել։ Եթե գումարը արդեն գանձվել է, սեղմեք «Կրկին ստուգել»։'
-      );
+      attemptRef.current += 1;
+      setAttempt(attemptRef.current);
+
+      const syncResult = await completeVPostReturn(idNum);
+
+      if (!syncResult.success) {
+        setError(
+          syncResult.error || 'Վճարման կարգավիճակը ստուգելիս սխալ եղավ'
+        );
+        stoppedRef.current = true;
+        return 'done';
+      }
+
+      if (syncResult.state === 'paid') {
+        if (await redirectIfPaid(idNum)) {
+          stoppedRef.current = true;
+          return 'done';
+        }
+        setPendingHint(true);
+        return 'pending';
+      }
+
+      if (syncResult.state === 'failed') {
+        setError(syncResult.message || 'Վճարումը մերժվել է');
+        stoppedRef.current = true;
+        return 'done';
+      }
+
+      if (syncResult.state === 'seat_taken') {
+        setError(
+          syncResult.message ||
+            'Ընտրված տեղն այլևս հասանելի չէ։ Խնդրում ենք ընտրել այլ տեղ։'
+        );
+        stoppedRef.current = true;
+        return 'done';
+      }
+
+      if (await redirectIfPaid(idNum)) {
+        stoppedRef.current = true;
+        return 'done';
+      }
+
+      setPendingHint(true);
+      return 'pending';
     } catch (e) {
       console.error('[vpost-return]', e);
       setError('Վճարման կարգավիճակը ստուգելիս սխալ եղավ');
+      stoppedRef.current = true;
+      return 'done';
     } finally {
+      inFlightRef.current = false;
       setIsSyncing(false);
     }
   }, [orderId, redirectIfPaid]);
 
   useEffect(() => {
-    if (syncStartedRef.current) return;
-    syncStartedRef.current = true;
-    void runSync();
-  }, [runSync]);
+    stoppedRef.current = false;
+    attemptRef.current = 0;
+    setAttempt(0);
+    setError(null);
+
+    void confirmOnce();
+
+    const timer = window.setInterval(() => {
+      if (stoppedRef.current) return;
+      if (attemptRef.current >= MAX_ATTEMPTS) {
+        stoppedRef.current = true;
+        setError(
+          'Վճարումը դեռ չի հաստատվել։ Եթե գումարը արդեն գանձվել է, սեղմեք «Կրկին ստուգել»։'
+        );
+        return;
+      }
+      void confirmOnce();
+    }, POLL_MS);
+
+    return () => {
+      stoppedRef.current = true;
+      window.clearInterval(timer);
+    };
+  }, [confirmOnce, pollKey]);
 
   const handleRetry = () => {
-    void runSync();
+    setPollKey((k) => k + 1);
   };
 
   if (error) {
@@ -156,10 +188,14 @@ export default function VpostReturnClient({ orderId }: VpostReturnClientProps) {
         Խնդրում ենք չփակել այս էջը։ Տոմսը կհաստատվի միայն բանկի հաջող
         պատասխանից հետո։
       </p>
-      {attempt > 0 && (
-        <p className="text-xs text-gray-400">
-          Փորձ {attempt}/{MAX_ATTEMPTS}
+      {pendingHint && (
+        <p className="text-xs text-amber-700 text-center max-w-sm">
+          Բանկը հաստատել է վճարումը — սպասում ենք վերջնական գանձման
+          հաստատմանը…
         </p>
+      )}
+      {attempt > 0 && (
+        <p className="text-xs text-gray-400">Ստուգում #{attempt}</p>
       )}
     </div>
   );

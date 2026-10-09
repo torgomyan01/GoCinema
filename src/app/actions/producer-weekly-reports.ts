@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isAdminRole } from '@/lib/roles';
 import {
-  maybeDispatchMondayWeeklyReports,
+  maybeDispatchDueProducerReports,
   sendWeeklyProducerReports,
   type WeeklyReportPeriod,
   type WeeklyReportSendResult,
@@ -23,6 +23,7 @@ export async function sendProducerWeeklyReportEmail(input: {
   to?: string;
   force?: boolean;
   testTo?: string;
+  respectFrequency?: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -45,10 +46,12 @@ export async function sendProducerWeeklyReportEmail(input: {
     to: input.to,
     force: Boolean(input.force),
     testTo: input.testTo,
+    respectFrequency: Boolean(input.respectFrequency),
   });
 }
 
-export async function dispatchMondayWeeklyReports(): Promise<{
+/** Ամեն օր ադմին մուտքից՝ due հաշվետվություններ ըստ ֆիլմի հաճախության */
+export async function dispatchDueProducerReports(): Promise<{
   success: boolean;
   error?: string;
   skipped?: boolean;
@@ -56,10 +59,15 @@ export async function dispatchMondayWeeklyReports(): Promise<{
   if (!(await requireAdmin())) {
     return { success: false, error: 'Մուտքն արգելված է' };
   }
-  const result = await maybeDispatchMondayWeeklyReports();
+  const result = await maybeDispatchDueProducerReports();
   return {
     success: result.success,
     error: result.error,
     skipped: result.skipped,
   };
+}
+
+/** @deprecated */
+export async function dispatchMondayWeeklyReports() {
+  return dispatchDueProducerReports();
 }

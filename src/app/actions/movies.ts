@@ -19,6 +19,8 @@ export interface CreateMovieData {
   contractUrl?: string | null;
   contractName?: string | null;
   isActive?: boolean;
+  /** daily | every_3_days | weekly | monthly */
+  reportFrequency?: string;
   producerIds?: number[];
   companyIds?: number[];
 }
@@ -249,6 +251,7 @@ export async function createMovie(data: CreateMovieData) {
         contractUrl: data.contractUrl || null,
         contractName: data.contractName || null,
         isActive: data.isActive !== undefined ? data.isActive : true,
+        reportFrequency: data.reportFrequency || 'weekly',
         ...(producerIds.length > 0 && {
           producers: { connect: producerIds.map((id) => ({ id })) },
         }),

@@ -45,14 +45,14 @@ export function weeklyReportSubject(
 ): string {
   const from = formatDateNumericHy(data.weekStart);
   const to = formatDateNumericHy(data.weekEnd);
-  const subject = `GoCinema · շաբաթական հաշվետվություն · «${data.movieTitle}» · ${from}–${to}`;
+  const subject = `GoCinema · հաշվետվություն · «${data.movieTitle}» · ${from}–${to}`;
   return isTest ? `[Թեստ] ${subject}` : subject;
 }
 
 export function weeklyReportText(data: WeeklyReportEmailData): string {
   const lines = [
     'GO CINEMA',
-    'Շաբաթական հաշվետվություն',
+    'Ցուցադրության հաշվետվություն',
     '',
     `Ֆիլմ՝ ${data.movieTitle}`,
     data.companyName ? `Լիցենզատու՝ ${data.companyName}` : '',
@@ -67,7 +67,7 @@ export function weeklyReportText(data: WeeklyReportEmailData): string {
   ];
 
   if (data.screenings.length === 0) {
-    lines.push('Այս շաբաթ ցուցադրություն չի եղել։');
+    lines.push('Այս ժամանակահատվածում ցուցադրություն չի եղել։');
   } else {
     lines.push('Ցուցադրություններ՝');
     for (const row of data.screenings) {
@@ -93,7 +93,7 @@ export function weeklyReportHtml(data: WeeklyReportEmailData): string {
 
   const rows =
     data.screenings.length === 0
-      ? `<tr><td colspan="4" style="padding:12px 10px;color:#666;text-align:center;">Այս շաբաթ ցուցադրություն չի եղել։</td></tr>`
+      ? `<tr><td colspan="4" style="padding:12px 10px;color:#666;text-align:center;">Այս ժամանակահատվածում ցուցադրություն չի եղել։</td></tr>`
       : data.screenings
           .map(
             (row) => `<tr>
@@ -115,7 +115,7 @@ export function weeklyReportHtml(data: WeeklyReportEmailData): string {
           <tr>
             <td style="padding:20px 24px;background:#111;color:#fff;">
               <div style="font-size:20px;letter-spacing:0.14em;font-weight:700;">GO CINEMA</div>
-              <div style="margin-top:6px;font-size:13px;color:#d4d4d4;">Շաբաթական հաշվետվություն</div>
+              <div style="margin-top:6px;font-size:13px;color:#d4d4d4;">Ցուցադրության հաշվետվություն</div>
             </td>
           </tr>
           <tr>

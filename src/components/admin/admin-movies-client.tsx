@@ -40,6 +40,11 @@ import {
 import { AGE_RATING_OPTIONS, ageRatingClasses } from '@/lib/age-rating';
 import { sendProducerWeeklyReportEmail } from '@/app/actions/producer-weekly-reports';
 import { getYerevanCalendarWeek } from '@/lib/format';
+import {
+  PRODUCER_REPORT_FREQUENCIES,
+  PRODUCER_REPORT_FREQUENCY_LABELS,
+  type ProducerReportFrequency,
+} from '@/lib/producer-report-frequency';
 
 interface ProducerUser {
   id: number;
@@ -69,6 +74,7 @@ const emptyForm = () => ({
   companyIds: [] as number[],
   contractUrl: '',
   contractName: '',
+  reportFrequency: 'weekly' as string,
 });
 
 interface AdminMoviesClientProps {
@@ -95,6 +101,7 @@ interface Movie {
   contractUrl?: string | null;
   contractName?: string | null;
   isActive?: boolean;
+  reportFrequency?: string | null;
   producers?: ProducerUser[];
   companies?: MovieCompany[];
   createdAt?: Date;
@@ -276,6 +283,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
       companyIds: (movie.companies ?? []).map((c) => c.id),
       contractUrl: movie.contractUrl || '',
       contractName: movie.contractName || '',
+      reportFrequency: movie.reportFrequency || 'weekly',
     });
     setIsEditModalOpen(true);
   };
@@ -382,6 +390,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           companyIds: formData.companyIds,
           contractUrl: formData.contractUrl || null,
           contractName: formData.contractName || null,
+          reportFrequency: formData.reportFrequency || 'weekly',
         });
 
         if (result.success && result.movie) {
@@ -406,6 +415,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
           companyIds: formData.companyIds,
           contractUrl: formData.contractUrl || null,
           contractName: formData.contractName || null,
+          reportFrequency: formData.reportFrequency || 'weekly',
         });
 
         if (result.success && result.movie) {
@@ -1045,6 +1055,37 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                     <p className="mt-1 text-xs text-gray-500">
                       Կցված արտադրողները կտեսնեն այս ֆիլմի հաշվետվությունը իրենց
                       «Իմ ֆիլմերը» բաժնում։
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-4">
+                    <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <Mail className="h-4 w-4 text-sky-600" />
+                      Հաշվետվության հաճախություն
+                    </label>
+                    <select
+                      value={formData.reportFrequency}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          reportFrequency: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-sky-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none ring-sky-300 focus:ring-2"
+                    >
+                      {PRODUCER_REPORT_FREQUENCIES.map((freq) => (
+                        <option key={freq} value={freq}>
+                          {
+                            PRODUCER_REPORT_FREQUENCY_LABELS[
+                              freq as ProducerReportFrequency
+                            ]
+                          }
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1.5 text-xs text-gray-500">
+                      Ընկերության email-ին ուղարկվող ցուցադրության հաշվետվության
+                      պարբերականությունը։ Ադմին մուտքից ամեն օր ստուգվում է։
                     </p>
                   </div>
 

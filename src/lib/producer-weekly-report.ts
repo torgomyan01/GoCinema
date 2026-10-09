@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { isMailConfigured, mailerMissingMessage, sendMail } from '@/lib/mailer';
-import { getYerevanCalendarWeek, getYerevanDayRange, getYerevanWeekday } from '@/lib/format';
+import { getYerevanCalendarWeek, getYerevanDayRange } from '@/lib/format';
+import {
+  getDueProducerReportPeriod,
+  normalizeReportFrequency,
+} from '@/lib/producer-report-frequency';
 import {
   weeklyReportHtml,
   weeklyReportSubject,
@@ -31,7 +35,11 @@ function dateOnlyUtcNoon(key: string): Date {
 }
 
 function collectEmails(values: Array<string | null | undefined>): string[] {
-  return [...new Set(values.map(normalizeEmail).filter((email): email is string => Boolean(email)))];
+  return [
+    ...new Set(
+      values.map(normalizeEmail).filter((email): email is string => Boolean(email))
+    ),
+  ];
 }
 
 async function loadMovieTargets(movieId?: number) {
@@ -39,13 +47,12 @@ async function loadMovieTargets(movieId?: number) {
     where: movieId
       ? { id: movieId }
       : {
-          OR: [
-            { companies: { some: { email: { not: null } } } },
-          ],
+          OR: [{ companies: { some: { email: { not: null } } } }],
         },
     select: {
       id: true,
       title: true,
+      reportFrequency: true,
       companies: { select: { id: true, email: true, name: true } },
       producers: { select: { email: true } },
       licenseContract: {
@@ -63,22 +70,24 @@ async function loadMovieTargets(movieId?: number) {
   });
 }
 
-function recipientsForMovie(movie: Awaited<ReturnType<typeof loadMovieTargets>>[number]) {
+function recipientsForMovie(
+  movie: Awaited<ReturnType<typeof loadMovieTargets>>[number]
+) {
   return collectEmails(movie.companies.map((company) => company.email));
 }
 
-function shouldSendForWeek(
+function shouldSendForPeriod(
   movie: Awaited<ReturnType<typeof loadMovieTargets>>[number],
-  weekEnd: Date,
+  periodEnd: Date,
   hasScreenings: boolean
 ): string | null {
   const premiere = movie.licenseContract?.premiereDate;
-  if (premiere && premiere.getTime() > weekEnd.getTime()) {
-    return 'Պրեմիերան այս շաբաթից հետո է';
+  if (premiere && premiere.getTime() > periodEnd.getTime()) {
+    return 'Պրեմիերան այս ժամանակահատվածից հետո է';
   }
   if (movie.licenseContract) return null;
   if (hasScreenings) return null;
-  return 'Այս շաբաթ ցուցադրություն չկա';
+  return 'Այս ժամանակահատվածում ցուցադրություն չկա';
 }
 
 export async function sendWeeklyProducerReports(options: {
@@ -88,6 +97,8 @@ export async function sendWeeklyProducerReports(options: {
   to?: string;
   force?: boolean;
   testTo?: string;
+  /** Եթե true՝ հաշվի է առնում ֆիլմի reportFrequency-ն և due ստուգումը */
+  respectFrequency?: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -114,34 +125,54 @@ export async function sendWeeklyProducerReports(options: {
     };
   }
 
-  const week = options.from && options.to
-    ? getYerevanDayRange(options.from, options.to)
-    : getYerevanCalendarWeek(new Date(), options.period || 'previous');
-  if (!week) {
-    return {
-      success: false,
-      error: 'Ժամանակահատվածը սխալ է',
-      weekLabel: '',
-      results: [],
-    };
-  }
-  const weekStartDate = dateOnlyUtcNoon(week.startKey);
-  const weekEndDate = dateOnlyUtcNoon(week.endKey);
-  const weekLabel = `${week.startKey} – ${week.endKey}`;
-
   const movies = await loadMovieTargets(options.movieId);
   if (options.movieId && movies.length === 0) {
     return {
       success: false,
       error: 'Ֆիլմը չի գտնվել',
-      weekLabel,
+      weekLabel: '',
       results: [],
     };
   }
 
   const results: WeeklyReportSendResult[] = [];
+  let weekLabel = '';
 
   for (const movie of movies) {
+    const useFrequency =
+      Boolean(options.respectFrequency) && !options.from && !options.to && !isTest;
+
+    let range =
+      options.from && options.to
+        ? getYerevanDayRange(options.from, options.to)
+        : null;
+
+    if (!range && useFrequency) {
+      const due = getDueProducerReportPeriod(movie.reportFrequency);
+      if (!due.due && !options.force) {
+        results.push({
+          movieId: movie.id,
+          movieTitle: movie.title,
+          status: 'skipped',
+          recipients: recipientsForMovie(movie),
+          reason: `Այսօր ${normalizeReportFrequency(movie.reportFrequency)} հաշվետվություն չի պահանջվում`,
+        });
+        continue;
+      }
+      range = due;
+    }
+
+    if (!range) {
+      range = getYerevanCalendarWeek(
+        new Date(),
+        options.period || 'previous'
+      );
+    }
+
+    weekLabel = `${range.startKey} – ${range.endKey}`;
+    const weekStartDate = dateOnlyUtcNoon(range.startKey);
+    const weekEndDate = dateOnlyUtcNoon(range.endKey);
+
     const producerRecipients = recipientsForMovie(movie);
     const recipients = testRecipient ? [testRecipient] : producerRecipients;
     if (recipients.length === 0) {
@@ -156,8 +187,8 @@ export async function sendWeeklyProducerReports(options: {
     }
 
     if (!isTest) {
-      const premiereSkip = shouldSendForWeek(movie, week.end, true);
-      if (premiereSkip === 'Պրեմիերան այս շաբաթից հետո է') {
+      const premiereSkip = shouldSendForPeriod(movie, range.end, true);
+      if (premiereSkip === 'Պրեմիերան այս ժամանակահատվածից հետո է') {
         results.push({
           movieId: movie.id,
           movieTitle: movie.title,
@@ -172,7 +203,7 @@ export async function sendWeeklyProducerReports(options: {
     const screenings = await prisma.screening.findMany({
       where: {
         movieId: movie.id,
-        startTime: { gte: week.start, lte: week.end },
+        startTime: { gte: range.start, lte: range.end },
       },
       orderBy: { startTime: 'asc' },
       select: {
@@ -186,7 +217,11 @@ export async function sendWeeklyProducerReports(options: {
     });
 
     if (!isTest) {
-      const skipReason = shouldSendForWeek(movie, week.end, screenings.length > 0);
+      const skipReason = shouldSendForPeriod(
+        movie,
+        range.end,
+        screenings.length > 0
+      );
       if (skipReason) {
         results.push({
           movieId: movie.id,
@@ -209,21 +244,26 @@ export async function sendWeeklyProducerReports(options: {
           movieTitle: movie.title,
           status: 'skipped',
           recipients,
-          reason: 'Այս շաբաթվա հաշվետվությունն արդեն ուղարկված է',
+          reason: 'Այս ժամանակահատվածի հաշվետվությունն արդեն ուղարկված է',
         });
         continue;
       }
     }
 
-    const reportScreenings: WeeklyReportScreening[] = screenings.map((screening) => ({
-      startTime: screening.startTime,
-      hallName: screening.hall?.name || '—',
-      ticketsSold: screening.tickets.length,
-      revenue: Math.round(
-        screening.tickets.reduce((sum, ticket) => sum + ticket.price, 0)
-      ),
-    }));
-    const ticketsSold = reportScreenings.reduce((sum, row) => sum + row.ticketsSold, 0);
+    const reportScreenings: WeeklyReportScreening[] = screenings.map(
+      (screening) => ({
+        startTime: screening.startTime,
+        hallName: screening.hall?.name || '—',
+        ticketsSold: screening.tickets.length,
+        revenue: Math.round(
+          screening.tickets.reduce((sum, ticket) => sum + ticket.price, 0)
+        ),
+      })
+    );
+    const ticketsSold = reportScreenings.reduce(
+      (sum, row) => sum + row.ticketsSold,
+      0
+    );
     const revenue = reportScreenings.reduce((sum, row) => sum + row.revenue, 0);
     const royaltyPercent = movie.licenseContract?.royaltyPercent ?? 50;
     const royaltyAmount = Math.round((revenue * royaltyPercent) / 100);
@@ -239,8 +279,8 @@ export async function sendWeeklyProducerReports(options: {
       movieTitle: movie.title,
       companyName,
       contractNumber: movie.licenseContract?.number || null,
-      weekStart: week.start,
-      weekEnd: week.end,
+      weekStart: range.start,
+      weekEnd: range.end,
       screenings: reportScreenings,
       screeningsCount: reportScreenings.length,
       ticketsSold,
@@ -351,23 +391,32 @@ export async function sendWeeklyProducerReports(options: {
     error:
       failed.length === 0
         ? undefined
-        : [...new Set(failed.map((row) => row.reason).filter(Boolean))].join(' · ') ||
-          'Որոշ հաշվետվություններ չուղարկվեցին',
+        : [...new Set(failed.map((row) => row.reason).filter(Boolean))].join(
+            ' · '
+          ) || 'Որոշ հաշվետվություններ չուղարկվեցին',
     weekLabel,
     results,
   };
 }
 
-export async function maybeDispatchMondayWeeklyReports(): Promise<{
+/**
+ * Ամեն օր (ադմին մուտք)՝ ամեն ֆիլմի համար ստուգում է՝ արդյոք
+ * իր reportFrequency-ով ժամանակահատվածի հաշվետվությունն ուղարկված է։
+ */
+export async function maybeDispatchDueProducerReports(): Promise<{
   success: boolean;
   error?: string;
   weekLabel: string;
   results: WeeklyReportSendResult[];
   skipped?: boolean;
 }> {
-  const weekday = getYerevanWeekday();
-  if (weekday !== 1) {
-    return { success: true, weekLabel: '', results: [], skipped: true };
-  }
-  return sendWeeklyProducerReports({ period: 'previous', force: false });
+  return sendWeeklyProducerReports({
+    respectFrequency: true,
+    force: false,
+  });
+}
+
+/** @deprecated օգտագործիր maybeDispatchDueProducerReports */
+export async function maybeDispatchMondayWeeklyReports() {
+  return maybeDispatchDueProducerReports();
 }

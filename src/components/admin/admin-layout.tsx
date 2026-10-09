@@ -22,7 +22,7 @@ import { isAdminRole } from '@/lib/roles';
 import NotificationBell from '@/components/admin/notification-bell';
 import SupportMenuBadge from '@/components/admin/support-menu-badge';
 import ContactMenuBadge from '@/components/admin/contact-menu-badge';
-import { dispatchMondayWeeklyReports } from '@/app/actions/producer-weekly-reports';
+import { dispatchDueProducerReports } from '@/app/actions/producer-weekly-reports';
 
 interface AdminLayoutProps {
   user: {
@@ -149,10 +149,10 @@ export default function AdminLayout({ user, children }: AdminLayoutProps) {
     const dayKey = new Date().toLocaleDateString('en-CA', {
       timeZone: 'Asia/Yerevan',
     });
-    const storageKey = `gocinema-monday-reports:${dayKey}`;
+    const storageKey = `gocinema-producer-reports:${dayKey}`;
     if (sessionStorage.getItem(storageKey) === '1') return;
     sessionStorage.setItem(storageKey, '1');
-    void dispatchMondayWeeklyReports();
+    void dispatchDueProducerReports();
   }, [user.role]);
 
   const handleLogout = async () => {

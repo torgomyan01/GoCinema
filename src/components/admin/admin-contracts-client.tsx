@@ -311,8 +311,8 @@ export default function AdminContractsClient({
 
   const handleSendReport = async (row: LicenseContractView, force = false) => {
     const question = force
-      ? `Կրկի՞ն ուղարկել նախորդ շաբաթվա հաշվետվությունը «${row.movieTitle}» ֆիլմի համար։`
-      : `Ուղարկե՞լ նախորդ շաբաթվա հաշվետվությունը «${row.movieTitle}» ֆիլմի արտադրողին։`;
+      ? `Կրկի՞ն ուղարկել հաշվետվությունը «${row.movieTitle}» ֆիլմի համար։`
+      : `Ուղարկե՞լ հաշվետվությունը «${row.movieTitle}» ֆիլմի արտադրողին (ըստ ֆիլմի հաճախության)։`;
     if (!window.confirm(question)) return;
 
     setSendingReportId(row.id);
@@ -321,7 +321,7 @@ export default function AdminContractsClient({
     try {
       const res = await sendProducerWeeklyReportEmail({
         movieId: row.movieId,
-        period: 'previous',
+        respectFrequency: true,
         force,
       });
       if (!res.success && !res.results.length) {
@@ -336,7 +336,7 @@ export default function AdminContractsClient({
       if (alreadySent && !force) {
         if (
           window.confirm(
-            'Այս շաբաթվա հաշվետվությունն արդեն ուղարկված է։ Կրկի՞ն ուղարկել։'
+            'Այս ժամանակահատվածի հաշվետվությունն արդեն ուղարկված է։ Կրկի՞ն ուղարկել։'
           )
         ) {
           setSendingReportId(null);
@@ -377,7 +377,7 @@ export default function AdminContractsClient({
   const handleSendAllReports = async () => {
     if (
       !window.confirm(
-        'Ուղարկե՞լ նախորդ շաբաթվա հաշվետվությունները բոլոր ֆիլմ արտադրողներին։ Արդեն ուղարկվածները կրկին չեն գնա։'
+        'Ուղարկե՞լ due հաշվետվությունները բոլոր ֆիլմերին՝ ըստ յուրաքանչյուրի հաճախության։ Արդեն ուղարկվածները կրկին չեն գնա։'
       )
     ) {
       return;
@@ -386,7 +386,9 @@ export default function AdminContractsClient({
     setError(null);
     setNotice(null);
     try {
-      const res = await sendProducerWeeklyReportEmail({ period: 'previous' });
+      const res = await sendProducerWeeklyReportEmail({
+        respectFrequency: true,
+      });
       if (!res.success && !res.results.length) {
         setError(res.error || 'Չհաջողվեց ուղարկել հաշվետվությունները');
         return;

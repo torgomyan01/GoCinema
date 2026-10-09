@@ -122,6 +122,8 @@ model Movie {
   contractUrl  String?  @db.VarChar(500)
   contractName String?  @db.VarChar(255)
   isActive     Boolean  @default(true)
+  /// Արտադրողի հաշվետվության հաճախություն՝ daily | every_3_days | weekly | monthly
+  reportFrequency String @default("weekly") @db.VarChar(20)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

@@ -307,3 +307,37 @@ export function getYerevanDayRange(
     endKey: toKey,
   };
 }
+
+/** YYYY-MM-DD ± N օր՝ Երևանի օրացույցով */
+export function shiftYerevanDateKey(dateKey: string, days: number): string {
+  const base = new Date(`${dateKey}T12:00:00+04:00`);
+  if (Number.isNaN(base.getTime())) return '';
+  return formatDateKey(new Date(base.getTime() + days * 24 * 60 * 60 * 1000));
+}
+
+/** Երևանի նախորդ օրացուցային ամիս՝ 1-ին 00:00 — վերջին օրվա 23:59:59.999 */
+export function getYerevanPreviousCalendarMonth(
+  now: Date = new Date()
+): YerevanWeekRange {
+  const parts = yerevanParts(now);
+  if (!parts) throw new Error('Invalid date');
+  let year = parts.year;
+  let month = parts.month - 1;
+  if (month < 1) {
+    month = 12;
+    year -= 1;
+  }
+  const startKey = `${year}-${pad2(month)}-01`;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextStart = new Date(
+    `${nextYear}-${pad2(nextMonth)}-01T00:00:00+04:00`
+  );
+  const end = new Date(nextStart.getTime() - 1);
+  return {
+    start: new Date(`${startKey}T00:00:00+04:00`),
+    end,
+    startKey,
+    endKey: formatDateKey(end),
+  };
+}

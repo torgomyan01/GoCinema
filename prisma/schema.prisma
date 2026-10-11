@@ -61,6 +61,7 @@ model User {
   referrals                User[]             @relation("UserReferrals")
   bonusTransactions        BonusTransaction[] @relation("BonusOwner")
   bonusTransactionsCreated BonusTransaction[] @relation("BonusCreatedBy")
+  producerRoyaltyTransfers ProducerRoyaltyTransfer[] @relation("ProducerRoyaltyTransferredBy")
 
   @@index([email])
   @@index([phone])
@@ -132,8 +133,9 @@ model Movie {
   premieres  Premiere[]
   producers        User[]            @relation("MovieProducers")
   companies        Company[]         @relation("MovieCompanies")
-  licenseContract  LicenseContract?
-  weeklyReports    ProducerWeeklyReport[]
+  licenseContract    LicenseContract?
+  weeklyReports      ProducerWeeklyReport[]
+  royaltyTransfers   ProducerRoyaltyTransfer[]
 
   @@index([slug])
   @@index([genre])
@@ -888,4 +890,25 @@ model ProducerWeeklyReport {
   @@index([status])
   @@index([sentAt])
   @@map("producer_weekly_reports")
+}
+
+/// Ամսական հոնորարի փոխանցման հաստատում (անկախ email հաշվետվություններից)
+model ProducerRoyaltyTransfer {
+  id              Int       @id @default(autoincrement())
+  movieId         Int
+  /// Ամսվա 1-ը (Երևանի օրացույց)
+  periodStart     DateTime  @db.Date
+  transferredAt   DateTime?
+  transferredById Int?
+  note            String?   @db.VarChar(500)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  movie         Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  transferredBy User? @relation("ProducerRoyaltyTransferredBy", fields: [transferredById], references: [id], onDelete: SetNull)
+
+  @@unique([movieId, periodStart])
+  @@index([transferredAt])
+  @@index([transferredById])
+  @@map("producer_royalty_transfers")
 }

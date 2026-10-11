@@ -50,7 +50,7 @@ export async function sendProducerWeeklyReportEmail(input: {
   });
 }
 
-/** Ամեն օր ադմին մուտքից՝ due հաշվետվություններ ըստ ֆիլմի հաճախության */
+/** Admin login trigger: send due producer reports by movie frequency */
 export async function dispatchDueProducerReports(): Promise<{
   success: boolean;
   error?: string;

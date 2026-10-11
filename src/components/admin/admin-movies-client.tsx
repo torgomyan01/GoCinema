@@ -20,6 +20,7 @@ import {
   Building2,
   FileText,
   Mail,
+  Banknote,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -28,6 +29,7 @@ import AdminLayout from './admin-layout';
 import FileUpload from './file-upload';
 import DocumentUpload from './document-upload';
 import MovieTicketsModal from './movie-tickets-modal';
+import MovieRoyaltyTransfersModal from './movie-royalty-transfers-modal';
 import {
   getMovies,
   createMovie,
@@ -145,6 +147,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
   const [producerUsers, setProducerUsers] = useState<ProducerUser[]>([]);
   const [movieCompanies, setMovieCompanies] = useState<MovieCompany[]>([]);
   const [ticketsMovie, setTicketsMovie] = useState<Movie | null>(null);
+  const [transfersMovie, setTransfersMovie] = useState<Movie | null>(null);
   const [showTicketsButton, setShowTicketsButton] = useState(false);
 
   // Ctrl+Shift+6՝ «Ցուցադրություններ և տոմսեր» կոճակի ցուցադրում/թաքցում
@@ -647,6 +650,14 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                       >
                         <Mail className="w-4 h-4" />
                         Թեստային հաշվետվություն
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTransfersMovie(movie)}
+                        className="w-full px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg font-medium hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Banknote className="w-4 h-4" />
+                        Փոխանցումներ
                       </button>
                       {movie.trailerUrl && (
                         <a
@@ -1215,6 +1226,16 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
               image: ticketsMovie.image,
             }}
             onClose={() => setTicketsMovie(null)}
+          />
+        )}
+
+        {transfersMovie && (
+          <MovieRoyaltyTransfersModal
+            movie={{
+              id: transfersMovie.id,
+              title: transfersMovie.title,
+            }}
+            onClose={() => setTransfersMovie(null)}
           />
         )}
       </div>

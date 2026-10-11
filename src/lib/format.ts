@@ -315,17 +315,46 @@ export function shiftYerevanDateKey(dateKey: string, days: number): string {
   return formatDateKey(new Date(base.getTime() + days * 24 * 60 * 60 * 1000));
 }
 
-/** Երևանի նախորդ օրացուցային ամիս՝ 1-ին 00:00 — վերջին օրվա 23:59:59.999 */
-export function getYerevanPreviousCalendarMonth(
-  now: Date = new Date()
+/** Երևանի ամսվա բանալի՝ YYYY-MM */
+export function formatMonthKey(value: Date | string): string {
+  const parts = yerevanParts(value);
+  if (!parts) return '';
+  return `${parts.year}-${pad2(parts.month)}`;
+}
+
+/** Ամիս + տարի հայերենով (օր. «Սեպտեմբեր 2026») */
+export function formatMonthYearHy(value: Date | string): string {
+  const parts = yerevanParts(value);
+  if (!parts) return '';
+  const name = ARMENIAN_MONTHS[parts.month - 1];
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${parts.year}`;
+}
+
+/** Արդյոք միջակայքը Երևանի լրիվ օրացուցային ամիս է */
+export function isYerevanCalendarMonthPeriod(
+  start: Date | string,
+  end: Date | string
+): boolean {
+  const startParts = yerevanParts(start);
+  const endKey = formatDateKey(end);
+  if (!startParts || !endKey) return false;
+  if (startParts.day !== 1) return false;
+  const nextMonth = startParts.month === 12 ? 1 : startParts.month + 1;
+  const nextYear =
+    startParts.month === 12 ? startParts.year + 1 : startParts.year;
+  const nextStart = new Date(
+    `${nextYear}-${pad2(nextMonth)}-01T00:00:00+04:00`
+  );
+  return endKey === formatDateKey(new Date(nextStart.getTime() - 1));
+}
+
+/** Երևանի օրացուցային ամիս՝ 1-ին 00:00 — վերջին օրվա 23:59:59.999 */
+export function getYerevanCalendarMonth(
+  year: number,
+  month: number
 ): YerevanWeekRange {
-  const parts = yerevanParts(now);
-  if (!parts) throw new Error('Invalid date');
-  let year = parts.year;
-  let month = parts.month - 1;
-  if (month < 1) {
-    month = 12;
-    year -= 1;
+  if (!Number.isFinite(year) || month < 1 || month > 12) {
+    throw new Error('Invalid month');
   }
   const startKey = `${year}-${pad2(month)}-01`;
   const nextMonth = month === 12 ? 1 : month + 1;
@@ -340,4 +369,45 @@ export function getYerevanPreviousCalendarMonth(
     startKey,
     endKey: formatDateKey(end),
   };
+}
+
+/** Երևանի նախորդ օրացուցային ամիս՝ 1-ին 00:00 — վերջին օրվա 23:59:59.999 */
+export function getYerevanPreviousCalendarMonth(
+  now: Date = new Date()
+): YerevanWeekRange {
+  const parts = yerevanParts(now);
+  if (!parts) throw new Error('Invalid date');
+  let year = parts.year;
+  let month = parts.month - 1;
+  if (month < 1) {
+    month = 12;
+    year -= 1;
+  }
+  return getYerevanCalendarMonth(year, month);
+}
+
+/** YYYY-MM բանալիներ՝ fromMonthKey…toMonthKey ներառյալ */
+export function listYerevanMonthKeys(
+  fromMonthKey: string,
+  toMonthKey: string
+): string[] {
+  if (
+    !/^\d{4}-\d{2}$/.test(fromMonthKey) ||
+    !/^\d{4}-\d{2}$/.test(toMonthKey)
+  ) {
+    return [];
+  }
+  if (fromMonthKey > toMonthKey) return [];
+  const keys: string[] = [];
+  let [year, month] = fromMonthKey.split('-').map(Number);
+  const [endYear, endMonth] = toMonthKey.split('-').map(Number);
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    keys.push(`${year}-${pad2(month)}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return keys;
 }

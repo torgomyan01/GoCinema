@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Loader2,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import AdminLayout from './admin-layout';
 import ProductDemandSection from './product-demand-section';
@@ -32,6 +33,7 @@ import {
   type UpcomingBirthdayUser,
 } from '@/app/actions/dashboard';
 import { buildBirthdayPromoSmsText } from '@/lib/birthday-promo-sms';
+import { formatDateHy } from '@/lib/format';
 
 interface AdminDashboardClientProps {
   user: {
@@ -61,11 +63,8 @@ function formatPhoneDisplay(phone: string | null | undefined): string {
 }
 
 function formatBirthDay(isoDate: string): string {
-  const d = new Date(`${isoDate}T12:00:00`);
-  return d.toLocaleDateString('hy-AM', {
-    day: '2-digit',
-    month: 'long',
-  });
+  // YYYY-MM-DD → Երևանի օրացույց, առանց սերվեր/բրաուզեր TZ shift
+  return formatDateHy(`${isoDate}T12:00:00+04:00`, { month: 'long' });
 }
 
 function daysLabel(days: number): string {
@@ -96,6 +95,7 @@ export default function AdminDashboardClient({
     ok: boolean;
     message: string;
   } | null>(null);
+  const [birthdaysOpen, setBirthdaysOpen] = useState(false);
 
   const smsPreviewText = buildBirthdayPromoSmsText('Անուն');
 
@@ -385,18 +385,27 @@ export default function AdminDashboardClient({
             </div>
           )}
 
-          {/* Upcoming birthdays — promo calls */}
+          {/* Upcoming birthdays — promo calls (accordion) */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="overflow-hidden rounded-xl border border-pink-100 bg-white shadow-lg"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-pink-100 bg-gradient-to-r from-pink-50 to-rose-50 px-4 py-3 sm:px-5 sm:py-4">
-              <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={`flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-pink-50 to-rose-50 px-4 py-3 sm:px-5 sm:py-4 ${
+                birthdaysOpen ? 'border-b border-pink-100' : ''
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => setBirthdaysOpen((open) => !open)}
+                aria-expanded={birthdaysOpen}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pink-500 text-white shadow">
                   <Cake className="h-5 w-5" />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h2 className="text-base font-bold text-gray-900 sm:text-lg">
                     Մոտակա ծնունդներ (15 օր)
                   </h2>
@@ -407,10 +416,16 @@ export default function AdminDashboardClient({
                       : ''}
                   </p>
                 </div>
-              </div>
+                <ChevronDown
+                  className={`h-5 w-5 shrink-0 text-pink-600 transition-transform duration-200 ${
+                    birthdaysOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setTestFeedback(null);
                   setTestModalOpen(true);
                 }}
@@ -421,145 +436,149 @@ export default function AdminDashboardClient({
               </button>
             </div>
 
-            <div className="p-3 sm:p-5">
-              {birthdayLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="h-14 animate-pulse rounded-xl bg-gray-100"
-                    />
-                  ))}
-                </div>
-              ) : birthdays.length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-500">
-                  Մոտակա 15 օրվա ընթացքում ծնունդ չկա
-                </p>
-              ) : (
-                <ul className="divide-y divide-gray-100">
-                  {birthdays.map((row) => (
-                    <li
-                      key={row.id}
-                      className={`flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
-                        row.called ? 'opacity-70' : ''
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate font-semibold text-gray-900">
-                            {row.name || `Հաճախորդ #${row.id}`}
-                          </p>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              row.daysUntil === 0
-                                ? 'bg-pink-600 text-white'
-                                : row.daysUntil <= 3
-                                  ? 'bg-pink-100 text-pink-700'
-                                  : 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            {daysLabel(row.daysUntil)}
-                          </span>
-                          {row.called && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                              <Check className="h-3 w-3" />
-                              Զանգել ենք
+            {birthdaysOpen && (
+              <div className="p-3 sm:p-5">
+                {birthdayLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="h-14 animate-pulse rounded-xl bg-gray-100"
+                      />
+                    ))}
+                  </div>
+                ) : birthdays.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-gray-500">
+                    Մոտակա 15 օրվա ընթացքում ծնունդ չկա
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {birthdays.map((row) => (
+                      <li
+                        key={row.id}
+                        className={`flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
+                          row.called ? 'opacity-70' : ''
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-semibold text-gray-900">
+                              {row.name || `Հաճախորդ #${row.id}`}
+                            </p>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                row.daysUntil === 0
+                                  ? 'bg-pink-600 text-white'
+                                  : row.daysUntil <= 3
+                                    ? 'bg-pink-100 text-pink-700'
+                                    : 'bg-gray-100 text-gray-600'
+                              }`}
+                            >
+                              {daysLabel(row.daysUntil)}
                             </span>
-                          )}
-                          {row.smsSent && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
-                              <MessageSquare className="h-3 w-3" />
-                              SMS ուղարկված
-                            </span>
+                            {row.called && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                <Check className="h-3 w-3" />
+                                Զանգել ենք
+                              </span>
+                            )}
+                            {row.smsSent && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                                <MessageSquare className="h-3 w-3" />
+                                SMS ուղարկված
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                            <a
+                              href={`tel:${row.phone}`}
+                              className="inline-flex min-h-10 items-center gap-1.5 font-medium text-purple-700 hover:underline"
+                            >
+                              <Phone className="h-3.5 w-3.5" />
+                              {formatPhoneDisplay(row.phone)}
+                            </a>
+                            <span>{formatBirthDay(row.nextBirthday)}</span>
+                          </div>
+                          {smsFeedback?.id === row.id && (
+                            <p
+                              className={`mt-1 text-xs font-medium ${
+                                smsFeedback.ok
+                                  ? 'text-emerald-600'
+                                  : 'text-red-600'
+                              }`}
+                            >
+                              {smsFeedback.message}
+                            </p>
                           )}
                         </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap sm:justify-end">
                           <a
                             href={`tel:${row.phone}`}
-                            className="inline-flex min-h-10 items-center gap-1.5 font-medium text-purple-700 hover:underline"
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 sm:hidden"
                           >
-                            <Phone className="h-3.5 w-3.5" />
-                            {formatPhoneDisplay(row.phone)}
+                            <Phone className="h-4 w-4" />
+                            Զանգ
                           </a>
-                          <span>{formatBirthDay(row.nextBirthday)}</span>
-                        </div>
-                        {smsFeedback?.id === row.id && (
-                          <p
-                            className={`mt-1 text-xs font-medium ${
-                              smsFeedback.ok ? 'text-emerald-600' : 'text-red-600'
+                          <button
+                            type="button"
+                            disabled={
+                              smsSendingId === row.id ||
+                              row.smsSent ||
+                              !row.phone
+                            }
+                            onClick={() => void handleSendSms(row)}
+                            title="Ուղարկել ծննդյան դահլիճի ակցիայի SMS"
+                            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:opacity-50 sm:px-4 ${
+                              row.smsSent
+                                ? 'border border-sky-200 bg-sky-50 text-sky-700'
+                                : 'border border-sky-200 bg-sky-600 text-white shadow-sm hover:bg-sky-500'
                             }`}
                           >
-                            {smsFeedback.message}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap sm:justify-end">
-                        <a
-                          href={`tel:${row.phone}`}
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 sm:hidden"
-                        >
-                          <Phone className="h-4 w-4" />
-                          Զանգ
-                        </a>
-                        <button
-                          type="button"
-                          disabled={
-                            smsSendingId === row.id ||
-                            row.smsSent ||
-                            !row.phone
-                          }
-                          onClick={() => void handleSendSms(row)}
-                          title="Ուղարկել ծննդյան դահլիճի ակցիայի SMS"
-                          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:opacity-50 sm:px-4 ${
-                            row.smsSent
-                              ? 'border border-sky-200 bg-sky-50 text-sky-700'
-                              : 'border border-sky-200 bg-sky-600 text-white shadow-sm hover:bg-sky-500'
-                          }`}
-                        >
-                          {smsSendingId === row.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <MessageSquare className="h-4 w-4" />
-                          )}
-                          <span className="sm:hidden">
-                            {row.smsSent ? 'Ուղարկված' : 'SMS'}
-                          </span>
-                          <span className="hidden sm:inline">
-                            {row.smsSent ? 'SMS ուղարկված' : 'Ուղարկել SMS'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={callingId === row.id}
-                          onClick={() => void handleToggleCalled(row)}
-                          className={`col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:opacity-50 sm:col-span-1 sm:px-4 ${
-                            row.called
-                              ? 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                              : 'bg-pink-600 text-white shadow-sm hover:bg-pink-500'
-                          }`}
-                        >
-                          {row.called ? (
-                            <>
-                              <PhoneOff className="h-4 w-4" />
-                              <span className="sm:hidden">Հանել</span>
-                              <span className="hidden sm:inline">
-                                Հանել նշումը
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <PhoneCall className="h-4 w-4" />
-                              Զանգել ենք
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                            {smsSendingId === row.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <MessageSquare className="h-4 w-4" />
+                            )}
+                            <span className="sm:hidden">
+                              {row.smsSent ? 'Ուղարկված' : 'SMS'}
+                            </span>
+                            <span className="hidden sm:inline">
+                              {row.smsSent ? 'SMS ուղարկված' : 'Ուղարկել SMS'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={callingId === row.id}
+                            onClick={() => void handleToggleCalled(row)}
+                            className={`col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:opacity-50 sm:col-span-1 sm:px-4 ${
+                              row.called
+                                ? 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                : 'bg-pink-600 text-white shadow-sm hover:bg-pink-500'
+                            }`}
+                          >
+                            {row.called ? (
+                              <>
+                                <PhoneOff className="h-4 w-4" />
+                                <span className="sm:hidden">Հանել</span>
+                                <span className="hidden sm:inline">
+                                  Հանել նշումը
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <PhoneCall className="h-4 w-4" />
+                                Զանգել ենք
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </motion.div>
 
           {testModalOpen && (

@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { isStaffRole } from '@/lib/roles';
 import { WALK_IN_PHONE } from '@/lib/bonus';
 import { buildBirthdayPromoSmsText } from '@/lib/birthday-promo-sms';
+import { getNextBirthdayMeta } from '@/lib/birth-date';
 import { sendPlainSms } from '@/lib/sms';
 
 const BIRTHDAY_WINDOW_DAYS = 15;
@@ -16,28 +17,6 @@ async function requireStaff() {
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user?.id || !isStaffRole(user.role)) return null;
   return user;
-}
-
-/** Հաջորդ ծնունդը և օրերի քանակը (տարեվերջ/տարեսկիզբ ներառյալ) */
-function getNextBirthdayMeta(
-  birthDate: Date,
-  now: Date = new Date()
-): { daysUntil: number; birthdayYear: number; nextBirthday: Date } {
-  const month = birthDate.getUTCMonth();
-  const day = birthDate.getUTCDate();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  let year = today.getFullYear();
-  let next = new Date(year, month, day);
-  if (next < today) {
-    year += 1;
-    next = new Date(year, month, day);
-  }
-
-  const daysUntil = Math.round(
-    (next.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
-  );
-  return { daysUntil, birthdayYear: year, nextBirthday: next };
 }
 
 export type UpcomingBirthdayUser = {
@@ -80,14 +59,14 @@ export async function getUpcomingBirthdays(withinDays = BIRTHDAY_WINDOW_DAYS) {
 
     for (const user of users) {
       if (!user.birthDate) continue;
-      const meta = getNextBirthdayMeta(new Date(user.birthDate), now);
+      const meta = getNextBirthdayMeta(user.birthDate, now);
       if (meta.daysUntil < 0 || meta.daysUntil > withinDays) continue;
       upcoming.push({
         id: user.id,
         name: user.name,
         phone: user.phone,
         birthDate: user.birthDate.toISOString().slice(0, 10),
-        nextBirthday: meta.nextBirthday.toISOString().slice(0, 10),
+        nextBirthday: meta.nextBirthdayKey,
         daysUntil: meta.daysUntil,
         birthdayYear: meta.birthdayYear,
         called: user.birthdayPromoCalledYear === meta.birthdayYear,
@@ -136,7 +115,7 @@ export async function setBirthdayPromoCalled(
       return { success: false, error: 'Օգտատերը կամ ծննդյան ամսաթիվը չի գտնվել' };
     }
 
-    const { birthdayYear } = getNextBirthdayMeta(new Date(user.birthDate));
+    const { birthdayYear } = getNextBirthdayMeta(user.birthDate);
     await prisma.user.update({
       where: { id },
       data: {
@@ -152,7 +131,7 @@ export async function setBirthdayPromoCalled(
   }
 }
 
-/** Ծննդյան 50% ակցիայի SMS՝ Dexatel-ով */
+/** Ծննդյան դահլիճի ակցիայի SMS՝ Dexatel-ով */
 export async function sendBirthdayPromoSms(userId: number): Promise<{
   success: boolean;
   error?: string;
@@ -191,7 +170,7 @@ export async function sendBirthdayPromoSms(userId: number): Promise<{
       return { success: false, error: 'Հեռախոսահամարը բացակայում է' };
     }
 
-    const { birthdayYear } = getNextBirthdayMeta(new Date(user.birthDate));
+    const { birthdayYear } = getNextBirthdayMeta(user.birthDate);
     if (user.birthdayPromoSmsYear === birthdayYear) {
       return {
         success: false,

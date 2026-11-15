@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Film,
@@ -21,6 +21,8 @@ import {
   FileText,
   Mail,
   Banknote,
+  Download,
+  Upload,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -47,6 +49,10 @@ import {
   PRODUCER_REPORT_FREQUENCY_LABELS,
   type ProducerReportFrequency,
 } from '@/lib/producer-report-frequency';
+import {
+  downloadMovieJsonExample,
+  parseMovieJsonImport,
+} from '@/lib/movie-json-import';
 
 interface ProducerUser {
   id: number;
@@ -165,6 +171,48 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
 
   // Form state
   const [formData, setFormData] = useState(emptyForm());
+  const [jsonImportError, setJsonImportError] = useState<string | null>(null);
+  const [jsonImportOk, setJsonImportOk] = useState<string | null>(null);
+  const jsonFileInputRef = useRef<HTMLInputElement>(null);
+
+  const applyMovieJson = async (file: File) => {
+    setJsonImportError(null);
+    setJsonImportOk(null);
+    try {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        setJsonImportError('Ֆայլը վավեր JSON չէ');
+        return;
+      }
+      const result = parseMovieJsonImport(parsed);
+      if (!result.success || !result.data) {
+        setJsonImportError(result.error || 'JSON-ը չհաջողվեց կարդալ');
+        return;
+      }
+      setFormData((prev) => ({
+        ...prev,
+        ...result.data,
+        // Նկար, ընկերություն, արտադրող և պայմանագիր չենք փոխում
+        image: prev.image,
+        producerIds: prev.producerIds,
+        companyIds: prev.companyIds,
+        contractUrl: prev.contractUrl,
+        contractName: prev.contractName,
+      }));
+      const filled = Object.keys(result.data).length;
+      setJsonImportOk(`Լրացվեց ${filled} դաշտ JSON-ից`);
+    } catch (error) {
+      console.error(error);
+      setJsonImportError('JSON ֆայլը կարդալիս սխալ է տեղի ունեցել');
+    } finally {
+      if (jsonFileInputRef.current) {
+        jsonFileInputRef.current.value = '';
+      }
+    }
+  };
 
   // Load movies from database
   useEffect(() => {
@@ -267,11 +315,15 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
 
   const handleAddMovie = () => {
     setFormData(emptyForm());
+    setJsonImportError(null);
+    setJsonImportOk(null);
     setIsAddModalOpen(true);
   };
 
   const handleEditMovie = (movie: Movie) => {
     setSelectedMovie(movie);
+    setJsonImportError(null);
+    setJsonImportOk(null);
     setFormData({
       title: movie.title,
       slug: movie.slug || '',
@@ -744,6 +796,61 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                  <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-4">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-800">
+                      <FileText className="h-4 w-4 text-violet-600" />
+                      Լրացնել JSON-ով
+                    </div>
+                    <p className="mb-3 text-xs text-gray-500">
+                      Ներբեռնիր օրինակը, լրացրու և վերբեռնիր։ Լրացվում են
+                      բոլոր դաշտերը՝ բացի նկարից, ընկերություններից,
+                      ֆիլմարտադրողներից և պայմանագրից։ Նկարագրությունը՝ մոտ
+                      300–350 նիշ։
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setJsonImportError(null);
+                          setJsonImportOk(null);
+                          downloadMovieJsonExample();
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50"
+                      >
+                        <Download className="h-4 w-4" />
+                        Օրինակ JSON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => jsonFileInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500"
+                      >
+                        <Upload className="h-4 w-4" />
+                        Վերբեռնել JSON
+                      </button>
+                      <input
+                        ref={jsonFileInputRef}
+                        type="file"
+                        accept="application/json,.json"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void applyMovieJson(file);
+                        }}
+                      />
+                    </div>
+                    {jsonImportError && (
+                      <p className="mt-2 text-xs font-medium text-red-600">
+                        {jsonImportError}
+                      </p>
+                    )}
+                    {jsonImportOk && (
+                      <p className="mt-2 text-xs font-medium text-emerald-700">
+                        {jsonImportOk}
+                      </p>
+                    )}
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Անվանում <span className="text-red-500">*</span>
@@ -777,8 +884,7 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Տևողություն (րոպե){' '}
-                      <span className="text-red-500">*</span>
+                      Տևողություն (րոպե) <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="number"
@@ -945,8 +1051,12 @@ export default function AdminMoviesClient({ user }: AdminMoviesClientProps) {
                         })
                       }
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      placeholder="Ֆիլմի նկարագրություն"
+                      placeholder="Ֆիլմի նկարագրություն (մոտ 300–350 նիշ)"
                     />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Խորհուրդ է տրվում 300–350 նիշ · հիմա{' '}
+                      {formData.description.length}
+                    </p>
                   </div>
 
                   <div>

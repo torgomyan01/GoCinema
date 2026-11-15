@@ -21,6 +21,7 @@ import {
   BONUS_TYPE_LABELS_HY,
   type BonusTier,
 } from '@/lib/bonus-labels';
+import { getBirthdayWindowMatch } from '@/lib/birth-date';
 
 export {
   BONUS_TIERS,
@@ -700,32 +701,6 @@ export async function grantWelcomeBonus(
   }
 }
 
-function birthdayWindowMatch(
-  birthDate: Date,
-  now: Date
-): { inWindow: boolean; year: number } {
-  const month = birthDate.getMonth();
-  const day = birthDate.getDate();
-  const candidates = [
-    new Date(now.getFullYear() - 1, month, day),
-    new Date(now.getFullYear(), month, day),
-    new Date(now.getFullYear() + 1, month, day),
-  ];
-
-  let best = candidates[0];
-  let bestDiff = Math.abs(now.getTime() - best.getTime());
-  for (let i = 1; i < candidates.length; i += 1) {
-    const diff = Math.abs(now.getTime() - candidates[i].getTime());
-    if (diff < bestDiff) {
-      best = candidates[i];
-      bestDiff = diff;
-    }
-  }
-
-  const diffDays = bestDiff / (24 * 60 * 60 * 1000);
-  return { inWindow: diffDays <= 7, year: best.getFullYear() };
-}
-
 /**
  * Ծննդյան բոնուս՝ տարին մեկ, ծննդյան օրվանից ±7 օր պատուհանում։
  * Աշխատում է նաև տարեվերջ/տարեսկիզբ անցումով։
@@ -743,7 +718,7 @@ export async function grantBirthdayBonusIfDue(
   });
   if (!user?.birthDate || user.phone === WALK_IN_PHONE) return 0;
 
-  const match = birthdayWindowMatch(new Date(user.birthDate), new Date());
+  const match = getBirthdayWindowMatch(user.birthDate, new Date(), 7);
   if (!match.inWindow) return 0;
   if (user.birthdayBonusYear === match.year) return 0;
 
